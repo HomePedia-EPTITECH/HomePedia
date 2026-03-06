@@ -1,118 +1,33 @@
 # HomePedia
 
-## Initialisation des bases (PostgreSQL + MongoDB) avec Docker Compose
+Lancer le projet (PostgreSQL + MongoDB + données) puis le scrap.
 
-Ce repo fournit un `docker-compose.yml` pour démarrer localement :
+## Prérequis
 
-- **PostgreSQL** (DB par défaut : `homepedia`, user : `admin`)
-- **MongoDB** (DB par défaut : `homepedia_raw`)
+- **Docker** installé et démarré
+- **Python 3** avec `pip install -r requirements.txt`
 
-### Pré-requis
+## Premier lancement
 
-- Docker Desktop (ou équivalent) installé et démarré.
+1. **Configurer l’environnement**  
+   Copie `.env.example` en `.env` à la racine et remplis les identifiants (Postgres, Mongo).
 
-### Configuration `.env`
+2. **Démarrer les bases et charger les données**  
+   À la racine du projet :
 
-Crée un fichier `.env` à la racine du projet (ou copie l’exemple) :
+   ```bash
+   python setup.py
+   ```
 
-```bash
-cp .env.example .env
-```
+   Cela lance Docker, attend que Postgres et Mongo soient prêts, applique les migrations et charge les données (communes, etc.).
 
-```bash
-# Exemple minimal
-POSTGRES_DB=homepedia
-POSTGRES_USER=admin
-POSTGRES_PASSWORD=CHANGE_ME
-POSTGRES_PORT=5432
+3. **Lancer le scrap** (optionnel)
 
-MONGO_DB=homepedia_raw
-MONGO_ROOT_USER=CHANGE_ME
-MONGO_ROOT_PASSWORD=CHANGE_ME
-MONGO_PORT=27017
-```
+   ```bash
+   python Scrap/script_BDMV.py
+   ```
 
-### Démarrage des bases
+## Suite
 
-**Option 1 – Tout en une commande (recommandé)**  
-À la racine du projet, après avoir créé et édité ton `.env` :
-
-```bash
-cp .env.example .env      # puis édite .env (identifiants, etc.)
-python setup.py
-```
-
-`setup.py` lance Docker (`docker compose up -d`), attend que Postgres et Mongo soient prêts, puis exécute tous les scripts du dossier Database (migrations + chargement des données). Ensuite tu peux lancer le scrap ou l’app.
-
-**Option 2 – Étape par étape**
-
-```bash
-cp .env.example .env
-docker compose up -d
-docker compose ps         # vérifie que les conteneurs sont "Up"
-python Database/main.py   # migrations + chargement des données
-```
-
-### Migrations (suivi automatique)
-
-Tout ce qui concerne les bases (init, migrations, scripts de chargement) est dans le dossier **`Database/`** : init et migrations sont montés dans les conteneurs Docker via le `docker-compose.yml`.
-
-Les scripts dans `Database/postgres/init/` et `Database/mongo/init/` s’exécutent **une seule fois** (au tout premier démarrage, volume vide). Ensuite, les évolutions de schéma se font via des **migrations** versionnées et tracées.
-
-- **PostgreSQL** : init dans `Database/postgres/init/`, migrations dans `Database/postgres/migrations/` (ex. `01_init_communes.sql`, `02_…`, `14_…`).
-- **MongoDB** : init dans `Database/mongo/init/`, migrations dans `Database/mongo/migrations/` (ex. `01_init_city_backups.js`, `02_…`, `14_…`).
-
-Pour appliquer **uniquement les migrations pas encore jouées** (par ex. 15, 16 si tu es déjà à 14) :
-
-```bash
-python Database/run_migrations.py
-```
-
-Ce script enregistre chaque migration appliquée (Postgres : table `bdd.schema_migrations`, Mongo : collection `schema_migrations`). Tu peux le relancer à chaque fois : seules les nouvelles seront exécutées.
-
-**Si tu as déjà appliqué des migrations à la main** (ex. 01 à 14) et que tu ne veux pas les rejouer, fais une fois un **baseline** :
-
-- **PostgreSQL** (depuis `psql` ou un client) :
-  ```sql
-  INSERT INTO bdd.schema_migrations (name) VALUES
-    ('01_init_communes.sql'), ('02_seed_communes.sql'), ('03_gold_zone.sql')
-    -- ajoute ici toutes celles déjà appliquées, ex. ('04_xxx.sql'), … ('14_xxx.sql')
-  ON CONFLICT (name) DO NOTHING;
-  ```
-- **MongoDB** (depuis `mongosh` sur la DB concernée) :
-  ```js
-  db.schema_migrations.insertMany([
-    { _id: "01_init_city_backups.js" },
-    // { _id: "02_xxx.js" }, … { _id: "14_xxx.js" }
-  ]);
-  ```
-
-Ensuite, `python Database/run_migrations.py` ne jouera que les migrations après 14.
-
-### Ordre recommandé après « docker compose up »
-
-- **Depuis zéro** : utilise **`python setup.py`** à la racine (Docker + attente + migrations + données).
-- **Déjà en cours** (conteneurs déjà up) : **`python Database/main.py`** (migrations en attente + chargement des données).
-
-`Database/main.py` lance dans l’ordre : **run_migrations.py** (Postgres puis Mongo, uniquement les migrations pas encore appliquées), puis **load_communes.py** (et les autres scripts listés dans `Database/main.py`).
-
-Si tu préfères découper :
-
-1. **Migrations seules** : `python Database/run_migrations.py`
-2. **Chargement des données seules** : `python Database/load_communes.py` (ou retire `run_migrations.py` de la liste dans `Database/main.py`)
-
-### Chargement des données (après les migrations)
-
-Les données (communes, etc.) sont chargées par `Database/main.py` via les scripts listés dedans (`load_communes.py`, etc.). À lancer après que les tables existent (ou laisser `main.py` faire d’abord les migrations, comme ci‑dessus).
-
-### Accès depuis ta machine (host)
-
-- **PostgreSQL** : `localhost:5432` (DB `homepedia`, user `admin`, password = `POSTGRES_PASSWORD`)
-- **MongoDB** : `mongodb://<user>:<password>@localhost:27017/?authSource=admin` (DB `homepedia_raw`)
-
-### Réinitialiser (tout supprimer et recréer)
-
-```bash
-docker compose down -v
-docker compose up -d
-```
+- **Conteneurs déjà démarrés** : `python Database/main.py` pour refaire uniquement migrations + chargement des données.
+- **Détails** (migrations, baseline, réinitialisation, etc.) : voir le dossier **`Docs/`**.
