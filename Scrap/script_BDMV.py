@@ -86,11 +86,106 @@ class HomepediaHarvester:
                         if label in LABEL_SECU:
                             data[LABEL_SECU[label]] = tds[0].get_text(strip=True)
 
-        # 3. Superficie (texte du type "s'étend sur une superficie de 50 km²")
+        # 3. Superficie
         text = soup.get_text()
         m = re.search(r"superficie\s+de\s+([\d\s]+)\s*km²", text, re.IGNORECASE)
         if m:
             data["superficie_km2"] = m.group(1).replace("\xa0", " ").strip()
+
+        # 4. Estimations population (ex: "estimée à 234 641 habitants", "232 774 en 2025")
+        m_est = re.search(r"estimée\s+à\s+([\d\s]+)\s+habitants", text)
+        if m_est:
+            data["estimation_pop_2026"] = m_est.group(1).replace("\xa0", " ").strip()
+        m_2025 = re.search(r"\((\d[\d\s]*?)\s+en\s+2025\)", text)
+        if m_2025:
+            data["estimation_pop_2025"] = m_2025.group(1).replace("\xa0", " ").strip()
+
+        # 5. Graphiques (tranches d'âge, activité, diplôme, ménages) : .chart > h3 + .graph .item (h4 + .pourcent)
+        LABEL_CHARTS = {
+            "Tranche d'âge": {"0-14 ans": "part_0_14_ans", "15-29 ans": "part_15_29_ans", "30-44 ans": "part_30_44_ans",
+                             "45-59 ans": "part_45_59_ans", "60-74 ans": "part_60_74_ans", "75-89 ans": "part_75_89_ans", "90 ans et +": "part_90_plus"},
+            "Activité professionnelle": {"Cadres et sup.": "part_cadres", "Retraité": "part_retraites", "Employé": "part_employes", "Ouvrier": "part_ouvriers"},
+            "Niveau de diplôme": {"Sans diplôme ou CEP": "part_sans_diplome", "BAC+5 ou plus": "part_bac5_plus"},
+            "Composition des ménages": {"Couple avec enfant(s)": "part_couple_avec_enfant", "Personnes seules": "part_personnes_seules"},
+        }
+        for chart in soup.find_all("div", class_="chart"):
+            h3 = chart.find("h3")
+            if not h3 or h3.get_text(strip=True) not in LABEL_CHARTS:
+                continue
+            mapping = LABEL_CHARTS[h3.get_text(strip=True)]
+            for item in chart.select("div.graph div.item"):
+                h4 = item.find("h4")
+                pourcent = item.find("div", class_="pourcent")
+                if h4 and pourcent and h4.get_text(strip=True) in mapping:
+                    data[mapping[h4.get_text(strip=True)]] = pourcent.get_text(strip=True)
+
+        # 6. Élections (Participation : 75.74%, inscrits)
+        m_part1 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text)
+        if m_part1:
+            data["participation_1er_tour"] = m_part1.group(1).replace(",", ".").strip()
+        m_inscrits = re.search(r"(\d[\d\s]*?)\s+inscrits", text)
+        if m_inscrits:
+            data["inscrits_election"] = m_inscrits.group(1).replace("\xa0", " ").strip()
+        # Second tour participation (après "Second tour")
+        idx_2nd = text.find("Second tour")
+        if idx_2nd >= 0:
+            m_part2 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text[idx_2nd:])
+            if m_part2:
+                data["participation_2nd_tour"] = m_part2.group(1).replace(",", ".").strip()
+
+        # 7. Code postal, région, département, métropole
+        m_cp = re.search(r"code postal (?:de \w+ )?est (\d+)", text, re.IGNORECASE)
+        if m_cp:
+            data["code_postal"] = m_cp.group(1)
+        # liens région/département/métropole : ignorer le menu global ("Régions", "Départements", "Métropoles")
+        for link in soup.select('a[href*="/regions/"]'):
+            t = link.get_text(strip=True)
+            if not t or t in {"Régions"}:
+                continue
+            data["nom_region"] = t
+            break
+        for link in soup.select('a[href*="/departements/"]'):
+            t = link.get_text(strip=True)
+            if not t or t in {"Départements"}:
+                continue
+            data["nom_departement"] = t
+            break
+        for link in soup.select('a[href*="/metropoles/"]'):
+            t = link.get_text(strip=True)
+            if not t or t in {"Métropoles"}:
+                continue
+            data["nom_metropole"] = t
+            break
+
+        # 8. Mairie (section id="mairie" ou premier bloc avec "Maire")
+        section_mairie = soup.find("section", id="mairie")
+        if not section_mairie:
+            for h2 in soup.find_all("h2"):
+                if "Mairie" in (h2.get_text() or ""):
+                    section_mairie = h2.find_parent("section") or h2.find_next("section")
+                    break
+        if section_mairie:
+            m_maire = re.search(r"(?:M\.|Mme|Monsieur|Madame)\s+[\w\s\-]+(?=\s*Maire|\s*$)", section_mairie.get_text())
+            if m_maire:
+                data["nom_maire"] = m_maire.group(0).strip()
+
+        # 9. Services (tables Commerce, Santé, Éducation) : th = libellé, td = valeur
+        LABEL_SERVICES = {
+            "Hypermarché": "nb_hypermarché", "Supermarché": "nb_supermarche", "Restaurant": "nb_restaurant",
+            "Boulangerie": "nb_boulangerie", "Bibliothèque": "nb_bibliotheque", "Cinéma": "nb_cinema",
+            "Pharmacie": "nb_pharmacie", "Hôpital": "nb_hopital", "Dentiste": "nb_dentiste",
+            "Crèche": "nb_creche", "Ecole maternelle Public": "nb_ecole_maternelle_pub",
+            "Ecole primaire Public": "nb_ecole_primaire_pub", "Collège Public": "nb_college_pub", "Lycée Public": "nb_lycee_pub",
+        }
+        for section in soup.find_all("section"):
+            for table in section.find_all("table"):
+                for row in table.find_all("tr"):
+                    th = row.find("th")
+                    tds = row.find_all("td")
+                    if th and tds:
+                        label = th.get_text(strip=True)
+                        if label in LABEL_SERVICES:
+                            data[LABEL_SERVICES[label]] = tds[0].get_text(strip=True)
 
     def _extract_page_avis(self, soup_avis, data):
         """Extrait note_moyenne_globale, nb_avis et les 5 scores depuis la page avis."""
@@ -134,7 +229,7 @@ class HomepediaHarvester:
                                 data[LABEL_SCORES[label]] = tds[0].get_text(strip=True)
 
     def process_city(self, city_info):
-        """Scrape page ville + page avis et remplit les 18 colonnes."""
+        """Scrape page ville + page avis et remplit ~50 colonnes."""
         com, name = city_info
         target_url = self._generate_url(com, name)
         avis_url = target_url.rstrip("/") + "/avis.html"
@@ -160,6 +255,45 @@ class HomepediaHarvester:
             "score_loisirs": None,
             "score_environnement": None,
             "score_vie_pratique": None,
+            "estimation_pop_2026": None,
+            "estimation_pop_2025": None,
+            "part_0_14_ans": None,
+            "part_15_29_ans": None,
+            "part_30_44_ans": None,
+            "part_45_59_ans": None,
+            "part_60_74_ans": None,
+            "part_75_89_ans": None,
+            "part_90_plus": None,
+            "part_cadres": None,
+            "part_retraites": None,
+            "part_employes": None,
+            "part_ouvriers": None,
+            "part_sans_diplome": None,
+            "part_bac5_plus": None,
+            "part_couple_avec_enfant": None,
+            "part_personnes_seules": None,
+            "participation_1er_tour": None,
+            "participation_2nd_tour": None,
+            "inscrits_election": None,
+            "code_postal": None,
+            "nom_region": None,
+            "nom_departement": None,
+            "nom_metropole": None,
+            "nom_maire": None,
+            "nb_restaurant": None,
+            "nb_boulangerie": None,
+            "nb_bibliotheque": None,
+            "nb_cinema": None,
+            "nb_creche": None,
+            "nb_ecole_maternelle_pub": None,
+            "nb_ecole_primaire_pub": None,
+            "nb_college_pub": None,
+            "nb_lycee_pub": None,
+            "nb_hypermarché": None,
+            "nb_supermarche": None,
+            "nb_pharmacie": None,
+            "nb_hopital": None,
+            "nb_dentiste": None,
         }
 
         soup_avis = None
@@ -255,28 +389,67 @@ class HomepediaHarvester:
                 len(cities),
             )
 
-            # Mise à jour PostgreSQL : 18 colonnes
+            # Mise à jour PostgreSQL : ~50 colonnes
             if to_update:
                 sql = """
                       UPDATE homepedia.communes
-                      SET nb_habitant           = %(nb_habitant)s,
-                          age_moyen             = %(age_moyen)s,
-                          pop_active            = %(pop_active)s,
-                          taux_chomage          = %(taux_chomage)s,
-                          pop_densite           = %(pop_densite)s,
-                          revenu_moyen          = %(revenu_moyen)s,
-                          superficie_km2        = %(superficie_km2)s,
-                          agressions            = %(agressions)s,
-                          cambriolages          = %(cambriolages)s,
-                          vols_degradations     = %(vols_degradations)s,
-                          stupefiants           = %(stupefiants)s,
-                          note_moyenne_globale  = %(note_moyenne_globale)s,
-                          nb_avis               = %(nb_avis)s,
-                          score_securite        = %(score_securite)s,
-                          score_education       = %(score_education)s,
-                          score_loisirs         = %(score_loisirs)s,
-                          score_environnement   = %(score_environnement)s,
-                          score_vie_pratique    = %(score_vie_pratique)s
+                      SET nb_habitant              = %(nb_habitant)s,
+                          age_moyen                = %(age_moyen)s,
+                          pop_active               = %(pop_active)s,
+                          taux_chomage             = %(taux_chomage)s,
+                          pop_densite              = %(pop_densite)s,
+                          revenu_moyen             = %(revenu_moyen)s,
+                          superficie_km2           = %(superficie_km2)s,
+                          agressions               = %(agressions)s,
+                          cambriolages             = %(cambriolages)s,
+                          vols_degradations        = %(vols_degradations)s,
+                          stupefiants              = %(stupefiants)s,
+                          note_moyenne_globale     = %(note_moyenne_globale)s,
+                          nb_avis                 = %(nb_avis)s,
+                          score_securite           = %(score_securite)s,
+                          score_education         = %(score_education)s,
+                          score_loisirs           = %(score_loisirs)s,
+                          score_environnement      = %(score_environnement)s,
+                          score_vie_pratique       = %(score_vie_pratique)s,
+                          estimation_pop_2026      = %(estimation_pop_2026)s,
+                          estimation_pop_2025      = %(estimation_pop_2025)s,
+                          part_0_14_ans            = %(part_0_14_ans)s,
+                          part_15_29_ans           = %(part_15_29_ans)s,
+                          part_30_44_ans           = %(part_30_44_ans)s,
+                          part_45_59_ans           = %(part_45_59_ans)s,
+                          part_60_74_ans           = %(part_60_74_ans)s,
+                          part_75_89_ans           = %(part_75_89_ans)s,
+                          part_90_plus             = %(part_90_plus)s,
+                          part_cadres              = %(part_cadres)s,
+                          part_retraites           = %(part_retraites)s,
+                          part_employes            = %(part_employes)s,
+                          part_ouvriers            = %(part_ouvriers)s,
+                          part_sans_diplome       = %(part_sans_diplome)s,
+                          part_bac5_plus          = %(part_bac5_plus)s,
+                          part_couple_avec_enfant  = %(part_couple_avec_enfant)s,
+                          part_personnes_seules    = %(part_personnes_seules)s,
+                          participation_1er_tour   = %(participation_1er_tour)s,
+                          participation_2nd_tour   = %(participation_2nd_tour)s,
+                          inscrits_election        = %(inscrits_election)s,
+                          code_postal              = %(code_postal)s,
+                          nom_region               = %(nom_region)s,
+                          nom_departement          = %(nom_departement)s,
+                          nom_metropole            = %(nom_metropole)s,
+                          nom_maire                = %(nom_maire)s,
+                          nb_restaurant            = %(nb_restaurant)s,
+                          nb_boulangerie           = %(nb_boulangerie)s,
+                          nb_bibliotheque          = %(nb_bibliotheque)s,
+                          nb_cinema                = %(nb_cinema)s,
+                          nb_creche                = %(nb_creche)s,
+                          nb_ecole_maternelle_pub  = %(nb_ecole_maternelle_pub)s,
+                          nb_ecole_primaire_pub    = %(nb_ecole_primaire_pub)s,
+                          nb_college_pub           = %(nb_college_pub)s,
+                          nb_lycee_pub             = %(nb_lycee_pub)s,
+                          nb_hypermarché           = %(nb_hypermarché)s,
+                          nb_supermarche           = %(nb_supermarche)s,
+                          nb_pharmacie             = %(nb_pharmacie)s,
+                          nb_hopital               = %(nb_hopital)s,
+                          nb_dentiste              = %(nb_dentiste)s
                       WHERE com = %(com)s AND nccenr = %(nccenr)s
                       """
                 with psycopg2.connect(**self.pg_params) as conn:
