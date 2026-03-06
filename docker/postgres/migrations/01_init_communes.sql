@@ -3,7 +3,7 @@
 
 CREATE SCHEMA IF NOT EXISTS bdd;
 
-CREATE TABLE IF NOT EXISTS bdd.v_commune_2023 (
+CREATE TABLE IF NOT EXISTS bdd.v_commune_2026 (
     com                VARCHAR(10)   NOT NULL,
     nccenr             TEXT          NOT NULL,
 
@@ -20,16 +20,16 @@ CREATE TABLE IF NOT EXISTS bdd.v_commune_2023 (
     score_transports    TEXT         NULL,
     score_education     TEXT         NULL,
 
-    CONSTRAINT pk_v_commune_2023 PRIMARY KEY (com, nccenr)
+    CONSTRAINT pk_v_commune_2026 PRIMARY KEY (com, nccenr)
 );
 
 -- Index pour les recherches par nom de commune et quelques scores.
-CREATE INDEX IF NOT EXISTS idx_v_commune_2023_nccenr
-    ON bdd.v_commune_2023 (nccenr);
+CREATE INDEX IF NOT EXISTS idx_v_commune_2026_nccenr
+    ON bdd.v_commune_2026 (nccenr);
 
-CREATE INDEX IF NOT EXISTS idx_v_commune_2023_score_securite
-    ON bdd.v_commune_2023 (score_securite);
+CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_securite
+    ON bdd.v_commune_2026 (score_securite);
 
-CREATE INDEX IF NOT EXISTS idx_v_commune_2023_score_environnement
-    ON bdd.v_commune_2023 (score_environnement);
+CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_environnement
+    ON bdd.v_commune_2026 (score_environnement);
 

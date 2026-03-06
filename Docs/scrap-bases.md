@@ -72,7 +72,7 @@ PostgreSQL est utilisé comme **base de données relationnelle** pour stocker le
 - adapté aux futures analyses statistiques et requêtes de filtrage / tri ;
 - base de référence pour les indicateurs numériques (population, scores, etc.).
 
-### 2.2. Table `bdd.v_commune_2023`
+### 2.2. Table `bdd.v_commune_2026`
 
 - **Création** : script `docker/postgres/migrations/01_init_communes.sql`.
 - **Fonction** : recevoir les valeurs issues du scraping pour chaque commune.
@@ -160,7 +160,7 @@ Le flux actuel, limité au scraping et au stockage, peut être résumé ainsi :
 flowchart LR
     A[Site bien-dans-ma-ville.fr] --> B[Script Python<br/>Scrap/script_BDMV.py]
 
-    B -->|Indicateurs (formes brutes)| C[(PostgreSQL<br/>bdd.v_commune_2023)]
+    B -->|Indicateurs (formes brutes)| C[(PostgreSQL<br/>bdd.v_commune_2026)]
     B -->|Avis + métriques JSON| D[(MongoDB<br/>city_backups)]
 
     subgraph "Stockage après scraping"
@@ -172,7 +172,7 @@ flowchart LR
 - **Source** : le site `bien-dans-ma-ville.fr` ;
 - **Traitement** : `Scrap/script_BDMV.py` (collecte, parsing, extraction) ;
 - **Stockage** :
-  - indicateurs tabulaires dans PostgreSQL (`bdd.v_commune_2023`) ;
+  - indicateurs tabulaires dans PostgreSQL (`bdd.v_commune_2026`) ;
   - avis et structure JSON des métriques dans MongoDB (`city_backups`).
 
 

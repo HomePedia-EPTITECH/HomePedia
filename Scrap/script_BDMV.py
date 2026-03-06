@@ -164,7 +164,7 @@ class HomepediaHarvester:
         try:
             with psycopg2.connect(**self.pg_params) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT com, nccenr FROM bdd.v_commune_2023")
+                    cur.execute("SELECT com, nccenr FROM bdd.v_commune_2026")
                     cities = cur.fetchall()
 
             logging.info(f"Début de la collecte pour {len(cities)} communes.")
@@ -178,7 +178,7 @@ class HomepediaHarvester:
             # Mise à jour PostgreSQL par lots (Execute Batch) [cite: 37]
             if valid_results:
                 sql = """
-                      UPDATE bdd.v_commune_2023
+                      UPDATE bdd.v_commune_2026
                       SET nb_habitant         = %(nb_habitant)s, \
                           age_moyen           = %(age_moyen)s,
                           pop_active          = %(pop_active)s, \
