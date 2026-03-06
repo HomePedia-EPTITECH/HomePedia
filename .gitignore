@@ -76,3 +76,5 @@ volumes/mysql-volume/binlog.index
 
 # Node install
 app/**/node_modules/*
+
+.env
