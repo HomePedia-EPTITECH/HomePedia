@@ -2,37 +2,22 @@ import argparse
 import csv
 import json
 import logging
-import os
+import sys
 from pathlib import Path
-from typing import Iterable, Dict
+from typing import Dict, Iterable
 
 import psycopg2
 from psycopg2 import extras
 
-try:
-    from dotenv import load_dotenv  # type: ignore
-except ImportError:  # pragma: no cover - fallback sans dotenv
-    load_dotenv = None  # type: ignore[assignment]
-
+# Permettre l'import du module util à la racine du projet
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from util.config import get_pg_params
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-
-if load_dotenv is not None:
-    env_path = ROOT_DIR / ".env"
-    if env_path.exists():
-        load_dotenv(env_path, override=False)
-
-
-def get_pg_params() -> Dict[str, object]:
-    return {
-        "dbname": os.getenv("POSTGRES_DB", "home"),
-        "user": os.getenv("POSTGRES_USER", "admin"),
-        "password": os.getenv("POSTGRES_PASSWORD", ""),
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    }
+ROOT_DIR = _ROOT
 
 
 def iter_communes_from_csv(path: Path) -> Iterable[Dict[str, str]]:

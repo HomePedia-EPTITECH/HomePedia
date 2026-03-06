@@ -1,7 +1,8 @@
 """
-Point d'entrée unique pour lancer tous les scripts de chargement / setup de la base.
+Point d'entrée unique : migrations (Postgres + Mongo) puis chargement des données.
 
-Ajoute ici chaque nouveau script Python à exécuter : ils seront lancés dans l'ordre.
+Ordre d’exécution : run_migrations.py (applique les migrations en attente), puis les scripts de données.
+Ajoute ici tout nouveau script Python à exécuter ; ils seront lancés dans l’ordre.
 """
 
 import subprocess
@@ -11,6 +12,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 SCRIPTS = [
+    "run_migrations.py",   # applique uniquement les migrations pas encore jouées
     "load_communes.py",
 ]
 

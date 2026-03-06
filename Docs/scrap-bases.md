@@ -74,7 +74,7 @@ PostgreSQL est utilisé comme **base de données relationnelle** pour stocker le
 
 ### 2.2. Table `bdd.v_commune_2026`
 
-- **Création** : script `docker/postgres/migrations/01_init_communes.sql`.
+- **Création** : script `Database/postgres/migrations/01_init_communes.sql`.
 - **Fonction** : recevoir les valeurs issues du scraping pour chaque commune.
 
 **Principales colonnes :**
@@ -118,8 +118,8 @@ MongoDB est utilisée comme **base de données documentaire** pour :
 ### 3.2. Collection `city_backups`
 
 - **Création** :
-  - script d’initialisation : `docker/mongo/init/01_init.js` ;
-  - script de migration : `docker/mongo/migrations/01_init_city_backups.js`.
+  - script d’initialisation : `Database/mongo/init/01_init.js` ;
+  - script de migration : `Database/mongo/migrations/01_init_city_backups.js`.
 - **Fonction** : stocker, pour chaque commune, les éléments suivants :
 
 Structure logique simplifiée d’un document :

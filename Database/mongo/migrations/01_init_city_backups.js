@@ -15,4 +15,3 @@ db.city_backups.createIndex({ com: 1 }, { unique: true });
 // Index utiles pour les explorations futures (facultatifs).
 db.city_backups.createIndex({ "metrics.nb_habitant": 1 });
 db.city_backups.createIndex({ "metrics.score_securite": 1 });
-

@@ -32,4 +32,3 @@ CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_securite
 
 CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_environnement
     ON bdd.v_commune_2026 (score_environnement);
-
