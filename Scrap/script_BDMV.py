@@ -1,5 +1,5 @@
 import logging
-import os
+import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -11,48 +11,20 @@ from psycopg2 import extras
 from pymongo import MongoClient
 from unidecode import unidecode
 
-try:
-    from dotenv import load_dotenv  # type: ignore
-except ImportError:
-    load_dotenv = None  # type: ignore[assignment]
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+from util.config import get_pg_params, get_mongo_uri, get_mongo_db_name
 
 # Configuration du logging pour le suivi de la collecte
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-if load_dotenv is not None:
-    load_dotenv(Path(__file__).resolve().parents[1] / ".env", override=False)
-
 
 class HomepediaHarvester:
     def __init__(self):
-        # Configuration PostgreSQL (via variables d'environnement)
-        self.pg_params = {
-            "dbname": os.getenv("POSTGRES_DB", "homepedia"),
-            "user": os.getenv("POSTGRES_USER", "admin"),
-            "password": os.getenv("POSTGRES_PASSWORD", ""),
-            "host": os.getenv("POSTGRES_HOST", "localhost"),
-            "port": int(os.getenv("POSTGRES_PORT", "5432")),
-        }
-
-        # Configuration MongoDB (via variables d'environnement)
-        mongo_uri = os.getenv("MONGO_URI")
-        mongo_db_name = os.getenv("MONGO_DB", "homepedia_raw")
-        if mongo_uri:
-            self.mongo_client = MongoClient(mongo_uri)
-        else:
-            mongo_host = os.getenv("MONGO_HOST", "localhost")
-            mongo_port = os.getenv("MONGO_PORT", "27017")
-            mongo_user = os.getenv("MONGO_USER") or os.getenv("MONGO_ROOT_USER")
-            mongo_password = os.getenv("MONGO_PASSWORD") or os.getenv("MONGO_ROOT_PASSWORD")
-
-            if mongo_user and mongo_password:
-                self.mongo_client = MongoClient(
-                    f"mongodb://{mongo_user}:{mongo_password}@{mongo_host}:{mongo_port}/?authSource=admin"
-                )
-            else:
-                self.mongo_client = MongoClient(f"mongodb://{mongo_host}:{mongo_port}/")
-
-        self.raw_db = self.mongo_client[mongo_db_name]
+        self.pg_params = get_pg_params()
+        self.mongo_client = MongoClient(get_mongo_uri())
+        self.raw_db = self.mongo_client[get_mongo_db_name()]
         self.city_store = self.raw_db["city_backups"]
 
         self.headers = {
@@ -164,7 +136,7 @@ class HomepediaHarvester:
         try:
             with psycopg2.connect(**self.pg_params) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT com, nccenr FROM bdd.v_commune_2023")
+                    cur.execute("SELECT com, nccenr FROM bdd.v_commune_2026")
                     cities = cur.fetchall()
 
             logging.info(f"Début de la collecte pour {len(cities)} communes.")
@@ -178,7 +150,7 @@ class HomepediaHarvester:
             # Mise à jour PostgreSQL par lots (Execute Batch) [cite: 37]
             if valid_results:
                 sql = """
-                      UPDATE bdd.v_commune_2023
+                      UPDATE bdd.v_commune_2026
                       SET nb_habitant         = %(nb_habitant)s, \
                           age_moyen           = %(age_moyen)s,
                           pop_active          = %(pop_active)s, \
