@@ -67,6 +67,16 @@ docker compose exec -T mongo mongosh -u "$MONGO_ROOT_USER" -p "$MONGO_ROOT_PASSW
 
 Recommandation simple : écris tes migrations Mongo de façon **idempotente** (si tu relances, ça ne casse pas).
 
+### Chargement des données (après les migrations)
+
+Une fois les tables créées (ex. après `01_init_communes.sql` pour PostgreSQL), lance le script principal qui charge toutes les données (communes, etc.) :
+
+```bash
+python Database/main.py
+```
+
+Ce script exécute dans l’ordre les scripts listés dans `Database/main.py` (chargement des communes, puis tout autre script que tu y ajouteras). À lancer **après** l’init des bases et des migrations, **avant** d’utiliser le scrap ou l’app.
+
 ### Accès depuis ta machine (host)
 
 - **PostgreSQL** : `localhost:5432` (DB `homepedia`, user `admin`, password = `POSTGRES_PASSWORD`)
