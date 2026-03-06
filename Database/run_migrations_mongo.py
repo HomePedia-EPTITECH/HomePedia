@@ -70,10 +70,21 @@ def main():
             continue
         print(f"[Mongo migrations] Application : {name}")
         cmd = [
-            "docker", "compose", "exec", "-T", "mongo",
-            "mongosh", "-u", params["user"], "-p", params["password"],
-            "--authenticationDatabase", "admin", params["db_name"],
-            "--file", f"/migrations/{name}",
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "mongo",
+            "mongosh",
+            "-u",
+            params["user"],
+            "-p",
+            params["password"],
+            "--authenticationDatabase",
+            "admin",
+            params["db_name"],
+            "--file",
+            f"/migrations/{name}",
         ]
         result = subprocess.run(cmd, cwd=ROOT)
         if result.returncode != 0:

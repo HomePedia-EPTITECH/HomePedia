@@ -79,9 +79,20 @@ def main():
             continue
         print(f"[Postgres migrations] Application : {name}")
         cmd = [
-            "docker", "compose", "exec", "-T", "postgres",
-            "psql", "-U", pg["user"], "-d", pg["dbname"],
-            "-v", "ON_ERROR_STOP=1", "-f", f"/migrations/{name}",
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            pg["user"],
+            "-d",
+            pg["dbname"],
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-f",
+            f"/migrations/{name}",
         ]
         result = subprocess.run(cmd, cwd=ROOT)
         if result.returncode != 0:

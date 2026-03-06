@@ -43,7 +43,9 @@ def iter_communes_from_json(path: Path) -> Iterable[Dict[str, str]]:
         rows = data
 
     if not isinstance(rows, list):
-        raise ValueError(f"Format JSON inattendu dans {path}, attendu liste d'objets ou clé 'rows'.")
+        raise ValueError(
+            f"Format JSON inattendu dans {path}, attendu liste d'objets ou clé 'rows'."
+        )
 
     for row in rows:
         if not isinstance(row, dict):
@@ -88,7 +90,9 @@ def load_communes(file_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Charge un fichier CSV/JSON de communes dans bdd.v_commune_2026.")
+    parser = argparse.ArgumentParser(
+        description="Charge un fichier CSV/JSON de communes dans bdd.v_commune_2026."
+    )
     parser.add_argument(
         "--file",
         "-f",
