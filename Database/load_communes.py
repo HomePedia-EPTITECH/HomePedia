@@ -76,12 +76,12 @@ def load_communes(file_path: Path) -> None:
 
     pg_params = get_pg_params()
     sql = """
-        INSERT INTO bdd.v_commune_2026 (com, nccenr)
+        INSERT INTO homepedia.communes (com, nccenr)
         VALUES (%(com)s, %(nccenr)s)
         ON CONFLICT (com, nccenr) DO NOTHING
     """
 
-    logging.info("Insertion de %d communes dans bdd.v_commune_2026", len(communes))
+    logging.info("Insertion de %d communes dans homepedia.communes", len(communes))
     with psycopg2.connect(**pg_params) as conn:
         with conn.cursor() as cur:
             extras.execute_batch(cur, sql, communes)
@@ -91,7 +91,7 @@ def load_communes(file_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Charge un fichier CSV/JSON de communes dans bdd.v_commune_2026."
+        description="Charge un fichier CSV/JSON de communes dans homepedia.communes."
     )
     parser.add_argument(
         "--file",

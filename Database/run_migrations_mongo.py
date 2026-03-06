@@ -6,7 +6,7 @@ Les fichiers dans Database/mongo/migrations/ sont exécutés dans l’ordre du n
 Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-les une fois :
 
   db.schema_migrations.insertMany([
-    { _id: "01_init_city_backups.js" }, { _id: "02_xxx.js" }, ...
+    { _id: "01_init_communes_harvest.js" }, { _id: "02_xxx.js" }, ...
   ]);
 """
 

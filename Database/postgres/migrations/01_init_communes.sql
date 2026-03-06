@@ -1,34 +1,46 @@
--- Migration 01 : structure minimale pour le starter project
--- Crée le schéma et la table utilisée par le script Python.
+-- Migration 01 : schéma homepedia et table communes (18 colonnes scrapées)
+-- Contexte : référentiel des communes France métropolitaine pour Homepedia.
 
-CREATE SCHEMA IF NOT EXISTS bdd;
+CREATE SCHEMA IF NOT EXISTS homepedia;
 
-CREATE TABLE IF NOT EXISTS bdd.v_commune_2026 (
-    com                VARCHAR(10)   NOT NULL,
-    nccenr             TEXT          NOT NULL,
+CREATE TABLE IF NOT EXISTS homepedia.communes (
+    com                     VARCHAR(10) NOT NULL,
+    nccenr                  TEXT        NOT NULL,
 
-    -- Champs enrichis par le scraper (stockés en texte pour rester flexibles)
-    nb_habitant        TEXT          NULL,
-    age_moyen          TEXT          NULL,
-    pop_active         TEXT          NULL,
+    -- Démographie (page ville, tableau bloc_chiffre)
+    nb_habitant             TEXT        NULL,
+    age_moyen               TEXT        NULL,
+    pop_active              TEXT        NULL,
+    taux_chomage            TEXT        NULL,
+    pop_densite             TEXT        NULL,
+    revenu_moyen            TEXT        NULL,
 
-    score_securite      TEXT         NULL,
-    score_environnement TEXT         NULL,
-    score_vie_pratique  TEXT         NULL,
-    score_loisirs       TEXT         NULL,
-    score_sante         TEXT         NULL,
-    score_transports    TEXT         NULL,
-    score_education     TEXT         NULL,
+    -- Géographie
+    superficie_km2          TEXT        NULL,
 
-    CONSTRAINT pk_v_commune_2026 PRIMARY KEY (com, nccenr)
+    -- Sécurité (page ville, section Sécurité)
+    agressions              TEXT        NULL,
+    cambriolages            TEXT        NULL,
+    vols_degradations       TEXT        NULL,
+    stupefiants             TEXT        NULL,
+
+    -- Avis (page avis)
+    note_moyenne_globale    TEXT        NULL,
+    nb_avis                 TEXT        NULL,
+    score_securite          TEXT        NULL,
+    score_education         TEXT        NULL,
+    score_loisirs           TEXT        NULL,
+    score_environnement     TEXT        NULL,
+    score_vie_pratique      TEXT        NULL,
+
+    CONSTRAINT pk_homepedia_communes PRIMARY KEY (com, nccenr)
 );
 
--- Index pour les recherches par nom de commune et quelques scores.
-CREATE INDEX IF NOT EXISTS idx_v_commune_2026_nccenr
-    ON bdd.v_commune_2026 (nccenr);
+CREATE INDEX IF NOT EXISTS idx_homepedia_communes_nccenr
+    ON homepedia.communes (nccenr);
 
-CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_securite
-    ON bdd.v_commune_2026 (score_securite);
+CREATE INDEX IF NOT EXISTS idx_homepedia_communes_nb_habitant
+    ON homepedia.communes (nb_habitant);
 
-CREATE INDEX IF NOT EXISTS idx_v_commune_2026_score_environnement
-    ON bdd.v_commune_2026 (score_environnement);
+CREATE INDEX IF NOT EXISTS idx_homepedia_communes_note_moyenne_globale
+    ON homepedia.communes (note_moyenne_globale);

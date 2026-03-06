@@ -72,7 +72,7 @@ PostgreSQL est utilisé comme **base de données relationnelle** pour stocker le
 - adapté aux futures analyses statistiques et requêtes de filtrage / tri ;
 - base de référence pour les indicateurs numériques (population, scores, etc.).
 
-### 2.2. Table `bdd.v_commune_2026`
+### 2.2. Table `homepedia.communes`
 
 - **Création** : script `Database/postgres/migrations/01_init_communes.sql`.
 - **Fonction** : recevoir les valeurs issues du scraping pour chaque commune.
@@ -115,11 +115,11 @@ MongoDB est utilisée comme **base de données documentaire** pour :
 - conserver une représentation **JSON** des métriques, plus flexible qu’un schéma relationnel rigide ;
 - servir de support aux futurs traitements de texte (analyse de sentiment, extraction de mots-clés, word clouds, etc.).
 
-### 3.2. Collection `city_backups`
+### 3.2. Collection `communes_harvest`
 
 - **Création** :
   - script d’initialisation : `Database/mongo/init/01_init.js` ;
-  - script de migration : `Database/mongo/migrations/01_init_city_backups.js`.
+  - script de migration : `Database/mongo/migrations/01_init_communes_harvest.js`.
 - **Fonction** : stocker, pour chaque commune, les éléments suivants :
 
 Structure logique simplifiée d’un document :
@@ -160,8 +160,8 @@ Le flux actuel, limité au scraping et au stockage, peut être résumé ainsi :
 flowchart LR
     A[Site bien-dans-ma-ville.fr] --> B[Script Python<br/>Scrap/script_BDMV.py]
 
-    B -->|Indicateurs (formes brutes)| C[(PostgreSQL<br/>bdd.v_commune_2026)]
-    B -->|Avis + métriques JSON| D[(MongoDB<br/>city_backups)]
+    B -->|Indicateurs (formes brutes)| C[(PostgreSQL<br/>homepedia.communes)]
+    B -->|Avis + métriques JSON| D[(MongoDB<br/>communes_harvest)]
 
     subgraph "Stockage après scraping"
         C
@@ -172,7 +172,7 @@ flowchart LR
 - **Source** : le site `bien-dans-ma-ville.fr` ;
 - **Traitement** : `Scrap/script_BDMV.py` (collecte, parsing, extraction) ;
 - **Stockage** :
-  - indicateurs tabulaires dans PostgreSQL (`bdd.v_commune_2026`) ;
-  - avis et structure JSON des métriques dans MongoDB (`city_backups`).
+  - indicateurs tabulaires dans PostgreSQL (`homepedia.communes`) ;
+  - avis et structure JSON des métriques dans MongoDB (`communes_harvest`).
 
 
