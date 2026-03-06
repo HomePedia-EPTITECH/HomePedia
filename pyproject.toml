@@ -1,0 +1,31 @@
+[project]
+name = "homepedia"
+version = "0.1.0"
+description = "Outils de collecte et de préparation de données pour HomePedia."
+requires-python = ">=3.13"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [
+    "Docs",
+    "volumes",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # erreurs style/PEP8
+    "F",   # erreurs Python (flake8)
+    "I",   # imports (isort)
+    "B",   # erreurs possibles (bugbear light)
+    "UP",  # modernisation Python
+]
+ignore = [
+    "E501",  # longueur de ligne gérée par le formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+skip-magic-trailing-comma = false
