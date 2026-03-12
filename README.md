@@ -116,3 +116,34 @@ Les données (communes, etc.) sont chargées par `Database/main.py` via les scri
 docker compose down -v
 docker compose up -d
 ```
+
+## Backend NestJS (KPI API)
+
+Un squelette backend est disponible dans `backend/` avec une architecture légère:
+
+- `routes/`
+- `controllers/`
+- `services/`
+- `repositories/`
+- `db/`
+
+Routes exposées (préfixe global `api`):
+
+- `GET /api/health`
+- `POST /api/kpis`
+- `GET /api/kpis`
+- `GET /api/kpis/:id`
+- `PATCH /api/kpis/:id`
+- `DELETE /api/kpis/:id`
+
+La table SQL associée est créée par la migration:
+`Database/postgres/migrations/02_create_kpis.sql`
+
+Démarrage rapide:
+
+```bash
+cd backend
+cp .env.example .env
+npm install
+npm run start:dev
+```
