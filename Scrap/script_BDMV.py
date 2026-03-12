@@ -175,7 +175,7 @@ class HomepediaHarvester:
 
     def _safe_get(self, session: requests.Session, url: str) -> Optional[BeautifulSoup]:
         try:
-            resp = session.get(url, headers[self.headers], timeout=20)
+            resp = session.get(url, headers=self.headers, timeout=20)
             resp.raise_for_status()
             return BeautifulSoup(resp.text, "html.parser")
         except Exception as exc:
@@ -451,9 +451,10 @@ class HomepediaHarvester:
                         if not label or not value:
                             continue
                         result["services_population_counts"][label] = value
-                    # Renseigner aussi dans metrics pour usage SQL (si mappé)
-                    if label in label_to_metric:
-                        metrics[label_to_metric[label]] = value
+                        # Renseigner aussi dans metrics pour usage SQL (si mappé)
+                        metric_key = label_to_metric.get(label)
+                        if metric_key:
+                            metrics[metric_key] = value
                         if category:
                             by_cat = result.setdefault("services_population_counts_by_category", {})
                             by_cat.setdefault(category, {})[label] = value
@@ -479,16 +480,38 @@ class HomepediaHarvester:
             if not soup_imm:
                 return result
             text = soup_imm.get_text(" ", strip=True)
-            price_patterns: List[Tuple[str, str]] = [
-                (r"Prix moyen.*maison.*?([\d\s]+ ?€)", "prix_m2_maison"),
-                (r"Prix moyen.*appartement.*?([\d\s]+ ?€)", "prix_m2_appartement"),
-                (r"Maison\s*:\s*([\d\s]+ ?€)", "prix_m2_maison"),
-                (r"Appartement\s*:\s*([\d\s]+ ?€)", "prix_m2_appartement"),
-            ]
-            for pattern, key in price_patterns:
-                m = re.search(pattern, text, re.IGNORECASE)
-                if m and not result.get(key):
-                    result[key] = m.group(1).replace("\xa0", " ").strip()
+
+            # 1) Prix moyen au m² par type (table principale)
+            price_table = soup_imm.find("table")
+            if price_table:
+                rows = price_table.find_all("tr")
+                for idx, row in enumerate(rows):
+                    cells = row.find_all(["th", "td"])
+                    if len(cells) < 4:
+                        continue
+                    # convention observée : ligne 0 = maisons, ligne 1 = appartements
+                    prix_m2_cell = cells[3].get_text(" ", strip=True)
+                    prix_m2_cell = prix_m2_cell.replace("\xa0", " ").strip()
+                    if not prix_m2_cell:
+                        continue
+                    if idx == 0 and not result["prix_m2_maison"]:
+                        result["prix_m2_maison"] = prix_m2_cell
+                    elif idx == 1 and not result["prix_m2_appartement"]:
+                        result["prix_m2_appartement"] = prix_m2_cell
+
+            # fallback regex si jamais la structure de table change
+            if not result["prix_m2_maison"] or not result["prix_m2_appartement"]:
+                price_patterns: List[Tuple[str, str]] = [
+                    (r"Prix moyen.*maison.*?([\d\s]+ ?€)", "prix_m2_maison"),
+                    (r"Prix moyen.*appartement.*?([\d\s]+ ?€)", "prix_m2_appartement"),
+                    (r"Maison\s*:\s*([\d\s]+ ?€)", "prix_m2_maison"),
+                    (r"Appartement\s*:\s*([\d\s]+ ?€)", "prix_m2_appartement"),
+                ]
+                for pattern, key in price_patterns:
+                    m = re.search(pattern, text, re.IGNORECASE)
+                    if m and not result.get(key):
+                        result[key] = m.group(1).replace("\xa0", " ").strip()
+
             evo_points: List[Dict[str, str]] = []
             for script in soup_imm.find_all("script"):
                 script_text = script.string or ""
@@ -497,22 +520,10 @@ class HomepediaHarvester:
                     evo_points.append({"raw": cleaned[:5000]})
             if evo_points:
                 result["evolution_prix_historique"] = evo_points
-            usage_patterns: List[Tuple[str, str]] = [
-                (r"Résidences principales\s*:\s*([\d,.\s%]+)", "part_residences_principales"),
-                (r"Résidences secondaires\s*:\s*([\d,.\s%]+)", "part_residences_secondaires"),
-            ]
-            for pattern, key in usage_patterns:
-                m = re.search(pattern, text, re.IGNORECASE)
-                if m:
-                    result[key] = m.group(1).strip()
-            bail_patterns: List[Tuple[str, str]] = [
-                (r"Meublé\s*:\s*([\d,.\s%]+)", "part_baux_meubles"),
-                (r"Non meublé\s*:\s*([\d,.\s%]+)", "part_baux_non_meubles"),
-            ]
-            for pattern, key in bail_patterns:
-                m = re.search(pattern, text, re.IGNORECASE)
-                if m:
-                    result[key] = m.group(1).strip()
+            # Pour "Usage des habitations" et "Type de bail", les valeurs sont rendues en camemberts
+            # via JavaScript sans texte brut dans le HTML pour la ville.
+            # Sans moteur JS (Playwright) ni interception des requêtes XHR,
+            # on ne peut pas récupérer proprement ces pourcentages ici.
         except Exception as exc:
             logging.warning("Erreur extraction immobilier : %s", exc)
         return result
