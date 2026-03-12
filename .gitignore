@@ -76,5 +76,12 @@ volumes/mysql-volume/binlog.index
 
 # Node install
 app/**/node_modules/*
+/backend/node_modules
+/backend/dist
+/backend/.env
+
+# Python cache
+__pycache__/
+*.py[cod]
 
 .env
