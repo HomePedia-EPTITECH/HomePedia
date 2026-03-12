@@ -169,23 +169,7 @@ class HomepediaHarvester:
             if m_maire:
                 data["nom_maire"] = m_maire.group(0).strip()
 
-        # 9. Services (tables Commerce, Santé, Éducation) : th = libellé, td = valeur
-        LABEL_SERVICES = {
-            "Hypermarché": "nb_hypermarché", "Supermarché": "nb_supermarche", "Restaurant": "nb_restaurant",
-            "Boulangerie": "nb_boulangerie", "Bibliothèque": "nb_bibliotheque", "Cinéma": "nb_cinema",
-            "Pharmacie": "nb_pharmacie", "Hôpital": "nb_hopital", "Dentiste": "nb_dentiste",
-            "Crèche": "nb_creche", "Ecole maternelle Public": "nb_ecole_maternelle_pub",
-            "Ecole primaire Public": "nb_ecole_primaire_pub", "Collège Public": "nb_college_pub", "Lycée Public": "nb_lycee_pub",
-        }
-        for section in soup.find_all("section"):
-            for table in section.find_all("table"):
-                for row in table.find_all("tr"):
-                    th = row.find("th")
-                    tds = row.find_all("td")
-                    if th and tds:
-                        label = th.get_text(strip=True)
-                        if label in LABEL_SERVICES:
-                            data[LABEL_SERVICES[label]] = tds[0].get_text(strip=True)
+
 
     def _extract_page_avis(self, soup_avis, data):
         """Extrait note_moyenne_globale, nb_avis et les 5 scores depuis la page avis."""
@@ -280,20 +264,6 @@ class HomepediaHarvester:
             "nom_departement": None,
             "nom_metropole": None,
             "nom_maire": None,
-            "nb_restaurant": None,
-            "nb_boulangerie": None,
-            "nb_bibliotheque": None,
-            "nb_cinema": None,
-            "nb_creche": None,
-            "nb_ecole_maternelle_pub": None,
-            "nb_ecole_primaire_pub": None,
-            "nb_college_pub": None,
-            "nb_lycee_pub": None,
-            "nb_hypermarché": None,
-            "nb_supermarche": None,
-            "nb_pharmacie": None,
-            "nb_hopital": None,
-            "nb_dentiste": None,
         }
 
         soup_avis = None
@@ -435,21 +405,7 @@ class HomepediaHarvester:
                           nom_region               = %(nom_region)s,
                           nom_departement          = %(nom_departement)s,
                           nom_metropole            = %(nom_metropole)s,
-                          nom_maire                = %(nom_maire)s,
-                          nb_restaurant            = %(nb_restaurant)s,
-                          nb_boulangerie           = %(nb_boulangerie)s,
-                          nb_bibliotheque          = %(nb_bibliotheque)s,
-                          nb_cinema                = %(nb_cinema)s,
-                          nb_creche                = %(nb_creche)s,
-                          nb_ecole_maternelle_pub  = %(nb_ecole_maternelle_pub)s,
-                          nb_ecole_primaire_pub    = %(nb_ecole_primaire_pub)s,
-                          nb_college_pub           = %(nb_college_pub)s,
-                          nb_lycee_pub             = %(nb_lycee_pub)s,
-                          nb_hypermarché           = %(nb_hypermarché)s,
-                          nb_supermarche           = %(nb_supermarche)s,
-                          nb_pharmacie             = %(nb_pharmacie)s,
-                          nb_hopital               = %(nb_hopital)s,
-                          nb_dentiste              = %(nb_dentiste)s
+                          nom_maire                = %(nom_maire)s
                       WHERE com = %(com)s AND nccenr = %(nccenr)s
                       """
                 with psycopg2.connect(**self.pg_params) as conn:

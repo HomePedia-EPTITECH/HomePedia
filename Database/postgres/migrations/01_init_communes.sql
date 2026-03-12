@@ -1,4 +1,4 @@
--- Migration 01 : schéma homepedia et table communes (18 colonnes scrapées)
+-- Migration 01 : schéma homepedia et table communes (schéma complet actuel)
 -- Contexte : référentiel des communes France métropolitaine pour Homepedia.
 
 CREATE SCHEMA IF NOT EXISTS homepedia;
@@ -32,6 +32,37 @@ CREATE TABLE IF NOT EXISTS homepedia.communes (
     score_loisirs           TEXT        NULL,
     score_environnement     TEXT        NULL,
     score_vie_pratique      TEXT        NULL,
+
+    -- Démographie détaillée
+    estimation_pop_2026      TEXT       NULL,
+    estimation_pop_2025      TEXT       NULL,
+    part_0_14_ans            TEXT       NULL,
+    part_15_29_ans           TEXT       NULL,
+    part_30_44_ans           TEXT       NULL,
+    part_45_59_ans           TEXT       NULL,
+    part_60_74_ans           TEXT       NULL,
+    part_75_89_ans           TEXT       NULL,
+    part_90_plus             TEXT       NULL,
+    part_cadres              TEXT       NULL,
+    part_retraites           TEXT       NULL,
+    part_employes            TEXT       NULL,
+    part_ouvriers            TEXT       NULL,
+    part_sans_diplome        TEXT       NULL,
+    part_bac5_plus           TEXT       NULL,
+    part_couple_avec_enfant  TEXT       NULL,
+    part_personnes_seules    TEXT       NULL,
+
+    -- Élections
+    participation_1er_tour   TEXT       NULL,
+    participation_2nd_tour   TEXT       NULL,
+    inscrits_election        TEXT       NULL,
+
+    -- Territoire / administration
+    code_postal              TEXT       NULL,
+    nom_region               TEXT       NULL,
+    nom_departement          TEXT       NULL,
+    nom_metropole            TEXT       NULL,
+    nom_maire                TEXT       NULL,
 
     CONSTRAINT pk_homepedia_communes PRIMARY KEY (com, nccenr)
 );
