@@ -39,24 +39,38 @@ Le script `Scrap/script_BDMV.py` constitue le **pipeline d’ingestion** des don
 Pour chaque commune identifiée par `(com, nccenr)` :
 com = code INSEE de la commune (ex. "75056") ;
 nccenr = nom officiel de la commune (ex. "Paris 75056")
-- **Indicateurs démographiques**
-  - nombre d’habitants ;
-  - âge moyen ;
-  - part de population active.
+- **Présentation & média**
+  - bloc de présentation textuelle de la ville ;
+  - URLs des images principales de la page.
+
+- **Indicateurs démographiques et sociaux**
+  - nombre d’habitants, âge moyen, part de population active ;
+  - tranches d’âge, structure par catégories socioprofessionnelles, niveau de diplôme ;
+  - composition des ménages ;
+  - participation électorale et nombre d’inscrits.
+
+- **Sécurité & services**
+  - tableau de délinquance par grande catégorie (agressions, cambriolages, vols/dégradations, stupéfiants) ;
+  - liste textuelle des principaux services à la population (si présents sur la page).
 
 - **Scores de qualité de vie** (notes sur 5)
   - sécurité ;
   - environnement ;
   - vie pratique ;
   - loisirs ;
-  - santé ;
-  - transports ;
   - éducation.
 
+- **Immobilier**
+  - prix moyen au m² pour les maisons et les appartements ;
+  - points d’évolution historique des prix (extraits des scripts/graphes) ;
+  - répartition résidences principales / secondaires ;
+  - parts estimées des baux meublés / non meublés.
+
 - **Avis textuels**
-  - liste d’avis positifs ;
-  - liste d’avis négatifs ;
-  - liste complète des avis (tous avis confondus).
+  - note moyenne globale et nombre d’avis ;
+  - notes par critère (sécurité, environnement, éducation, etc.) ;
+  - liste d’avis structurés (texte intégral, note, date quand disponible) ;
+  - listes brutes d’avis positifs, négatifs et complets (support pour l’IA de sentiment).
 
 Ces éléments sont utilisés ensuite pour alimenter les bases de données décrites ci-dessous.
 
