@@ -135,11 +135,10 @@ class CityScrapeResult:
             "nb_lycees_prives": m.get("nb_lycees_prives"),
             "prix_m2_maison": re_data.get("prix_m2_maison"),
             "prix_m2_appartement": re_data.get("prix_m2_appartement"),
-            "evolution_prix_historique": re_data.get("evolution_prix_historique"),
             "part_residences_principales": re_data.get("part_residences_principales"),
             "part_residences_secondaires": re_data.get("part_residences_secondaires"),
-            "part_baux_meubles": re_data.get("part_baux_meubles"),
-            "part_baux_non_meubles": re_data.get("part_baux_non_meubles"),
+            "part_taux_proprietaires": re_data.get("part_taux_proprietaires"),
+            "part_taux_locataires": re_data.get("part_taux_locataires"),
         }
 
     def has_any_demographic_or_reviews(self) -> bool:
@@ -468,11 +467,10 @@ class HomepediaHarvester:
         result: Dict[str, Any] = {
             "prix_m2_maison": None,
             "prix_m2_appartement": None,
-            "evolution_prix_historique": None,
             "part_residences_principales": None,
             "part_residences_secondaires": None,
-            "part_baux_meubles": None,
-            "part_baux_non_meubles": None,
+            "part_taux_proprietaires": None,
+            "part_taux_locataires": None,
         }
         try:
             immobilier_url = base_url.rstrip("/") + "/immobilier.html"
@@ -512,18 +510,39 @@ class HomepediaHarvester:
                     if m and not result.get(key):
                         result[key] = m.group(1).replace("\xa0", " ").strip()
 
-            evo_points: List[Dict[str, str]] = []
-            for script in soup_imm.find_all("script"):
-                script_text = script.string or ""
-                if "prix" in script_text and "data" in script_text:
-                    cleaned = " ".join(script_text.split())
-                    evo_points.append({"raw": cleaned[:5000]})
-            if evo_points:
-                result["evolution_prix_historique"] = evo_points
-            # Pour "Usage des habitations" et "Type de bail", les valeurs sont rendues en camemberts
-            # via JavaScript sans texte brut dans le HTML pour la ville.
-            # Sans moteur JS (Playwright) ni interception des requêtes XHR,
-            # on ne peut pas récupérer proprement ces pourcentages ici.
+
+            # 2) Usage des habitations (camembert rendu dans un <canvas> avec data-data)
+            usage_canvas = soup_imm.find("canvas", id="chart_immo_usage")
+            if not usage_canvas:
+                usage_canvas = soup_imm.find(
+                    "canvas",
+                    attrs={"aria-label": re.compile("Usage des habitations", re.IGNORECASE)},
+                )
+            if usage_canvas:
+                data_attr = usage_canvas.get("data-data")
+                if data_attr:
+                    # data-data du type "[89.23,4.2,6.57]"
+                    nums = re.findall(r"[-+]?\d*\.?\d+", data_attr)
+                    if len(nums) >= 2:
+                        # 1er = résidences principales, 2e = résidences secondaires
+                        result["part_residences_principales"] = f"{nums[0]}%"
+                        result["part_residences_secondaires"] = f"{nums[1]}%"
+
+            # 3) Type de logement (propriétaires / locataires)
+            logement_canvas = soup_imm.find("canvas", id="chart_immo_logement")
+            if not logement_canvas:
+                logement_canvas = soup_imm.find(
+                    "canvas",
+                    attrs={"aria-label": re.compile("Type de logement", re.IGNORECASE)},
+                )
+            if logement_canvas:
+                data_attr = logement_canvas.get("data-data")
+                if data_attr:
+                    nums = re.findall(r"[-+]?\d*\.?\d+", data_attr)
+                    if len(nums) >= 2:
+                        # 1er = propriétaires, 2e = locataires (selon le tableau associé)
+                        result["part_taux_proprietaires"] = f"{nums[0]}%"
+                        result["part_taux_locataires"] = f"{nums[1]}%"
         except Exception as exc:
             logging.warning("Erreur extraction immobilier : %s", exc)
         return result
@@ -859,13 +878,12 @@ class HomepediaHarvester:
                           nb_colleges_prives              = %(nb_colleges_prives)s,
                           nb_lycees_publics               = %(nb_lycees_publics)s,
                           nb_lycees_prives                = %(nb_lycees_prives)s,
-                          prix_m2_maison              = %(prix_m2_maison)s,
-                          prix_m2_appartement         = %(prix_m2_appartement)s,
-                          evolution_prix_historique   = %(evolution_prix_historique)s,
-                          part_residences_principales = %(part_residences_principales)s,
-                          part_residences_secondaires = %(part_residences_secondaires)s,
-                          part_baux_meubles           = %(part_baux_meubles)s,
-                          part_baux_non_meubles       = %(part_baux_non_meubles)s
+                          prix_m2_maison                  = %(prix_m2_maison)s,
+                          prix_m2_appartement             = %(prix_m2_appartement)s,
+                          part_residences_principales     = %(part_residences_principales)s,
+                          part_residences_secondaires     = %(part_residences_secondaires)s,
+                          part_taux_proprietaires         = %(part_taux_proprietaires)s,
+                          part_taux_locataires            = %(part_taux_locataires)s
                       WHERE com = %(com)s AND nccenr = %(nccenr)s
                       """
                 with psycopg2.connect(**self.pg_params) as conn:

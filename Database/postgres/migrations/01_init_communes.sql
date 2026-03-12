@@ -119,13 +119,12 @@ CREATE TABLE IF NOT EXISTS homepedia.communes (
     nb_lycees_prives                 TEXT NULL,
 
     -- Immobilier (page /immobilier.html)
-    prix_m2_maison              TEXT    NULL,
-    prix_m2_appartement         TEXT    NULL,
-    evolution_prix_historique   TEXT    NULL,
-    part_residences_principales TEXT    NULL,
-    part_residences_secondaires TEXT    NULL,
-    part_baux_meubles           TEXT    NULL,
-    part_baux_non_meubles       TEXT    NULL,
+    prix_m2_maison               TEXT    NULL,
+    prix_m2_appartement          TEXT    NULL,
+    part_residences_principales  TEXT    NULL,
+    part_residences_secondaires  TEXT    NULL,
+    part_taux_proprietaires      TEXT    NULL,
+    part_taux_locataires         TEXT    NULL,
 
     CONSTRAINT pk_homepedia_communes PRIMARY KEY (com, nccenr)
 );

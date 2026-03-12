@@ -115,11 +115,10 @@ Ce document décrit **les données disponibles pour le backend** après scraping
 - **Immobilier (`/immobilier.html`)**
   - `prix_m2_maison`
   - `prix_m2_appartement`
-  - `evolution_prix_historique` (chaîne JSON brute, points des graphes)
   - `part_residences_principales`
   - `part_residences_secondaires`
-  - `part_baux_meubles`
-  - `part_baux_non_meubles`
+  - `part_taux_proprietaires` (part de propriétaires, extraite de `chart_immo_logement`)
+  - `part_taux_locataires` (part de locataires, extraite de `chart_immo_logement`)
 
 > Tous les champs sont actuellement en `TEXT` (valeurs brutes : `"230 890"`, `"9.7%"`, `"4 618 h/km²"`, etc.). Les conversions numériques sont à faire dans la couche de service si besoin.
 
@@ -189,11 +188,10 @@ WHERE com = '35238';
 - **`real_estate`**
   - `prix_m2_maison`
   - `prix_m2_appartement`
-  - `evolution_prix_historique` : liste d’objets `{ "raw": "<contenu script tronqué>" }`.
   - `part_residences_principales`
   - `part_residences_secondaires`
-  - `part_baux_meubles`
-  - `part_baux_non_meubles`
+  - `part_taux_proprietaires`
+  - `part_taux_locataires`
 
 - **`reviews_summary`**
   - `note_moyenne_globale`
