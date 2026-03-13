@@ -2,7 +2,7 @@
 
 ## Initialisation des bases (PostgreSQL + MongoDB) avec Docker Compose
 
-Ce repo fournit un `docker-compose.yml` pour démarrer localement :
+Ce repo fournit un fichier Docker Compose (`docker/docker-compose.yml`) pour démarrer localement :
 
 - **PostgreSQL** (DB par défaut : `homepedia`, user : `admin`)
 - **MongoDB** (DB par défaut : `homepedia_raw`)
@@ -39,33 +39,33 @@ MONGO_PORT=27017
 
 ```bash
 cp .env.example .env      # puis édite .env (identifiants, etc.)
-python setup.py
+python scripts/setup.py
 ```
 
-`setup.py` lance Docker (`docker compose up -d`), attend que Postgres et Mongo soient prêts, puis exécute tous les scripts du dossier Database (migrations + chargement des données). Ensuite tu peux lancer le scrap ou l’app.
+`scripts/setup.py` lance Docker, attend que Postgres et Mongo soient prêts, puis exécute les scripts de `packages/etl/database` (migrations + chargement des données). Ensuite tu peux lancer le scrap ou l’app.
 
 **Option 2 – Étape par étape**
 
 ```bash
 cp .env.example .env
-docker compose up -d
-docker compose ps         # vérifie que les conteneurs sont "Up"
-python Database/main.py   # migrations + chargement des données
+docker compose --project-directory . -f docker/docker-compose.yml up -d
+docker compose --project-directory . -f docker/docker-compose.yml ps         # vérifie que les conteneurs sont "Up"
+python packages/etl/database/main.py   # migrations + chargement des données
 ```
 
 ### Migrations (suivi automatique)
 
-Tout ce qui concerne les bases (init, migrations, scripts de chargement) est dans le dossier **`Database/`** : init et migrations sont montés dans les conteneurs Docker via le `docker-compose.yml`.
+Tout ce qui concerne les bases (init, migrations, scripts de chargement) est dans **`packages/etl/database/`** : init et migrations sont montés dans les conteneurs Docker via `docker/docker-compose.yml`.
 
-Les scripts dans `Database/postgres/init/` et `Database/mongo/init/` s’exécutent **une seule fois** (au tout premier démarrage, volume vide). Ensuite, les évolutions de schéma se font via des **migrations** versionnées et tracées.
+Les scripts dans `packages/etl/database/postgres/init/` et `packages/etl/database/mongo/init/` s’exécutent **une seule fois** (au tout premier démarrage, volume vide). Ensuite, les évolutions de schéma se font via des **migrations** versionnées et tracées.
 
-- **PostgreSQL** : init dans `Database/postgres/init/`, migrations dans `Database/postgres/migrations/` (ex. `01_init_communes.sql`, `02_…`, `14_…`).
-- **MongoDB** : init dans `Database/mongo/init/`, migrations dans `Database/mongo/migrations/` (ex. `01_init_city_backups.js`, `02_…`, `14_…`).
+- **PostgreSQL** : init dans `packages/etl/database/postgres/init/`, migrations dans `packages/etl/database/postgres/migrations/` (ex. `01_init_communes.sql`, `02_…`, `14_…`).
+- **MongoDB** : init dans `packages/etl/database/mongo/init/`, migrations dans `packages/etl/database/mongo/migrations/` (ex. `01_init_city_backups.js`, `02_…`, `14_…`).
 
 Pour appliquer **uniquement les migrations pas encore jouées** (par ex. 15, 16 si tu es déjà à 14) :
 
 ```bash
-python Database/run_migrations.py
+python packages/etl/database/run_migrations.py
 ```
 
 Ce script enregistre chaque migration appliquée (Postgres : table `bdd.schema_migrations`, Mongo : collection `schema_migrations`). Tu peux le relancer à chaque fois : seules les nouvelles seront exécutées.
@@ -87,23 +87,23 @@ Ce script enregistre chaque migration appliquée (Postgres : table `bdd.schema_m
   ]);
   ```
 
-Ensuite, `python Database/run_migrations.py` ne jouera que les migrations après 14.
+Ensuite, `python packages/etl/database/run_migrations.py` ne jouera que les migrations après 14.
 
 ### Ordre recommandé après « docker compose up »
 
-- **Depuis zéro** : utilise **`python setup.py`** à la racine (Docker + attente + migrations + données).
-- **Déjà en cours** (conteneurs déjà up) : **`python Database/main.py`** (migrations en attente + chargement des données).
+ - **Depuis zéro** : utilise **`python scripts/setup.py`** à la racine (Docker + attente + migrations + données).
+ - **Déjà en cours** (conteneurs déjà up) : **`python packages/etl/database/main.py`** (migrations en attente + chargement des données).
 
-`Database/main.py` lance dans l’ordre : **run_migrations.py** (Postgres puis Mongo, uniquement les migrations pas encore appliquées), puis **load_communes.py** (et les autres scripts listés dans `Database/main.py`).
+`packages/etl/database/main.py` lance dans l’ordre : **run_migrations.py** (Postgres puis Mongo, uniquement les migrations pas encore appliquées), puis **load_communes.py** (et les autres scripts listés dans `packages/etl/database/main.py`).
 
 Si tu préfères découper :
 
-1. **Migrations seules** : `python Database/run_migrations.py`
-2. **Chargement des données seules** : `python Database/load_communes.py` (ou retire `run_migrations.py` de la liste dans `Database/main.py`)
+1. **Migrations seules** : `python packages/etl/database/run_migrations.py`
+2. **Chargement des données seules** : `python packages/etl/database/load_communes.py` (ou retire `run_migrations.py` de la liste dans `packages/etl/database/main.py`)
 
 ### Chargement des données (après les migrations)
 
-Les données (communes, etc.) sont chargées par `Database/main.py` via les scripts listés dedans (`load_communes.py`, etc.). À lancer après que les tables existent (ou laisser `main.py` faire d’abord les migrations, comme ci‑dessus).
+Les données (communes, etc.) sont chargées par `packages/etl/database/main.py` via les scripts listés dedans (`load_communes.py`, etc.). À lancer après que les tables existent (ou laisser `main.py` faire d’abord les migrations, comme ci‑dessus).
 
 ### Accès depuis ta machine (host)
 
@@ -113,6 +113,6 @@ Les données (communes, etc.) sont chargées par `Database/main.py` via les scri
 ### Réinitialiser (tout supprimer et recréer)
 
 ```bash
-docker compose down -v
-docker compose up -d
+docker compose --project-directory . -f docker/docker-compose.yml down -v
+docker compose --project-directory . -f docker/docker-compose.yml up -d
 ```

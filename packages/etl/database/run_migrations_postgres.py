@@ -1,8 +1,11 @@
 """
 Applique les migrations PostgreSQL en attente (celles pas encore dans bdd.schema_migrations).
-À lancer après « docker compose up », depuis la racine du projet : python Database/run_migrations_postgres.py
+À lancer après le démarrage Docker, depuis la racine du projet :
 
-Les fichiers dans Database/postgres/migrations/ sont exécutés dans l’ordre du nom (01_..., 02_..., 14_..., etc.).
+  docker compose --project-directory . -f docker/docker-compose.yml up -d
+  python packages/etl/database/run_migrations_postgres.py
+
+Les fichiers dans packages/etl/database/postgres/migrations/ sont exécutés dans l’ordre du nom (01_..., 02_..., 14_..., etc.).
 Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-les une fois pour ne pas les rejouer :
 
   INSERT INTO bdd.schema_migrations (name) VALUES
@@ -16,13 +19,25 @@ from pathlib import Path
 
 import psycopg2
 
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 from util.config import get_pg_params
 
-ROOT = _ROOT
-MIGRATIONS_DIR = ROOT / "Database" / "postgres" / "migrations"
+ROOT = PROJECT_ROOT
+DATABASE_DIR = Path(__file__).resolve().parent
+MIGRATIONS_DIR = DATABASE_DIR / "postgres" / "migrations"
+
+COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
+COMPOSE_BASE = [
+    "docker",
+    "compose",
+    "--project-directory",
+    str(ROOT),
+    "-f",
+    str(COMPOSE_FILE),
+]
 
 
 def ensure_schema_migrations_table(conn):
@@ -78,9 +93,7 @@ def main():
             print(f"[Postgres migrations] Déjà appliqué : {name}")
             continue
         print(f"[Postgres migrations] Application : {name}")
-        cmd = [
-            "docker",
-            "compose",
+        cmd = COMPOSE_BASE + [
             "exec",
             "-T",
             "postgres",

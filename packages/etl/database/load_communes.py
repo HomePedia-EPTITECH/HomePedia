@@ -9,15 +9,16 @@ from typing import Dict, Iterable
 import psycopg2
 from psycopg2 import extras
 
-# Permettre l'import du module util à la racine du projet
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+# Permettre l'import du module util (packages/shared/util)
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 from util.config import get_pg_params
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-ROOT_DIR = _ROOT
+ROOT_DIR = PROJECT_ROOT
 
 
 def iter_communes_from_csv(path: Path) -> Iterable[Dict[str, str]]:
@@ -106,8 +107,8 @@ def main() -> None:
     if args.file:
         file_path = Path(args.file)
     else:
-        # Valeur par défaut : Database/data/communes_top100_2026.csv
-        default = ROOT_DIR / "Database" / "data" / "communes_top100_2026.csv"
+        # Valeur par défaut : packages/etl/database/data/communes_top100_2026.csv
+        default = Path(__file__).resolve().parent / "data" / "communes_top100_2026.csv"
         logging.info("Aucun --file fourni, utilisation par défaut de %s", default)
         file_path = default
 

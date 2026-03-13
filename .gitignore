@@ -78,3 +78,7 @@ volumes/mysql-volume/binlog.index
 app/**/node_modules/*
 
 .env
+
+# Python caches
+__pycache__/
+*.pyc

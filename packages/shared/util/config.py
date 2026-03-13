@@ -7,8 +7,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-# Racine du projet (parent du dossier util/)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# Racine du projet (HomePedia/) : packages/shared/util -> parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def load_env() -> None:
