@@ -13,7 +13,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 SCRIPTS = [
     "run_migrations.py",  # applique uniquement les migrations pas encore jouées
-    "load_communes.py",
+    "import_gouv_communes.py",  # génère data/communes_2026.csv à partir de l’API gouv.fr
+    "load_communes.py",  # charge le CSV/JSON dans homepedia.communes
 ]
 
 

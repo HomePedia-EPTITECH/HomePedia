@@ -107,7 +107,7 @@ def main() -> None:
         file_path = Path(args.file)
     else:
         # Valeur par défaut : Database/data/communes_top100_2026.csv
-        default = ROOT_DIR / "Database" / "data" / "communes_top100_2026.csv"
+        default = ROOT_DIR / "Database" / "data" / "communes_2026.csv"
         logging.info("Aucun --file fourni, utilisation par défaut de %s", default)
         file_path = default
 
