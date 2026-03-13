@@ -2,10 +2,12 @@ import logging
 import re
 import sys
 import time
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import psycopg2
 import requests
@@ -20,6 +22,9 @@ if str(_ROOT) not in sys.path:
 from util.config import get_pg_params, get_mongo_db_name, get_mongo_uri
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+
+CITY_PAGES_QUEUE_TABLE = "homepedia.city_pages_queue"
 
 
 @dataclass
@@ -167,6 +172,103 @@ class HomepediaHarvester:
                 "Chrome/121.0.0.0 Safari/537.36"
             )
         }
+        # Compteurs pour le suivi de progression / perf
+        self._progress_lock = threading.Lock()
+        self.total_in_queue: int = 0
+        self.already_done: int = 0
+        self.newly_processed: int = 0
+        self.active_workers: int = 0
+        self.max_active_workers: int = 0
+        self.start_time: float = 0.0
+
+    # ---------- OUTILS / FILE DES PAGES VILLE ----------
+
+    def _extract_com_id_from_url(self, url: str) -> str:
+        """
+        Extrait l'identifiant commune (com_id) à partir de la fin de l'URL.
+
+        Ex : https://www.bien-dans-ma-ville.fr/paris-01284/  -> '01284'
+        """
+        try:
+            parsed = urlparse(url)
+            path = parsed.path.rstrip("/")
+            if not path:
+                raise ValueError("Chemin vide dans l'URL")
+            last_segment = path.split("/")[-1]
+            # Exemple : olmeta-di-capocorso-2B187  -> com_id = 2B187
+            # On accepte les codes alphanumériques (2A, 2B, etc.).
+            m = re.search(r"-([0-9A-Za-z]{3,6})$", last_segment)
+            if not m:
+                raise ValueError(
+                    f"Impossible d'extraire com_id depuis le segment '{last_segment}'"
+                )
+            return m.group(1)
+        except Exception as exc:
+            # Gestion robuste des URLs malformées
+            raise ValueError(f"URL malformée '{url}': {exc}") from exc
+
+    def _load_queue_entries(self, conn) -> List[Tuple[str, str, str]]:
+        """
+        Charge les entrées de la file des pages ville à traiter (is_processed = FALSE),
+        en les enrichissant avec nccenr (si disponible) depuis homepedia.communes.
+
+        Retourne une liste de tuples (com_id, nccenr, url).
+        """
+        with conn.cursor() as cur:
+            # Stats pour la progression
+            cur.execute(f"SELECT COUNT(*) FROM {CITY_PAGES_QUEUE_TABLE};")
+            self.total_in_queue = cur.fetchone()[0] or 0
+
+            cur.execute(f"SELECT COUNT(*) FROM {CITY_PAGES_QUEUE_TABLE} WHERE is_processed = TRUE;")
+            self.already_done = cur.fetchone()[0] or 0
+
+            # Sélection des URLs à traiter
+            cur.execute(
+                f"""
+                SELECT q.url, q.com_id, c.nccenr
+                FROM {CITY_PAGES_QUEUE_TABLE} q
+                LEFT JOIN homepedia.communes c ON c.com = q.com_id
+                WHERE q.is_processed = FALSE
+                ORDER BY q.url;
+                """
+            )
+            rows = cur.fetchall()
+
+        if not rows:
+            logging.info(
+                "Aucune URL à traiter (file des pages ville vide ou toutes les entrées sont is_processed = TRUE)."
+            )
+            return []
+
+        # (com_id, nccenr, url)
+        entries: List[Tuple[str, str, str]] = []
+        for url, com_id, nccenr in rows:
+            # nccenr peut être None si la jointure ne trouve pas; on met un placeholder à partir de l'URL
+            if not nccenr:
+                try:
+                    parsed = urlparse(url)
+                    path = parsed.path.rstrip("/")
+                    slug = path.split("/")[-1]
+                    # on enlève le suffixe -01234
+                    m = re.search(r"-(\d{4,6})$", slug)
+                    if m:
+                        name_part = slug[: m.start()]
+                    else:
+                        name_part = slug
+                    nccenr = name_part.replace("-", " ").upper()
+                except Exception:
+                    nccenr = com_id  # fallback minimal
+            entries.append((com_id, nccenr, url))
+
+        logging.info(
+            "File des pages ville chargée : %d entrées à traiter, %d déjà traitées sur un total de %d.",
+            len(entries),
+            self.already_done,
+            self.total_in_queue,
+        )
+        return entries
+
+    # ---------- OUTILS HTTP / SCRAP ----------
 
     def _generate_url(self, com: str, name: str) -> str:
         name_clean = unidecode(name).lower().replace(" ", "-")
@@ -510,7 +612,6 @@ class HomepediaHarvester:
                     if m and not result.get(key):
                         result[key] = m.group(1).replace("\xa0", " ").strip()
 
-
             # 2) Usage des habitations (camembert rendu dans un <canvas> avec data-data)
             usage_canvas = soup_imm.find("canvas", id="chart_immo_usage")
             if not usage_canvas:
@@ -632,68 +733,83 @@ class HomepediaHarvester:
                 )
                 rating = rating_el.get_text(strip=True) if rating_el else None
                 date_el = container.find("time") or container.select_one(".date, .review_date")
-                date = date_el.get("datetime") or date_el.get_text(
-                    strip=True
-                ) if date_el else None
+                date = (
+                    date_el.get("datetime") or date_el.get_text(strip=True) if date_el else None
+                )
                 full_reviews.append({"text": text, "rating": rating, "date": date})
         except Exception as exc:
             logging.warning("Erreur extraction avis détaillés : %s", exc)
         return full_reviews, sentiment_source
 
-    def process_city(self, city_info: Tuple[str, str]) -> Optional[Dict[str, Any]]:
-        com, name = city_info
-        base_url = self._generate_url(com, name)
+    # ---------- TRAITEMENT D'UNE VILLE ----------
+
+    def _init_metrics(self, com: str, nccenr: str) -> Dict[str, Any]:
+        return {
+            "com": com,
+            "nccenr": nccenr,
+            "nb_habitant": None,
+            "age_moyen": None,
+            "pop_active": None,
+            "taux_chomage": None,
+            "pop_densite": None,
+            "revenu_moyen": None,
+            "superficie_km2": None,
+            "agressions": None,
+            "cambriolages": None,
+            "vols_degradations": None,
+            "stupefiants": None,
+            "note_moyenne_globale": None,
+            "nb_avis": None,
+            "score_securite": None,
+            "score_education": None,
+            "score_loisirs": None,
+            "score_environnement": None,
+            "score_vie_pratique": None,
+            "estimation_pop_2026": None,
+            "estimation_pop_2025": None,
+            "part_0_14_ans": None,
+            "part_15_29_ans": None,
+            "part_30_44_ans": None,
+            "part_45_59_ans": None,
+            "part_60_74_ans": None,
+            "part_75_89_ans": None,
+            "part_90_plus": None,
+            "part_cadres": None,
+            "part_retraites": None,
+            "part_employes": None,
+            "part_ouvriers": None,
+            "part_sans_diplome": None,
+            "part_bac5_plus": None,
+            "part_couple_avec_enfant": None,
+            "part_personnes_seules": None,
+            "participation_1er_tour": None,
+            "participation_2nd_tour": None,
+            "inscrits_election": None,
+            "code_postal": None,
+            "nom_region": None,
+            "nom_departement": None,
+            "nom_metropole": None,
+            "nom_maire": None,
+        }
+
+    def process_city(self, city_info: Tuple[str, str, Optional[str]]) -> Optional[Dict[str, Any]]:
+        """
+        city_info : (com, nccenr, base_url)
+        base_url doit provenir du sitemap / scrap_queue.
+        """
+        if len(city_info) != 3:
+            logging.error("city_info invalide (attendu 3 éléments) : %r", city_info)
+            return None
+
+        com, name, base_url = city_info
+        if not base_url:
+            # fallback : génération à partir du nom
+            base_url = self._generate_url(com, name)
+
         avis_url = base_url.rstrip("/") + "/avis.html"
         result = CityScrapeResult(com=com, nccenr=name)
-        result.metrics.update(
-            {
-                "com": com,
-                "nccenr": name,
-                "nb_habitant": None,
-                "age_moyen": None,
-                "pop_active": None,
-                "taux_chomage": None,
-                "pop_densite": None,
-                "revenu_moyen": None,
-                "superficie_km2": None,
-                "agressions": None,
-                "cambriolages": None,
-                "vols_degradations": None,
-                "stupefiants": None,
-                "note_moyenne_globale": None,
-                "nb_avis": None,
-                "score_securite": None,
-                "score_education": None,
-                "score_loisirs": None,
-                "score_environnement": None,
-                "score_vie_pratique": None,
-                "estimation_pop_2026": None,
-                "estimation_pop_2025": None,
-                "part_0_14_ans": None,
-                "part_15_29_ans": None,
-                "part_30_44_ans": None,
-                "part_45_59_ans": None,
-                "part_60_74_ans": None,
-                "part_75_89_ans": None,
-                "part_90_plus": None,
-                "part_cadres": None,
-                "part_retraites": None,
-                "part_employes": None,
-                "part_ouvriers": None,
-                "part_sans_diplome": None,
-                "part_bac5_plus": None,
-                "part_couple_avec_enfant": None,
-                "part_personnes_seules": None,
-                "participation_1er_tour": None,
-                "participation_2nd_tour": None,
-                "inscrits_election": None,
-                "code_postal": None,
-                "nom_region": None,
-                "nom_departement": None,
-                "nom_metropole": None,
-                "nom_maire": None,
-            }
-        )
+        result.metrics.update(self._init_metrics(com, name))
+
         soup_ville: Optional[BeautifulSoup] = None
         soup_avis: Optional[BeautifulSoup] = None
         try:
@@ -715,12 +831,16 @@ class HomepediaHarvester:
                     )
                     full_reviews, sentiment_source = self._extract_reviews_full(soup_avis)
                 else:
-                    full_reviews, sentiment_source = ([], {"positive": [], "negative": [], "all": []})
+                    full_reviews, sentiment_source = (
+                        [],
+                        {"positive": [], "negative": [], "all": []},
+                    )
             source_soup = soup_avis or soup_ville
             if not source_soup:
                 logging.warning("Aucun HTML exploitable pour %s (%s)", name, com)
                 return None
             result.reviews_full = full_reviews
+            # Stockage brut dans MongoDB
             self.city_store.update_one(
                 {"com": com},
                 {
@@ -742,7 +862,8 @@ class HomepediaHarvester:
             if not result.has_any_demographic_or_reviews():
                 logging.warning("Aucune donnée trouvée pour %s (%s)", name, com)
             else:
-                logging.info(
+                # Log détaillé en DEBUG uniquement pour éviter le bruit en production
+                logging.debug(
                     "Collecté: %s (%s) — %s hab., note %s",
                     name,
                     com,
@@ -754,143 +875,449 @@ class HomepediaHarvester:
             logging.warning("Erreur sur %s (%s): %s", name, com, exc)
             return None
 
-    def start(self) -> None:
+    # ---------- GESTION QUEUE / PROGRESSION ----------
+
+    def _upsert_commune(self, row: Dict[str, Any]) -> None:
+        """
+        Insère ou met à jour immédiatement la ligne dans homepedia.communes
+        (UPSERT sur la PK (com, nccenr)).
+        """
+        sql = """
+            INSERT INTO homepedia.communes (
+                com,
+                nccenr,
+                nb_habitant,
+                age_moyen,
+                pop_active,
+                taux_chomage,
+                pop_densite,
+                revenu_moyen,
+                superficie_km2,
+                agressions,
+                cambriolages,
+                vols_degradations,
+                stupefiants,
+                note_moyenne_globale,
+                nb_avis,
+                score_securite,
+                score_education,
+                score_loisirs,
+                score_environnement,
+                score_vie_pratique,
+                estimation_pop_2026,
+                estimation_pop_2025,
+                part_0_14_ans,
+                part_15_29_ans,
+                part_30_44_ans,
+                part_45_59_ans,
+                part_60_74_ans,
+                part_75_89_ans,
+                part_90_plus,
+                part_cadres,
+                part_retraites,
+                part_employes,
+                part_ouvriers,
+                part_sans_diplome,
+                part_bac5_plus,
+                part_couple_avec_enfant,
+                part_personnes_seules,
+                participation_1er_tour,
+                participation_2nd_tour,
+                inscrits_election,
+                code_postal,
+                nom_region,
+                nom_departement,
+                nom_metropole,
+                nom_maire,
+                nb_hypermarches,
+                nb_supermarches,
+                nb_superettes,
+                nb_boulangeries,
+                nb_boucheries,
+                nb_restaurants,
+                nb_garages,
+                nb_stations_service,
+                nb_banques,
+                nb_bureaux_poste,
+                nb_coiffeurs,
+                nb_tabacs,
+                nb_bars_discotheques,
+                nb_bibliotheques,
+                nb_cinemas,
+                nb_veterinaires,
+                nb_pharmacies,
+                nb_hopitaux,
+                nb_laboratoires_analyses,
+                nb_etablissements_handicapes,
+                nb_ehpa,
+                nb_medecins,
+                nb_dentistes,
+                nb_chirurgiens,
+                nb_dermatologues,
+                nb_anesthesistes,
+                nb_gastroenterologues,
+                nb_gynecologues,
+                nb_cancerologues,
+                nb_neurologues,
+                nb_ophtalmologues,
+                nb_orl,
+                nb_cardiologues,
+                nb_pediatres,
+                nb_pneumologues,
+                nb_psychologues,
+                nb_radiologues,
+                nb_rhumatologues,
+                nb_sages_femmes,
+                nb_creches,
+                nb_ecoles_maternelles_publiques,
+                nb_ecoles_maternelles_privees,
+                nb_ecoles_primaires_publiques,
+                nb_ecoles_primaires_privees,
+                nb_colleges_publics,
+                nb_colleges_prives,
+                nb_lycees_publics,
+                nb_lycees_prives,
+                prix_m2_maison,
+                prix_m2_appartement,
+                part_residences_principales,
+                part_residences_secondaires,
+                part_taux_proprietaires,
+                part_taux_locataires
+            ) VALUES (
+                %(com)s,
+                %(nccenr)s,
+                %(nb_habitant)s,
+                %(age_moyen)s,
+                %(pop_active)s,
+                %(taux_chomage)s,
+                %(pop_densite)s,
+                %(revenu_moyen)s,
+                %(superficie_km2)s,
+                %(agressions)s,
+                %(cambriolages)s,
+                %(vols_degradations)s,
+                %(stupefiants)s,
+                %(note_moyenne_globale)s,
+                %(nb_avis)s,
+                %(score_securite)s,
+                %(score_education)s,
+                %(score_loisirs)s,
+                %(score_environnement)s,
+                %(score_vie_pratique)s,
+                %(estimation_pop_2026)s,
+                %(estimation_pop_2025)s,
+                %(part_0_14_ans)s,
+                %(part_15_29_ans)s,
+                %(part_30_44_ans)s,
+                %(part_45_59_ans)s,
+                %(part_60_74_ans)s,
+                %(part_75_89_ans)s,
+                %(part_90_plus)s,
+                %(part_cadres)s,
+                %(part_retraites)s,
+                %(part_employes)s,
+                %(part_ouvriers)s,
+                %(part_sans_diplome)s,
+                %(part_bac5_plus)s,
+                %(part_couple_avec_enfant)s,
+                %(part_personnes_seules)s,
+                %(participation_1er_tour)s,
+                %(participation_2nd_tour)s,
+                %(inscrits_election)s,
+                %(code_postal)s,
+                %(nom_region)s,
+                %(nom_departement)s,
+                %(nom_metropole)s,
+                %(nom_maire)s,
+                %(nb_hypermarches)s,
+                %(nb_supermarches)s,
+                %(nb_superettes)s,
+                %(nb_boulangeries)s,
+                %(nb_boucheries)s,
+                %(nb_restaurants)s,
+                %(nb_garages)s,
+                %(nb_stations_service)s,
+                %(nb_banques)s,
+                %(nb_bureaux_poste)s,
+                %(nb_coiffeurs)s,
+                %(nb_tabacs)s,
+                %(nb_bars_discotheques)s,
+                %(nb_bibliotheques)s,
+                %(nb_cinemas)s,
+                %(nb_veterinaires)s,
+                %(nb_pharmacies)s,
+                %(nb_hopitaux)s,
+                %(nb_laboratoires_analyses)s,
+                %(nb_etablissements_handicapes)s,
+                %(nb_ehpa)s,
+                %(nb_medecins)s,
+                %(nb_dentistes)s,
+                %(nb_chirurgiens)s,
+                %(nb_dermatologues)s,
+                %(nb_anesthesistes)s,
+                %(nb_gastroenterologues)s,
+                %(nb_gynecologues)s,
+                %(nb_cancerologues)s,
+                %(nb_neurologues)s,
+                %(nb_ophtalmologues)s,
+                %(nb_orl)s,
+                %(nb_cardiologues)s,
+                %(nb_pediatres)s,
+                %(nb_pneumologues)s,
+                %(nb_psychologues)s,
+                %(nb_radiologues)s,
+                %(nb_rhumatologues)s,
+                %(nb_sages_femmes)s,
+                %(nb_creches)s,
+                %(nb_ecoles_maternelles_publiques)s,
+                %(nb_ecoles_maternelles_privees)s,
+                %(nb_ecoles_primaires_publiques)s,
+                %(nb_ecoles_primaires_privees)s,
+                %(nb_colleges_publics)s,
+                %(nb_colleges_prives)s,
+                %(nb_lycees_publics)s,
+                %(nb_lycees_prives)s,
+                %(prix_m2_maison)s,
+                %(prix_m2_appartement)s,
+                %(part_residences_principales)s,
+                %(part_residences_secondaires)s,
+                %(part_taux_proprietaires)s,
+                %(part_taux_locataires)s
+            )
+            ON CONFLICT (com, nccenr) DO UPDATE SET
+                nb_habitant                 = EXCLUDED.nb_habitant,
+                age_moyen                   = EXCLUDED.age_moyen,
+                pop_active                  = EXCLUDED.pop_active,
+                taux_chomage                = EXCLUDED.taux_chomage,
+                pop_densite                 = EXCLUDED.pop_densite,
+                revenu_moyen                = EXCLUDED.revenu_moyen,
+                superficie_km2              = EXCLUDED.superficie_km2,
+                agressions                  = EXCLUDED.agressions,
+                cambriolages                = EXCLUDED.cambriolages,
+                vols_degradations           = EXCLUDED.vols_degradations,
+                stupefiants                 = EXCLUDED.stupefiants,
+                note_moyenne_globale        = EXCLUDED.note_moyenne_globale,
+                nb_avis                     = EXCLUDED.nb_avis,
+                score_securite              = EXCLUDED.score_securite,
+                score_education             = EXCLUDED.score_education,
+                score_loisirs               = EXCLUDED.score_loisirs,
+                score_environnement         = EXCLUDED.score_environnement,
+                score_vie_pratique          = EXCLUDED.score_vie_pratique,
+                estimation_pop_2026         = EXCLUDED.estimation_pop_2026,
+                estimation_pop_2025         = EXCLUDED.estimation_pop_2025,
+                part_0_14_ans               = EXCLUDED.part_0_14_ans,
+                part_15_29_ans              = EXCLUDED.part_15_29_ans,
+                part_30_44_ans              = EXCLUDED.part_30_44_ans,
+                part_45_59_ans              = EXCLUDED.part_45_59_ans,
+                part_60_74_ans              = EXCLUDED.part_60_74_ans,
+                part_75_89_ans              = EXCLUDED.part_75_89_ans,
+                part_90_plus                = EXCLUDED.part_90_plus,
+                part_cadres                 = EXCLUDED.part_cadres,
+                part_retraites              = EXCLUDED.part_retraites,
+                part_employes               = EXCLUDED.part_employes,
+                part_ouvriers               = EXCLUDED.part_ouvriers,
+                part_sans_diplome           = EXCLUDED.part_sans_diplome,
+                part_bac5_plus              = EXCLUDED.part_bac5_plus,
+                part_couple_avec_enfant     = EXCLUDED.part_couple_avec_enfant,
+                part_personnes_seules       = EXCLUDED.part_personnes_seules,
+                participation_1er_tour      = EXCLUDED.participation_1er_tour,
+                participation_2nd_tour      = EXCLUDED.participation_2nd_tour,
+                inscrits_election           = EXCLUDED.inscrits_election,
+                code_postal                 = EXCLUDED.code_postal,
+                nom_region                  = EXCLUDED.nom_region,
+                nom_departement             = EXCLUDED.nom_departement,
+                nom_metropole               = EXCLUDED.nom_metropole,
+                nom_maire                   = EXCLUDED.nom_maire,
+                nb_hypermarches             = EXCLUDED.nb_hypermarches,
+                nb_supermarches             = EXCLUDED.nb_supermarches,
+                nb_superettes               = EXCLUDED.nb_superettes,
+                nb_boulangeries             = EXCLUDED.nb_boulangeries,
+                nb_boucheries               = EXCLUDED.nb_boucheries,
+                nb_restaurants              = EXCLUDED.nb_restaurants,
+                nb_garages                  = EXCLUDED.nb_garages,
+                nb_stations_service         = EXCLUDED.nb_stations_service,
+                nb_banques                  = EXCLUDED.nb_banques,
+                nb_bureaux_poste            = EXCLUDED.nb_bureaux_poste,
+                nb_coiffeurs                = EXCLUDED.nb_coiffeurs,
+                nb_tabacs                   = EXCLUDED.nb_tabacs,
+                nb_bars_discotheques        = EXCLUDED.nb_bars_discotheques,
+                nb_bibliotheques            = EXCLUDED.nb_bibliotheques,
+                nb_cinemas                  = EXCLUDED.nb_cinemas,
+                nb_veterinaires             = EXCLUDED.nb_veterinaires,
+                nb_pharmacies               = EXCLUDED.nb_pharmacies,
+                nb_hopitaux                 = EXCLUDED.nb_hopitaux,
+                nb_laboratoires_analyses    = EXCLUDED.nb_laboratoires_analyses,
+                nb_etablissements_handicapes= EXCLUDED.nb_etablissements_handicapes,
+                nb_ehpa                     = EXCLUDED.nb_ehpa,
+                nb_medecins                 = EXCLUDED.nb_medecins,
+                nb_dentistes                = EXCLUDED.nb_dentistes,
+                nb_chirurgiens              = EXCLUDED.nb_chirurgiens,
+                nb_dermatologues            = EXCLUDED.nb_dermatologues,
+                nb_anesthesistes            = EXCLUDED.nb_anesthesistes,
+                nb_gastroenterologues       = EXCLUDED.nb_gastroenterologues,
+                nb_gynecologues             = EXCLUDED.nb_gynecologues,
+                nb_cancerologues            = EXCLUDED.nb_cancerologues,
+                nb_neurologues              = EXCLUDED.nb_neurologues,
+                nb_ophtalmologues           = EXCLUDED.nb_ophtalmologues,
+                nb_orl                      = EXCLUDED.nb_orl,
+                nb_cardiologues             = EXCLUDED.nb_cardiologues,
+                nb_pediatres                = EXCLUDED.nb_pediatres,
+                nb_pneumologues             = EXCLUDED.nb_pneumologues,
+                nb_psychologues             = EXCLUDED.nb_psychologues,
+                nb_radiologues              = EXCLUDED.nb_radiologues,
+                nb_rhumatologues            = EXCLUDED.nb_rhumatologues,
+                nb_sages_femmes             = EXCLUDED.nb_sages_femmes,
+                nb_creches                  = EXCLUDED.nb_creches,
+                nb_ecoles_maternelles_publiques = EXCLUDED.nb_ecoles_maternelles_publiques,
+                nb_ecoles_maternelles_privees   = EXCLUDED.nb_ecoles_maternelles_privees,
+                nb_ecoles_primaires_publiques   = EXCLUDED.nb_ecoles_primaires_publiques,
+                nb_ecoles_primaires_privees     = EXCLUDED.nb_ecoles_primaires_privees,
+                nb_colleges_publics             = EXCLUDED.nb_colleges_publics,
+                nb_colleges_prives              = EXCLUDED.nb_colleges_prives,
+                nb_lycees_publics               = EXCLUDED.nb_lycees_publics,
+                nb_lycees_prives                = EXCLUDED.nb_lycees_prives,
+                prix_m2_maison                  = EXCLUDED.prix_m2_maison,
+                prix_m2_appartement             = EXCLUDED.prix_m2_appartement,
+                part_residences_principales     = EXCLUDED.part_residences_principales,
+                part_residences_secondaires     = EXCLUDED.part_residences_secondaires,
+                part_taux_proprietaires         = EXCLUDED.part_taux_proprietaires,
+                part_taux_locataires            = EXCLUDED.part_taux_locataires;
+        """
         try:
             with psycopg2.connect(**self.pg_params) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT com, nccenr FROM homepedia.communes")
-                    cities = cur.fetchall()
-            if not cities:
-                logging.critical(
-                    "La table homepedia.communes est vide. Exécutez d'abord les migrations puis "
-                    "Database/load_communes.py (ou python Database/main.py)."
-                )
+                    cur.execute(sql, row)
+                conn.commit()
+        except Exception as exc:
+            logging.warning("Erreur UPSERT PostgreSQL pour %s (%s): %s", row.get("nccenr"), row.get("com"), exc)
+
+    def _mark_queue_processed(self, url: str) -> None:
+        """
+        Marque une URL comme traitée dans la file des pages ville.
+        """
+        try:
+            with psycopg2.connect(**self.pg_params) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"""
+                        UPDATE {CITY_PAGES_QUEUE_TABLE}
+                        SET is_processed = TRUE,
+                            last_update = NOW()
+                        WHERE url = %s;
+                        """,
+                        (url,),
+                    )
+                conn.commit()
+        except Exception as exc:
+            logging.warning("Impossible de marquer l'URL comme traitée (%s) : %s", url, exc)
+
+    def _update_progress(self) -> None:
+        """
+        Met à jour les compteurs et log la progression globale.
+        """
+        with self._progress_lock:
+            self.newly_processed += 1
+            done = self.already_done + self.newly_processed
+            total = self.total_in_queue or 1
+            pct = (done / total) * 100.0
+            # Pour un débit réaliste, on ne considère que les communes traitées
+            # pendant ce run (newly_processed), pas celles déjà marquées done avant le démarrage.
+            elapsed = max(time.time() - self.start_time, 1e-6)
+            rate_per_min = (self.newly_processed / elapsed) * 60.0
+            elapsed_h = int(elapsed // 3600)
+            elapsed_m = int((elapsed % 3600) // 60)
+            elapsed_s = int(elapsed % 60)
+            current_workers = self.active_workers
+            max_workers = self.max_active_workers
+        logging.info(
+            "Progression : %d/%d communes traitées (%.2f%%) — écoulé: %02d:%02d:%02d — %.2f communes/min — workers actifs: %d (max observé: %d).",
+            done,
+            total,
+            pct,
+            elapsed_h,
+            elapsed_m,
+            elapsed_s,
+            rate_per_min,
+            current_workers,
+            max_workers,
+        )
+
+    def _process_queue_entry(self, entry: Tuple[str, str, str]) -> Optional[Dict[str, Any]]:
+        """
+        Wrapper appelé par les threads :
+        - lance le scraping,
+        - met à jour scrap_queue,
+        - met à jour la progression.
+        """
+        com, nccenr, url = entry
+        # Sécurité : si l'URL n'est pas valide, on loggue et on skip
+        try:
+            _ = self._extract_com_id_from_url(url)  # revalidation de l'URL
+        except ValueError as exc:
+            logging.warning("Entrée de queue ignorée (URL malformée) : %s", exc)
+            return None
+
+        with self._progress_lock:
+            self.active_workers += 1
+            if self.active_workers > self.max_active_workers:
+                self.max_active_workers = self.active_workers
+
+        try:
+            row = self.process_city((com, nccenr, url))
+            if row:
+                # Ne pousser dans Postgres que s'il y a un minimum de données utiles
+                if row.get("nb_habitant") or row.get("age_moyen") or row.get("pop_active"):
+                    self._upsert_commune(row)
+                # On ne marque comme traité que si scraping et parsing ont réussi
+                self._mark_queue_processed(url)
+                self._update_progress()
+            return row
+        finally:
+            with self._progress_lock:
+                self.active_workers -= 1
+
+    # ---------- PIPELINE PRINCIPAL ----------
+
+    def start(self) -> None:
+        try:
+            # 1) Connexion PG + chargement de la file de scrap déjà initialisée
+            with psycopg2.connect(**self.pg_params) as conn:
+                queue_entries = self._load_queue_entries(conn)
+
+            if not queue_entries:
                 return
-            logging.info("Début de la collecte pour %d communes.", len(cities))
-            with ThreadPoolExecutor(max_workers=12) as executor:
-                results = list(executor.map(self.process_city, cities))
-            valid_results = [r for r in results if r]
-            to_update = [
-                r
-                for r in valid_results
-                if r.get("nb_habitant") or r.get("age_moyen") or r.get("pop_active")
-            ]
-            nb_errors = len(cities) - len(valid_results)
-            nb_no_data = len(valid_results) - len(to_update)
+
+            self.start_time = time.time()
             logging.info(
-                "Collecte terminée: %d communes avec données, %d sans données, %d erreur(s) sur %d total.",
-                len(to_update),
-                nb_no_data,
-                nb_errors,
-                len(cities),
+                "Début de la collecte pour %d communes avec ThreadPoolExecutor(max_workers=%d).",
+                len(queue_entries),
+                100,
             )
-            if to_update:
-                sql = """
-                      UPDATE homepedia.communes
-                      SET nb_habitant                 = %(nb_habitant)s,
-                          age_moyen                   = %(age_moyen)s,
-                          pop_active                  = %(pop_active)s,
-                          taux_chomage                = %(taux_chomage)s,
-                          pop_densite                 = %(pop_densite)s,
-                          revenu_moyen                = %(revenu_moyen)s,
-                          superficie_km2              = %(superficie_km2)s,
-                          agressions                  = %(agressions)s,
-                          cambriolages                = %(cambriolages)s,
-                          vols_degradations           = %(vols_degradations)s,
-                          stupefiants                 = %(stupefiants)s,
-                          note_moyenne_globale        = %(note_moyenne_globale)s,
-                          nb_avis                     = %(nb_avis)s,
-                          score_securite              = %(score_securite)s,
-                          score_education             = %(score_education)s,
-                          score_loisirs               = %(score_loisirs)s,
-                          score_environnement         = %(score_environnement)s,
-                          score_vie_pratique          = %(score_vie_pratique)s,
-                          estimation_pop_2026         = %(estimation_pop_2026)s,
-                          estimation_pop_2025         = %(estimation_pop_2025)s,
-                          part_0_14_ans               = %(part_0_14_ans)s,
-                          part_15_29_ans              = %(part_15_29_ans)s,
-                          part_30_44_ans              = %(part_30_44_ans)s,
-                          part_45_59_ans              = %(part_45_59_ans)s,
-                          part_60_74_ans              = %(part_60_74_ans)s,
-                          part_75_89_ans              = %(part_75_89_ans)s,
-                          part_90_plus                = %(part_90_plus)s,
-                          part_cadres                 = %(part_cadres)s,
-                          part_retraites              = %(part_retraites)s,
-                          part_employes               = %(part_employes)s,
-                          part_ouvriers               = %(part_ouvriers)s,
-                          part_sans_diplome           = %(part_sans_diplome)s,
-                          part_bac5_plus              = %(part_bac5_plus)s,
-                          part_couple_avec_enfant     = %(part_couple_avec_enfant)s,
-                          part_personnes_seules       = %(part_personnes_seules)s,
-                          participation_1er_tour      = %(participation_1er_tour)s,
-                          participation_2nd_tour      = %(participation_2nd_tour)s,
-                          inscrits_election           = %(inscrits_election)s,
-                          code_postal                 = %(code_postal)s,
-                          nom_region                  = %(nom_region)s,
-                          nom_departement             = %(nom_departement)s,
-                          nom_metropole               = %(nom_metropole)s,
-                          nom_maire                   = %(nom_maire)s,
-                          nb_hypermarches             = %(nb_hypermarches)s,
-                          nb_supermarches             = %(nb_supermarches)s,
-                          nb_superettes               = %(nb_superettes)s,
-                          nb_boulangeries             = %(nb_boulangeries)s,
-                          nb_boucheries               = %(nb_boucheries)s,
-                          nb_restaurants              = %(nb_restaurants)s,
-                          nb_garages                  = %(nb_garages)s,
-                          nb_stations_service         = %(nb_stations_service)s,
-                          nb_banques                  = %(nb_banques)s,
-                          nb_bureaux_poste            = %(nb_bureaux_poste)s,
-                          nb_coiffeurs                = %(nb_coiffeurs)s,
-                          nb_tabacs                   = %(nb_tabacs)s,
-                          nb_bars_discotheques        = %(nb_bars_discotheques)s,
-                          nb_bibliotheques            = %(nb_bibliotheques)s,
-                          nb_cinemas                  = %(nb_cinemas)s,
-                          nb_veterinaires             = %(nb_veterinaires)s,
-                          nb_pharmacies               = %(nb_pharmacies)s,
-                          nb_hopitaux                 = %(nb_hopitaux)s,
-                          nb_laboratoires_analyses    = %(nb_laboratoires_analyses)s,
-                          nb_etablissements_handicapes= %(nb_etablissements_handicapes)s,
-                          nb_ehpa                     = %(nb_ehpa)s,
-                          nb_medecins                 = %(nb_medecins)s,
-                          nb_dentistes                = %(nb_dentistes)s,
-                          nb_chirurgiens              = %(nb_chirurgiens)s,
-                          nb_dermatologues            = %(nb_dermatologues)s,
-                          nb_anesthesistes            = %(nb_anesthesistes)s,
-                          nb_gastroenterologues       = %(nb_gastroenterologues)s,
-                          nb_gynecologues             = %(nb_gynecologues)s,
-                          nb_cancerologues            = %(nb_cancerologues)s,
-                          nb_neurologues              = %(nb_neurologues)s,
-                          nb_ophtalmologues           = %(nb_ophtalmologues)s,
-                          nb_orl                      = %(nb_orl)s,
-                          nb_cardiologues             = %(nb_cardiologues)s,
-                          nb_pediatres                = %(nb_pediatres)s,
-                          nb_pneumologues             = %(nb_pneumologues)s,
-                          nb_psychologues             = %(nb_psychologues)s,
-                          nb_radiologues              = %(nb_radiologues)s,
-                          nb_rhumatologues            = %(nb_rhumatologues)s,
-                          nb_sages_femmes             = %(nb_sages_femmes)s,
-                          nb_creches                  = %(nb_creches)s,
-                          nb_ecoles_maternelles_publiques = %(nb_ecoles_maternelles_publiques)s,
-                          nb_ecoles_maternelles_privees   = %(nb_ecoles_maternelles_privees)s,
-                          nb_ecoles_primaires_publiques   = %(nb_ecoles_primaires_publiques)s,
-                          nb_ecoles_primaires_privees     = %(nb_ecoles_primaires_privees)s,
-                          nb_colleges_publics             = %(nb_colleges_publics)s,
-                          nb_colleges_prives              = %(nb_colleges_prives)s,
-                          nb_lycees_publics               = %(nb_lycees_publics)s,
-                          nb_lycees_prives                = %(nb_lycees_prives)s,
-                          prix_m2_maison                  = %(prix_m2_maison)s,
-                          prix_m2_appartement             = %(prix_m2_appartement)s,
-                          part_residences_principales     = %(part_residences_principales)s,
-                          part_residences_secondaires     = %(part_residences_secondaires)s,
-                          part_taux_proprietaires         = %(part_taux_proprietaires)s,
-                          part_taux_locataires            = %(part_taux_locataires)s
-                      WHERE com = %(com)s AND nccenr = %(nccenr)s
-                      """
-                with psycopg2.connect(**self.pg_params) as conn:
-                    with conn.cursor() as cur:
-                        extras.execute_batch(cur, sql, to_update)
-                    conn.commit()
-                logging.info("PostgreSQL mis à jour: %d communes synchronisées.", len(to_update))
+
+            # 2) Multi‑threading sur la file d'URLs (ThreadPoolExecutor)
+            with ThreadPoolExecutor(max_workers=12) as executor:
+                results = list(executor.map(self._process_queue_entry, queue_entries))
+
+            # 3) Statistiques finales (les mises à jour Postgres ont déjà été faites au fil de l'eau)
+            valid_results = [r for r in results if r]
+            nb_errors = len(queue_entries) - len(valid_results)
+            elapsed = max(time.time() - self.start_time, 1e-6)
+            rate_per_min = (len(valid_results) / elapsed) * 60.0
+            elapsed_h = int(elapsed // 3600)
+            elapsed_m = int((elapsed % 3600) // 60)
+            elapsed_s = int(elapsed % 60)
+            logging.info(
+                "Collecte terminée: %d communes traitées, %d erreur(s) sur %d à traiter. Durée totale: %02d:%02d:%02d (%.1fs, %.2f communes/min). Max workers actifs observés: %d.",
+                len(valid_results),
+                nb_errors,
+                len(queue_entries),
+                elapsed_h,
+                elapsed_m,
+                elapsed_s,
+                elapsed,
+                rate_per_min,
+                self.max_active_workers,
+            )
         except Exception as err:
             logging.critical("Erreur fatale du pipeline : %s", err)
 
