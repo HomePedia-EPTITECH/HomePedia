@@ -3,7 +3,7 @@ Setup en une commande : lance Docker, attend que Postgres et Mongo soient prêts
 
 À la racine du projet :
 
-  python setup.py
+  python scripts/setup.py
 
 Prérequis : Docker installé et démarré, fichier .env configuré.
 """
@@ -13,9 +13,10 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 from util.config import load_env, get_pg_params, get_mongo_uri
 
 load_env()
@@ -23,7 +24,7 @@ load_env()
 
 def run(cmd, check=True):
     print(f"[setup] {subprocess.list2cmdline(cmd)}")
-    r = subprocess.run(cmd, cwd=ROOT)
+    r = subprocess.run(cmd, cwd=PROJECT_ROOT)
     if check and r.returncode != 0:
         sys.exit(r.returncode)
     return r.returncode
@@ -72,14 +73,23 @@ def wait_mongo(timeout=120):
 
 def main():
     print("[setup] Lancement des conteneurs Docker…")
-    run(["docker", "compose", "up", "-d"])
+    compose_file = PROJECT_ROOT / "docker" / "docker-compose.yml"
+    compose_base = [
+        "docker",
+        "compose",
+        "--project-directory",
+        str(PROJECT_ROOT),
+        "-f",
+        str(compose_file),
+    ]
+    run(compose_base + ["up", "-d"])
 
     print("[setup] Attente de Postgres et Mongo…")
     wait_postgres()
     wait_mongo()
 
     print("[setup] Exécution des scripts Database (migrations + données)…")
-    run([sys.executable, str(ROOT / "Database" / "main.py")])
+    run([sys.executable, str(PROJECT_ROOT / "packages" / "etl" / "database" / "main.py")])
 
     print("[setup] Terminé. Tu peux lancer le scrap ou l’app.")
 

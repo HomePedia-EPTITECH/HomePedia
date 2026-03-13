@@ -11,9 +11,10 @@ from psycopg2 import extras
 from pymongo import MongoClient
 from unidecode import unidecode
 
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 from util.config import get_pg_params, get_mongo_uri, get_mongo_db_name
 
 # Configuration du logging pour le suivi de la collecte

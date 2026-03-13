@@ -10,11 +10,11 @@ Aucune étape de nettoyage, d’agrégation Big Data ou d’IA n’est décrite 
 
 ---
 
-## 1. Moteur de scraping `Scrap/script_BDMV.py`
+## 1. Moteur de scraping `packages/scraping/script_BDMV.py`
 
 ### 1.1. Rôle
 
-Le script `Scrap/script_BDMV.py` constitue le **pipeline d’ingestion** des données :
+Le script `packages/scraping/script_BDMV.py` constitue le **pipeline d’ingestion** des données :
 
 - lecture de la liste des communes à traiter ;
 - construction des URLs de `bien-dans-ma-ville.fr` ;
@@ -74,7 +74,7 @@ PostgreSQL est utilisé comme **base de données relationnelle** pour stocker le
 
 ### 2.2. Table `bdd.v_commune_2026`
 
-- **Création** : script `Database/postgres/migrations/01_init_communes.sql`.
+- **Création** : script `packages/etl/database/postgres/migrations/01_init_communes.sql`.
 - **Fonction** : recevoir les valeurs issues du scraping pour chaque commune.
 
 **Principales colonnes :**
@@ -117,9 +117,9 @@ MongoDB est utilisée comme **base de données documentaire** pour :
 
 ### 3.2. Collection `city_backups`
 
-- **Création** :
-  - script d’initialisation : `Database/mongo/init/01_init.js` ;
-  - script de migration : `Database/mongo/migrations/01_init_city_backups.js`.
+  - **Création** :
+  - script d’initialisation : `packages/etl/database/mongo/init/01_init.js` ;
+  - script de migration : `packages/etl/database/mongo/migrations/01_init_city_backups.js`.
 - **Fonction** : stocker, pour chaque commune, les éléments suivants :
 
 Structure logique simplifiée d’un document :
@@ -158,7 +158,7 @@ Le flux actuel, limité au scraping et au stockage, peut être résumé ainsi :
 
 ```mermaid
 flowchart LR
-    A[Site bien-dans-ma-ville.fr] --> B[Script Python<br/>Scrap/script_BDMV.py]
+    A[Site bien-dans-ma-ville.fr] --> B[Script Python<br/>packages/scraping/script_BDMV.py]
 
     B -->|Indicateurs (formes brutes)| C[(PostgreSQL<br/>bdd.v_commune_2026)]
     B -->|Avis + métriques JSON| D[(MongoDB<br/>city_backups)]
@@ -170,9 +170,8 @@ flowchart LR
 ```
 
 - **Source** : le site `bien-dans-ma-ville.fr` ;
-- **Traitement** : `Scrap/script_BDMV.py` (collecte, parsing, extraction) ;
+- **Traitement** : `packages/scraping/script_BDMV.py` (collecte, parsing, extraction) ;
 - **Stockage** :
   - indicateurs tabulaires dans PostgreSQL (`bdd.v_commune_2026`) ;
   - avis et structure JSON des métriques dans MongoDB (`city_backups`).
-
 
