@@ -1,13 +1,9 @@
 """
-Lance toutes les migrations (Postgres puis Mongo) : n’applique que celles pas encore enregistrées.
+Lance uniquement les migrations MongoDB.
 
 À lancer après « docker compose up », depuis la racine du projet :
 
   python Database/run_migrations.py
-
-Tu peux aussi lancer uniquement Postgres ou Mongo :
-  python Database/run_migrations_postgres.py
-  python Database/run_migrations_mongo.py
 """
 
 import subprocess
@@ -16,7 +12,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = [
-    "run_migrations_postgres.py",
     "run_migrations_mongo.py",
 ]
 

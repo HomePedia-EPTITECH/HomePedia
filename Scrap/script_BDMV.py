@@ -2,168 +2,49 @@ import re
 import sys
 import time
 import threading
+import logging
+import gzip
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-import psycopg2
 import requests
 from bs4 import BeautifulSoup
-from psycopg2 import extras
-from pymongo import MongoClient
+from pymongo import MongoClient, UpdateOne
+from pymongo.errors import OperationFailure
 from unidecode import unidecode
 
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from util.config import get_pg_params, get_mongo_db_name, get_mongo_uri
+from Scrap.models import (
+    CommuneHarvestDoc,
+    CityScrapePayload,
+    QueueDoc,
+    ReviewRawModel,
+)
+from util.config import get_mongo_db_name, get_mongo_uri
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-CITY_PAGES_QUEUE_TABLE = "homepedia.city_pages_queue"
-
-
-@dataclass
-class CityScrapeResult:
-    com: str
-    nccenr: str
-    metrics: Dict[str, Any] = field(default_factory=dict)
-    presentation: Dict[str, Any] = field(default_factory=dict)
-    security_services: Dict[str, Any] = field(default_factory=dict)
-    real_estate: Dict[str, Any] = field(default_factory=dict)
-    reviews_summary: Dict[str, Any] = field(default_factory=dict)
-    reviews_full: List[Dict[str, Any]] = field(default_factory=list)
-
-    def to_sql_row(self) -> Dict[str, Any]:
-        m = self.metrics
-        re_data = self.real_estate
-        return {
-            "com": self.com,
-            "nccenr": self.nccenr,
-            "nb_habitant": m.get("nb_habitant"),
-            "age_moyen": m.get("age_moyen"),
-            "pop_active": m.get("pop_active"),
-            "taux_chomage": m.get("taux_chomage"),
-            "pop_densite": m.get("pop_densite"),
-            "revenu_moyen": m.get("revenu_moyen"),
-            "superficie_km2": m.get("superficie_km2"),
-            "agressions": m.get("agressions"),
-            "cambriolages": m.get("cambriolages"),
-            "vols_degradations": m.get("vols_degradations"),
-            "stupefiants": m.get("stupefiants"),
-            "note_moyenne_globale": m.get("note_moyenne_globale"),
-            "nb_avis": m.get("nb_avis"),
-            "score_securite": m.get("score_securite"),
-            "score_education": m.get("score_education"),
-            "score_loisirs": m.get("score_loisirs"),
-            "score_environnement": m.get("score_environnement"),
-            "score_vie_pratique": m.get("score_vie_pratique"),
-            "estimation_pop_2026": m.get("estimation_pop_2026"),
-            "estimation_pop_2025": m.get("estimation_pop_2025"),
-            "part_0_14_ans": m.get("part_0_14_ans"),
-            "part_15_29_ans": m.get("part_15_29_ans"),
-            "part_30_44_ans": m.get("part_30_44_ans"),
-            "part_45_59_ans": m.get("part_45_59_ans"),
-            "part_60_74_ans": m.get("part_60_74_ans"),
-            "part_75_89_ans": m.get("part_75_89_ans"),
-            "part_90_plus": m.get("part_90_plus"),
-            "part_cadres": m.get("part_cadres"),
-            "part_retraites": m.get("part_retraites"),
-            "part_employes": m.get("part_employes"),
-            "part_ouvriers": m.get("part_ouvriers"),
-            "part_sans_diplome": m.get("part_sans_diplome"),
-            "part_bac5_plus": m.get("part_bac5_plus"),
-            "part_couple_avec_enfant": m.get("part_couple_avec_enfant"),
-            "part_personnes_seules": m.get("part_personnes_seules"),
-            "participation_1er_tour": m.get("participation_1er_tour"),
-            "participation_2nd_tour": m.get("participation_2nd_tour"),
-            "inscrits_election": m.get("inscrits_election"),
-            "code_postal": m.get("code_postal"),
-            "nom_region": m.get("nom_region"),
-            "nom_departement": m.get("nom_departement"),
-            "nom_metropole": m.get("nom_metropole"),
-            "nom_maire": m.get("nom_maire"),
-            # Services à la population : Commerce
-            "nb_hypermarches": m.get("nb_hypermarches"),
-            "nb_supermarches": m.get("nb_supermarches"),
-            "nb_superettes": m.get("nb_superettes"),
-            "nb_boulangeries": m.get("nb_boulangeries"),
-            "nb_boucheries": m.get("nb_boucheries"),
-            "nb_restaurants": m.get("nb_restaurants"),
-            "nb_garages": m.get("nb_garages"),
-            "nb_stations_service": m.get("nb_stations_service"),
-            "nb_banques": m.get("nb_banques"),
-            "nb_bureaux_poste": m.get("nb_bureaux_poste"),
-            "nb_coiffeurs": m.get("nb_coiffeurs"),
-            "nb_tabacs": m.get("nb_tabacs"),
-            "nb_bars_discotheques": m.get("nb_bars_discotheques"),
-            "nb_bibliotheques": m.get("nb_bibliotheques"),
-            "nb_cinemas": m.get("nb_cinemas"),
-            "nb_veterinaires": m.get("nb_veterinaires"),
-            # Services à la population : Santé
-            "nb_pharmacies": m.get("nb_pharmacies"),
-            "nb_hopitaux": m.get("nb_hopitaux"),
-            "nb_laboratoires_analyses": m.get("nb_laboratoires_analyses"),
-            "nb_etablissements_handicapes": m.get("nb_etablissements_handicapes"),
-            "nb_ehpa": m.get("nb_ehpa"),
-            "nb_medecins": m.get("nb_medecins"),
-            "nb_dentistes": m.get("nb_dentistes"),
-            "nb_chirurgiens": m.get("nb_chirurgiens"),
-            "nb_dermatologues": m.get("nb_dermatologues"),
-            "nb_anesthesistes": m.get("nb_anesthesistes"),
-            "nb_gastroenterologues": m.get("nb_gastroenterologues"),
-            "nb_gynecologues": m.get("nb_gynecologues"),
-            "nb_cancerologues": m.get("nb_cancerologues"),
-            "nb_neurologues": m.get("nb_neurologues"),
-            "nb_ophtalmologues": m.get("nb_ophtalmologues"),
-            "nb_orl": m.get("nb_orl"),
-            "nb_cardiologues": m.get("nb_cardiologues"),
-            "nb_pediatres": m.get("nb_pediatres"),
-            "nb_pneumologues": m.get("nb_pneumologues"),
-            "nb_psychologues": m.get("nb_psychologues"),
-            "nb_radiologues": m.get("nb_radiologues"),
-            "nb_rhumatologues": m.get("nb_rhumatologues"),
-            "nb_sages_femmes": m.get("nb_sages_femmes"),
-            # Services à la population : Éducation
-            "nb_creches": m.get("nb_creches"),
-            "nb_ecoles_maternelles_publiques": m.get("nb_ecoles_maternelles_publiques"),
-            "nb_ecoles_maternelles_privees": m.get("nb_ecoles_maternelles_privees"),
-            "nb_ecoles_primaires_publiques": m.get("nb_ecoles_primaires_publiques"),
-            "nb_ecoles_primaires_privees": m.get("nb_ecoles_primaires_privees"),
-            "nb_colleges_publics": m.get("nb_colleges_publics"),
-            "nb_colleges_prives": m.get("nb_colleges_prives"),
-            "nb_lycees_publics": m.get("nb_lycees_publics"),
-            "nb_lycees_prives": m.get("nb_lycees_prives"),
-            "prix_m2_maison": re_data.get("prix_m2_maison"),
-            "prix_m2_appartement": re_data.get("prix_m2_appartement"),
-            "part_residences_principales": re_data.get("part_residences_principales"),
-            "part_residences_secondaires": re_data.get("part_residences_secondaires"),
-            "part_taux_proprietaires": re_data.get("part_taux_proprietaires"),
-            "part_taux_locataires": re_data.get("part_taux_locataires"),
-        }
-
-    def has_any_demographic_or_reviews(self) -> bool:
-        m = self.metrics
-        return any(
-            m.get(k)
-            for k in (
-                "nb_habitant",
-                "age_moyen",
-                "pop_active",
-                "note_moyenne_globale",
-            )
-        )
+SITEMAP_URL = "https://www.bien-dans-ma-ville.fr/sitemap.xml"
+CITY_PAGES_QUEUE_COLLECTION = "city_pages_queue"
+COMMUNES_DIRECT_COLLECTION = "communes_direct"
 
 
 class HomepediaHarvester:
     def __init__(self) -> None:
-        self.pg_params = get_pg_params()
         self.mongo_client = MongoClient(get_mongo_uri())
         self.raw_db = self.mongo_client[get_mongo_db_name()]
+        self.queue_store = self.raw_db[CITY_PAGES_QUEUE_COLLECTION]
         self.city_store = self.raw_db["communes_harvest"]
+        self.city_direct_store = self.raw_db[COMMUNES_DIRECT_COLLECTION]
+        self.reviews_store = self.raw_db["reviews_raw"]
+        self.dept_store = self.raw_db["departements"]
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -173,12 +54,53 @@ class HomepediaHarvester:
         }
         # Compteurs pour le suivi de progression / perf
         self._progress_lock = threading.Lock()
+        self._thread_local = threading.local()
         self.total_in_queue: int = 0
         self.already_done: int = 0
         self.newly_processed: int = 0
         self.active_workers: int = 0
         self.max_active_workers: int = 0
         self.start_time: float = 0.0
+
+        self._ensure_mongo_indexes()
+
+    def _ensure_mongo_indexes(self) -> None:
+        def safe_create_index(collection, keys, **kwargs) -> None:
+            try:
+                collection.create_index(keys, **kwargs)
+            except OperationFailure as exc:
+                # Code 85 = même index déjà présent sous un autre nom.
+                if getattr(exc, "code", None) == 85:
+                    logging.info("Index déjà présent (%s): %s", collection.name, exc)
+                    return
+                raise
+
+        # Aligner les index avec les migrations Mongo nommées.
+        safe_create_index(
+            self.queue_store,
+            [("url", 1)],
+            unique=True,
+            name="idx_city_pages_queue_url_unique",
+        )
+        safe_create_index(
+            self.queue_store,
+            [("is_processed", 1), ("url", 1)],
+            name="idx_city_pages_queue_unprocessed_by_url",
+        )
+        safe_create_index(
+            self.queue_store,
+            [("com_id", 1), ("is_processed", 1)],
+            name="idx_city_pages_queue_by_com_and_status",
+        )
+        safe_create_index(
+            self.queue_store,
+            [("attempt_count", 1), ("updated_at", -1)],
+            name="idx_city_pages_queue_attempts_recent",
+        )
+        safe_create_index(self.city_store, [("com", 1)], unique=True)
+        safe_create_index(self.city_direct_store, [("com", 1)], unique=True)
+        safe_create_index(self.reviews_store, [("com", 1), ("collected_at", -1)])
+        safe_create_index(self.dept_store, [("code_dept", 1)], unique=True)
 
     # ---------- OUTILS / FILE DES PAGES VILLE ----------
 
@@ -194,71 +116,224 @@ class HomepediaHarvester:
             if not path:
                 raise ValueError("Chemin vide dans l'URL")
             last_segment = path.split("/")[-1]
-            # Exemple : olmeta-di-capocorso-2B187  -> com_id = 2B187
-            # On accepte les codes alphanumériques (2A, 2B, etc.).
-            m = re.search(r"-([0-9A-Za-z]{3,6})$", last_segment)
+            # Tolère les URLs finissant en .html.
+            last_segment = re.sub(r"\.html?$", "", last_segment, flags=re.IGNORECASE)
+            # Exemples valides:
+            # - olmeta-di-capocorso-2B187   -> 2B187
+            # - paris-75056                 -> 75056
+            # - paris-75056-cedex (fallback)-> 75056
+            m = re.search(r"-((?:2A|2B)\d{3}|\d{5})$", last_segment, flags=re.IGNORECASE)
+            if not m:
+                # Fallback: dernière séquence plausible dans le segment
+                m = re.search(r"((?:2A|2B)\d{3}|\d{5})", last_segment, flags=re.IGNORECASE)
             if not m:
                 raise ValueError(f"Impossible d'extraire com_id depuis le segment '{last_segment}'")
-            return m.group(1)
+            return m.group(1).upper()
         except Exception as exc:
             # Gestion robuste des URLs malformées
             raise ValueError(f"URL malformée '{url}': {exc}") from exc
 
-    def _load_queue_entries(self, conn) -> List[Tuple[str, str, str]]:
+    def _extract_nom_commune_from_url(self, url: str, fallback: str) -> str:
+        try:
+            parsed = urlparse(url)
+            slug = parsed.path.rstrip("/").split("/")[-1]
+            slug = re.sub(r"\.html?$", "", slug, flags=re.IGNORECASE)
+            m = re.search(r"-((?:2A|2B)\d{3}|\d{5})$", slug, flags=re.IGNORECASE)
+            name_part = slug[: m.start()] if m else slug
+            return name_part.replace("-", " ").upper()
+        except Exception:
+            return fallback
+
+    def _fetch_city_urls_from_sitemap(self) -> List[str]:
         """
-        Charge les entrées de la file des pages ville à traiter (is_processed = FALSE),
-        en les enrichissant avec nccenr (si disponible) depuis homepedia.communes.
-
-        Retourne une liste de tuples (com_id, nccenr, url).
+        Récupère les URLs ville depuis le sitemap principal.
+        Gère les deux formats:
+        - sitemap index (qui pointe vers d'autres sitemaps)
+        - urlset direct
         """
-        with conn.cursor() as cur:
-            # Stats pour la progression
-            cur.execute(f"SELECT COUNT(*) FROM {CITY_PAGES_QUEUE_TABLE};")
-            self.total_in_queue = cur.fetchone()[0] or 0
+        base_origin = f"{urlparse(SITEMAP_URL).scheme}://{urlparse(SITEMAP_URL).netloc}"
 
-            cur.execute(f"SELECT COUNT(*) FROM {CITY_PAGES_QUEUE_TABLE} WHERE is_processed = TRUE;")
-            self.already_done = cur.fetchone()[0] or 0
+        def parse_xml_bytes(data: bytes) -> ET.Element:
+            raw = data
+            # Certains providers servent des .xml.gz
+            if raw[:2] == b"\x1f\x8b":
+                raw = gzip.decompress(raw)
+            return ET.fromstring(raw)
 
-            # Sélection des URLs à traiter
-            cur.execute(
-                f"""
-                SELECT q.url, q.com_id, c.nccenr
-                FROM {CITY_PAGES_QUEUE_TABLE} q
-                LEFT JOIN homepedia.communes c ON c.com = q.com_id
-                WHERE q.is_processed = FALSE
-                ORDER BY q.url;
-                """
+        def is_city_url(u: str) -> bool:
+            p = urlparse(u)
+            path = p.path.rstrip("/")
+            segments = [s for s in path.split("/") if s]
+            segment = segments[-1].lower() if segments else ""
+            if "/avis.html" in u:
+                return False
+            if "/classement-" in u:
+                return False
+            # On ne veut que les pages ville à la racine: /slug-code/
+            # Exclut /blog/... , /actualites/... etc.
+            if len(segments) != 1:
+                return False
+            if u.endswith(".xml") or u.endswith(".xml.gz") or "/sitemap" in u:
+                return False
+            # Filtre souple: garder les pages avec slug type "nom-nom-xxxxx".
+            if not ("-" in segment and len(segment) >= 6):
+                return False
+            try:
+                _ = self._extract_com_id_from_url(u)
+            except ValueError:
+                return False
+            return True
+
+        # Sources d'entrée robustes (selon config du site)
+        to_visit: List[str] = [
+            SITEMAP_URL,
+            f"{base_origin}/sitemap_index.xml",
+        ]
+        visited: set[str] = set()
+        city_urls: set[str] = set()
+
+        # robots.txt peut déclarer les sous-sitemaps réels
+        try:
+            robots = requests.get(f"{base_origin}/robots.txt", headers=self.headers, timeout=20)
+            if robots.ok:
+                for line in robots.text.splitlines():
+                    if line.lower().startswith("sitemap:"):
+                        u = line.split(":", 1)[1].strip()
+                        if u and u not in to_visit:
+                            to_visit.append(u)
+        except Exception:
+            pass
+
+        while to_visit:
+            sitemap_url = to_visit.pop()
+            if sitemap_url in visited:
+                continue
+            visited.add(sitemap_url)
+
+            try:
+                resp = requests.get(sitemap_url, headers=self.headers, timeout=30)
+                resp.raise_for_status()
+            except Exception:
+                continue
+
+            xml_locs: List[str] = []
+            try:
+                root = parse_xml_bytes(resp.content)
+                for loc in root.findall(".//{*}loc"):
+                    if loc.text:
+                        xml_locs.append(loc.text.strip())
+            except Exception:
+                # Fallback si endpoint renvoie du HTML
+                soup = BeautifulSoup(resp.text, "html.parser")
+                for a in soup.find_all("a", href=True):
+                    href = a["href"].strip()
+                    if href.startswith("http"):
+                        xml_locs.append(href)
+
+            for u in xml_locs:
+                # Sous-sitemap (index)
+                if u.endswith(".xml") or u.endswith(".xml.gz") or "/sitemap" in u:
+                    if u not in visited:
+                        to_visit.append(u)
+                    continue
+                if is_city_url(u):
+                    city_urls.add(u)
+
+        return sorted(city_urls)
+
+    def _sync_queue_from_sitemap(self, force_rescrape: bool = True) -> None:
+        now_utc = datetime.now(timezone.utc)
+        if force_rescrape:
+            # Important: si la queue existe déjà, on remet tout en non traité
+            # pour relancer un run complet même si le sitemap est partiellement indisponible.
+            self.queue_store.update_many(
+                {},
+                {
+                    "$set": {
+                        "is_processed": False,
+                        "processed_at": None,
+                        "last_error": None,
+                        "updated_at": now_utc,
+                    }
+                },
             )
-            rows = cur.fetchall()
-
-        if not rows:
+        try:
+            urls = self._fetch_city_urls_from_sitemap()
+        except Exception as exc:
+            logging.warning("Impossible de synchroniser la queue Mongo depuis le sitemap: %s", exc)
+            return
+        if not urls:
+            logging.warning("Sitemap vide ou non exploitable: aucune URL ajoutée à la queue.")
+            return
+        ops: List[UpdateOne] = []
+        skipped_invalid = 0
+        for url in urls:
+            try:
+                com_id = self._extract_com_id_from_url(url)
+            except ValueError:
+                skipped_invalid += 1
+                continue
+            nom_commune_guess = self._extract_nom_commune_from_url(url, com_id)
+            update_set: Dict[str, Any] = {
+                "updated_at": now_utc,
+                "com_id": com_id,
+                "nom_commune_guess": nom_commune_guess,
+            }
+            if force_rescrape:
+                update_set["is_processed"] = False
+                update_set["processed_at"] = None
+                update_set["last_error"] = None
+            ops.append(
+                UpdateOne(
+                    {"url": url},
+                    {
+                        "$setOnInsert": {
+                            "url": url,
+                            "attempt_count": 0,
+                            "created_at": now_utc,
+                        },
+                        "$set": update_set,
+                    },
+                    upsert=True,
+                )
+            )
+        if ops:
+            self.queue_store.bulk_write(ops, ordered=False)
+            mode = "rescrape complet" if force_rescrape else "ajout nouvelles URLs"
             logging.info(
-                "Aucune URL à traiter (file des pages ville vide ou toutes les entrées sont is_processed = TRUE)."
+                "Queue Mongo synchronisée depuis sitemap: %d URLs (%s), %d URL(s) ignorée(s).",
+                len(ops),
+                mode,
+                skipped_invalid,
             )
+        else:
+            logging.warning(
+                "Aucune URL exploitable après parsing sitemap (%d candidates, %d ignorées).",
+                len(urls),
+                skipped_invalid,
+            )
+
+    def _load_queue_entries(self) -> List[Tuple[str, str, str]]:
+        self.total_in_queue = self.queue_store.count_documents({})
+        self.already_done = self.queue_store.count_documents({"is_processed": True})
+        rows = list(
+            self.queue_store.find(
+                {"is_processed": False},
+                {"url": 1, "com_id": 1, "nom_commune_guess": 1},
+            ).sort("url", 1)
+        )
+        if not rows:
+            logging.info("Aucune URL à traiter dans la queue Mongo.")
             return []
-
-        # (com_id, nccenr, url)
         entries: List[Tuple[str, str, str]] = []
-        for url, com_id, nccenr in rows:
-            # nccenr peut être None si la jointure ne trouve pas; on met un placeholder à partir de l'URL
-            if not nccenr:
-                try:
-                    parsed = urlparse(url)
-                    path = parsed.path.rstrip("/")
-                    slug = path.split("/")[-1]
-                    # on enlève le suffixe -01234
-                    m = re.search(r"-(\d{4,6})$", slug)
-                    if m:
-                        name_part = slug[: m.start()]
-                    else:
-                        name_part = slug
-                    nccenr = name_part.replace("-", " ").upper()
-                except Exception:
-                    nccenr = com_id  # fallback minimal
-            entries.append((com_id, nccenr, url))
-
+        for d in rows:
+            d = d  # type: QueueDoc
+            url = d.get("url")
+            com_id = d.get("com_id")
+            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(url, com_id)
+            entries.append((com_id, nom_commune, url))
         logging.info(
-            "File des pages ville chargée : %d entrées à traiter, %d déjà traitées sur un total de %d.",
+            "Queue Mongo chargée : %d entrées à traiter, %d déjà traitées sur un total de %d.",
             len(entries),
             self.already_done,
             self.total_in_queue,
@@ -280,31 +355,13 @@ class HomepediaHarvester:
             logging.warning("Erreur HTTP sur %s : %s", url, exc)
             return None
 
-    def _extract_presentation_media(self, soup: BeautifulSoup) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"intro_text": None, "images": []}
-        try:
-            main_section = soup.find("section", id="presentation")
-            if not main_section:
-                h1 = soup.find("h1")
-                if h1:
-                    main_section = h1.find_parent("section") or h1.find_next("section")
-            if main_section:
-                paras = [p.get_text(" ", strip=True) for p in main_section.find_all("p")]
-                if not paras:
-                    paras = [
-                        p.get_text(" ", strip=True)
-                        for p in main_section.find_all("p", recursive=True)
-                    ]
-                if paras:
-                    result["intro_text"] = "\n\n".join(paras)
-            for img in soup.select("section img, .illustration img, .content img"):
-                src = img.get("data-src") or img.get("src")
-                if src and src not in result["images"]:
-                    result["images"].append(src)
-        except Exception as exc:
-            logging.warning("Erreur extraction présentation/média : %s", exc)
-        return result
-
+    def _get_thread_session(self) -> requests.Session:
+        session = getattr(self._thread_local, "session", None)
+        if session is None:
+            session = requests.Session()
+            session.headers.update(self.headers)
+            self._thread_local.session = session
+        return session
     def _extract_demographics(self, soup: BeautifulSoup, metrics: Dict[str, Any]) -> None:
         try:
             label_stats = {
@@ -445,7 +502,7 @@ class HomepediaHarvester:
     ) -> Dict[str, Any]:
         result: Dict[str, Any] = {"services_population": [], "services_population_counts": {}}
         try:
-            # Mapping label -> clé de métrique SQL lisible
+            # Mapping label -> clé de métrique normalisée
             label_to_metric = {
                 # Commerce
                 "Hypermarché": "nb_hypermarches",
@@ -555,7 +612,7 @@ class HomepediaHarvester:
                         if not label or not value:
                             continue
                         result["services_population_counts"][label] = value
-                        # Renseigner aussi dans metrics pour usage SQL (si mappé)
+                        # Renseigner aussi dans metrics (si mappé)
                         metric_key = label_to_metric.get(label)
                         if metric_key:
                             metrics[metric_key] = value
@@ -755,10 +812,10 @@ class HomepediaHarvester:
 
     # ---------- TRAITEMENT D'UNE VILLE ----------
 
-    def _init_metrics(self, com: str, nccenr: str) -> Dict[str, Any]:
+    def _init_metrics(self, com: str, nom_commune: str) -> Dict[str, Any]:
         return {
             "com": com,
-            "nccenr": nccenr,
+            "nom_commune": nom_commune,
             "nb_habitant": None,
             "age_moyen": None,
             "pop_active": None,
@@ -806,7 +863,7 @@ class HomepediaHarvester:
 
     def process_city(self, city_info: Tuple[str, str, Optional[str]]) -> Optional[Dict[str, Any]]:
         """
-        city_info : (com, nccenr, base_url)
+        city_info : (com, nom_commune, base_url)
         base_url doit provenir du sitemap / scrap_queue.
         """
         if len(city_info) != 3:
@@ -819,57 +876,62 @@ class HomepediaHarvester:
             base_url = self._generate_url(com, name)
 
         avis_url = base_url.rstrip("/") + "/avis.html"
-        result = CityScrapeResult(com=com, nccenr=name)
+        result = CityScrapePayload(com=com, nom_commune=name)
         result.metrics.update(self._init_metrics(com, name))
 
         soup_ville: Optional[BeautifulSoup] = None
         soup_avis: Optional[BeautifulSoup] = None
         try:
-            with requests.Session() as session:
-                soup_ville = self._safe_get(session, base_url)
-                if not soup_ville:
-                    logging.warning("Impossible de charger la page ville pour %s (%s)", name, com)
-                    return None
-                result.presentation = self._extract_presentation_media(soup_ville)
-                self._extract_demographics(soup_ville, result.metrics)
-                result.security_services = self._extract_security_services(
-                    soup_ville, result.metrics
+            session = self._get_thread_session()
+            soup_ville = self._safe_get(session, base_url)
+            if not soup_ville:
+                logging.warning("Impossible de charger la page ville pour %s (%s)", name, com)
+                return None
+            self._extract_demographics(soup_ville, result.metrics)
+            result.security_services = self._extract_security_services(soup_ville, result.metrics)
+            result.real_estate = self._extract_real_estate(session, base_url)
+            soup_avis = self._safe_get(session, avis_url)
+            if soup_avis:
+                result.reviews_summary = self._extract_reviews_summary(soup_avis, result.metrics)
+                full_reviews, sentiment_source = self._extract_reviews_full(soup_avis)
+            else:
+                full_reviews, sentiment_source = (
+                    [],
+                    {"positive": [], "negative": [], "all": []},
                 )
-                result.real_estate = self._extract_real_estate(session, base_url)
-                soup_avis = self._safe_get(session, avis_url)
-                if soup_avis:
-                    result.reviews_summary = self._extract_reviews_summary(
-                        soup_avis, result.metrics
-                    )
-                    full_reviews, sentiment_source = self._extract_reviews_full(soup_avis)
-                else:
-                    full_reviews, sentiment_source = (
-                        [],
-                        {"positive": [], "negative": [], "all": []},
-                    )
             source_soup = soup_avis or soup_ville
             if not source_soup:
                 logging.warning("Aucun HTML exploitable pour %s (%s)", name, com)
                 return None
             result.reviews_full = full_reviews
-            # Stockage brut dans MongoDB
+            commune_doc = self._build_commune_document(
+                result=result,
+                base_url=base_url,
+                avis_url=avis_url,
+                sentiment_source=sentiment_source,
+            )
             self.city_store.update_one(
                 {"com": com},
                 {
                     "$set": {
-                        "metrics": result.metrics,
-                        "presentation": result.presentation,
-                        "security_services": result.security_services,
-                        "real_estate": result.real_estate,
-                        "reviews_summary": result.reviews_summary,
-                        "reviews_full": result.reviews_full,
-                        "sentiment_analysis_source": sentiment_source,
-                        "url_source": base_url,
-                        "url_avis": avis_url,
-                        "harvested_at": time.time(),
+                        **commune_doc,
                     }
                 },
                 upsert=True,
+            )
+            direct_doc = self._build_commune_direct_document(commune_doc=commune_doc)
+            self.city_direct_store.update_one(
+                {"com": com},
+                {"$set": direct_doc},
+                upsert=True,
+            )
+            self._upsert_departement_reference(commune_doc)
+            self._upsert_reviews_raw(
+                com=com,
+                source="bdmv",
+                url_page=avis_url,
+                reviews_full=result.reviews_full,
+                nom_commune=result.nom_commune,
             )
             if not result.has_any_demographic_or_reviews():
                 logging.warning("Aucune donnée trouvée pour %s (%s)", name, com)
@@ -882,348 +944,183 @@ class HomepediaHarvester:
                     result.metrics.get("nb_habitant") or "?",
                     result.metrics.get("note_moyenne_globale") or "?",
                 )
-            return result.to_sql_row()
+            return {"com": result.com, "nom_commune": result.nom_commune, "url": base_url}
         except Exception as exc:
             logging.warning("Erreur sur %s (%s): %s", name, com, exc)
             return None
 
     # ---------- GESTION QUEUE / PROGRESSION ----------
+    def _extract_dept_code_from_com(self, com: str) -> str:
+        com_str = (com or "").strip().upper()
+        if not com_str:
+            return "00"
+        if com_str.startswith("97") and len(com_str) >= 3:
+            return com_str[:3]
+        if com_str.startswith("2A") or com_str.startswith("2B"):
+            return com_str[:2]
+        return com_str[:2]
 
-    def _upsert_commune(self, row: Dict[str, Any]) -> None:
-        """
-        Insère ou met à jour immédiatement la ligne dans homepedia.communes
-        (UPSERT sur la PK (com, nccenr)).
-        """
-        sql = """
-            INSERT INTO homepedia.communes (
-                com,
-                nccenr,
-                nb_habitant,
-                age_moyen,
-                pop_active,
-                taux_chomage,
-                pop_densite,
-                revenu_moyen,
-                superficie_km2,
-                agressions,
-                cambriolages,
-                vols_degradations,
-                stupefiants,
-                note_moyenne_globale,
-                nb_avis,
-                score_securite,
-                score_education,
-                score_loisirs,
-                score_environnement,
-                score_vie_pratique,
-                estimation_pop_2026,
-                estimation_pop_2025,
-                part_0_14_ans,
-                part_15_29_ans,
-                part_30_44_ans,
-                part_45_59_ans,
-                part_60_74_ans,
-                part_75_89_ans,
-                part_90_plus,
-                part_cadres,
-                part_retraites,
-                part_employes,
-                part_ouvriers,
-                part_sans_diplome,
-                part_bac5_plus,
-                part_couple_avec_enfant,
-                part_personnes_seules,
-                participation_1er_tour,
-                participation_2nd_tour,
-                inscrits_election,
-                code_postal,
-                nom_region,
-                nom_departement,
-                nom_metropole,
-                nom_maire,
-                nb_hypermarches,
-                nb_supermarches,
-                nb_superettes,
-                nb_boulangeries,
-                nb_boucheries,
-                nb_restaurants,
-                nb_garages,
-                nb_stations_service,
-                nb_banques,
-                nb_bureaux_poste,
-                nb_coiffeurs,
-                nb_tabacs,
-                nb_bars_discotheques,
-                nb_bibliotheques,
-                nb_cinemas,
-                nb_veterinaires,
-                nb_pharmacies,
-                nb_hopitaux,
-                nb_laboratoires_analyses,
-                nb_etablissements_handicapes,
-                nb_ehpa,
-                nb_medecins,
-                nb_dentistes,
-                nb_chirurgiens,
-                nb_dermatologues,
-                nb_anesthesistes,
-                nb_gastroenterologues,
-                nb_gynecologues,
-                nb_cancerologues,
-                nb_neurologues,
-                nb_ophtalmologues,
-                nb_orl,
-                nb_cardiologues,
-                nb_pediatres,
-                nb_pneumologues,
-                nb_psychologues,
-                nb_radiologues,
-                nb_rhumatologues,
-                nb_sages_femmes,
-                nb_creches,
-                nb_ecoles_maternelles_publiques,
-                nb_ecoles_maternelles_privees,
-                nb_ecoles_primaires_publiques,
-                nb_ecoles_primaires_privees,
-                nb_colleges_publics,
-                nb_colleges_prives,
-                nb_lycees_publics,
-                nb_lycees_prives,
-                prix_m2_maison,
-                prix_m2_appartement,
-                part_residences_principales,
-                part_residences_secondaires,
-                part_taux_proprietaires,
-                part_taux_locataires
-            ) VALUES (
-                %(com)s,
-                %(nccenr)s,
-                %(nb_habitant)s,
-                %(age_moyen)s,
-                %(pop_active)s,
-                %(taux_chomage)s,
-                %(pop_densite)s,
-                %(revenu_moyen)s,
-                %(superficie_km2)s,
-                %(agressions)s,
-                %(cambriolages)s,
-                %(vols_degradations)s,
-                %(stupefiants)s,
-                %(note_moyenne_globale)s,
-                %(nb_avis)s,
-                %(score_securite)s,
-                %(score_education)s,
-                %(score_loisirs)s,
-                %(score_environnement)s,
-                %(score_vie_pratique)s,
-                %(estimation_pop_2026)s,
-                %(estimation_pop_2025)s,
-                %(part_0_14_ans)s,
-                %(part_15_29_ans)s,
-                %(part_30_44_ans)s,
-                %(part_45_59_ans)s,
-                %(part_60_74_ans)s,
-                %(part_75_89_ans)s,
-                %(part_90_plus)s,
-                %(part_cadres)s,
-                %(part_retraites)s,
-                %(part_employes)s,
-                %(part_ouvriers)s,
-                %(part_sans_diplome)s,
-                %(part_bac5_plus)s,
-                %(part_couple_avec_enfant)s,
-                %(part_personnes_seules)s,
-                %(participation_1er_tour)s,
-                %(participation_2nd_tour)s,
-                %(inscrits_election)s,
-                %(code_postal)s,
-                %(nom_region)s,
-                %(nom_departement)s,
-                %(nom_metropole)s,
-                %(nom_maire)s,
-                %(nb_hypermarches)s,
-                %(nb_supermarches)s,
-                %(nb_superettes)s,
-                %(nb_boulangeries)s,
-                %(nb_boucheries)s,
-                %(nb_restaurants)s,
-                %(nb_garages)s,
-                %(nb_stations_service)s,
-                %(nb_banques)s,
-                %(nb_bureaux_poste)s,
-                %(nb_coiffeurs)s,
-                %(nb_tabacs)s,
-                %(nb_bars_discotheques)s,
-                %(nb_bibliotheques)s,
-                %(nb_cinemas)s,
-                %(nb_veterinaires)s,
-                %(nb_pharmacies)s,
-                %(nb_hopitaux)s,
-                %(nb_laboratoires_analyses)s,
-                %(nb_etablissements_handicapes)s,
-                %(nb_ehpa)s,
-                %(nb_medecins)s,
-                %(nb_dentistes)s,
-                %(nb_chirurgiens)s,
-                %(nb_dermatologues)s,
-                %(nb_anesthesistes)s,
-                %(nb_gastroenterologues)s,
-                %(nb_gynecologues)s,
-                %(nb_cancerologues)s,
-                %(nb_neurologues)s,
-                %(nb_ophtalmologues)s,
-                %(nb_orl)s,
-                %(nb_cardiologues)s,
-                %(nb_pediatres)s,
-                %(nb_pneumologues)s,
-                %(nb_psychologues)s,
-                %(nb_radiologues)s,
-                %(nb_rhumatologues)s,
-                %(nb_sages_femmes)s,
-                %(nb_creches)s,
-                %(nb_ecoles_maternelles_publiques)s,
-                %(nb_ecoles_maternelles_privees)s,
-                %(nb_ecoles_primaires_publiques)s,
-                %(nb_ecoles_primaires_privees)s,
-                %(nb_colleges_publics)s,
-                %(nb_colleges_prives)s,
-                %(nb_lycees_publics)s,
-                %(nb_lycees_prives)s,
-                %(prix_m2_maison)s,
-                %(prix_m2_appartement)s,
-                %(part_residences_principales)s,
-                %(part_residences_secondaires)s,
-                %(part_taux_proprietaires)s,
-                %(part_taux_locataires)s
-            )
-            ON CONFLICT (com, nccenr) DO UPDATE SET
-                nb_habitant                 = EXCLUDED.nb_habitant,
-                age_moyen                   = EXCLUDED.age_moyen,
-                pop_active                  = EXCLUDED.pop_active,
-                taux_chomage                = EXCLUDED.taux_chomage,
-                pop_densite                 = EXCLUDED.pop_densite,
-                revenu_moyen                = EXCLUDED.revenu_moyen,
-                superficie_km2              = EXCLUDED.superficie_km2,
-                agressions                  = EXCLUDED.agressions,
-                cambriolages                = EXCLUDED.cambriolages,
-                vols_degradations           = EXCLUDED.vols_degradations,
-                stupefiants                 = EXCLUDED.stupefiants,
-                note_moyenne_globale        = EXCLUDED.note_moyenne_globale,
-                nb_avis                     = EXCLUDED.nb_avis,
-                score_securite              = EXCLUDED.score_securite,
-                score_education             = EXCLUDED.score_education,
-                score_loisirs               = EXCLUDED.score_loisirs,
-                score_environnement         = EXCLUDED.score_environnement,
-                score_vie_pratique          = EXCLUDED.score_vie_pratique,
-                estimation_pop_2026         = EXCLUDED.estimation_pop_2026,
-                estimation_pop_2025         = EXCLUDED.estimation_pop_2025,
-                part_0_14_ans               = EXCLUDED.part_0_14_ans,
-                part_15_29_ans              = EXCLUDED.part_15_29_ans,
-                part_30_44_ans              = EXCLUDED.part_30_44_ans,
-                part_45_59_ans              = EXCLUDED.part_45_59_ans,
-                part_60_74_ans              = EXCLUDED.part_60_74_ans,
-                part_75_89_ans              = EXCLUDED.part_75_89_ans,
-                part_90_plus                = EXCLUDED.part_90_plus,
-                part_cadres                 = EXCLUDED.part_cadres,
-                part_retraites              = EXCLUDED.part_retraites,
-                part_employes               = EXCLUDED.part_employes,
-                part_ouvriers               = EXCLUDED.part_ouvriers,
-                part_sans_diplome           = EXCLUDED.part_sans_diplome,
-                part_bac5_plus              = EXCLUDED.part_bac5_plus,
-                part_couple_avec_enfant     = EXCLUDED.part_couple_avec_enfant,
-                part_personnes_seules       = EXCLUDED.part_personnes_seules,
-                participation_1er_tour      = EXCLUDED.participation_1er_tour,
-                participation_2nd_tour      = EXCLUDED.participation_2nd_tour,
-                inscrits_election           = EXCLUDED.inscrits_election,
-                code_postal                 = EXCLUDED.code_postal,
-                nom_region                  = EXCLUDED.nom_region,
-                nom_departement             = EXCLUDED.nom_departement,
-                nom_metropole               = EXCLUDED.nom_metropole,
-                nom_maire                   = EXCLUDED.nom_maire,
-                nb_hypermarches             = EXCLUDED.nb_hypermarches,
-                nb_supermarches             = EXCLUDED.nb_supermarches,
-                nb_superettes               = EXCLUDED.nb_superettes,
-                nb_boulangeries             = EXCLUDED.nb_boulangeries,
-                nb_boucheries               = EXCLUDED.nb_boucheries,
-                nb_restaurants              = EXCLUDED.nb_restaurants,
-                nb_garages                  = EXCLUDED.nb_garages,
-                nb_stations_service         = EXCLUDED.nb_stations_service,
-                nb_banques                  = EXCLUDED.nb_banques,
-                nb_bureaux_poste            = EXCLUDED.nb_bureaux_poste,
-                nb_coiffeurs                = EXCLUDED.nb_coiffeurs,
-                nb_tabacs                   = EXCLUDED.nb_tabacs,
-                nb_bars_discotheques        = EXCLUDED.nb_bars_discotheques,
-                nb_bibliotheques            = EXCLUDED.nb_bibliotheques,
-                nb_cinemas                  = EXCLUDED.nb_cinemas,
-                nb_veterinaires             = EXCLUDED.nb_veterinaires,
-                nb_pharmacies               = EXCLUDED.nb_pharmacies,
-                nb_hopitaux                 = EXCLUDED.nb_hopitaux,
-                nb_laboratoires_analyses    = EXCLUDED.nb_laboratoires_analyses,
-                nb_etablissements_handicapes= EXCLUDED.nb_etablissements_handicapes,
-                nb_ehpa                     = EXCLUDED.nb_ehpa,
-                nb_medecins                 = EXCLUDED.nb_medecins,
-                nb_dentistes                = EXCLUDED.nb_dentistes,
-                nb_chirurgiens              = EXCLUDED.nb_chirurgiens,
-                nb_dermatologues            = EXCLUDED.nb_dermatologues,
-                nb_anesthesistes            = EXCLUDED.nb_anesthesistes,
-                nb_gastroenterologues       = EXCLUDED.nb_gastroenterologues,
-                nb_gynecologues             = EXCLUDED.nb_gynecologues,
-                nb_cancerologues            = EXCLUDED.nb_cancerologues,
-                nb_neurologues              = EXCLUDED.nb_neurologues,
-                nb_ophtalmologues           = EXCLUDED.nb_ophtalmologues,
-                nb_orl                      = EXCLUDED.nb_orl,
-                nb_cardiologues             = EXCLUDED.nb_cardiologues,
-                nb_pediatres                = EXCLUDED.nb_pediatres,
-                nb_pneumologues             = EXCLUDED.nb_pneumologues,
-                nb_psychologues             = EXCLUDED.nb_psychologues,
-                nb_radiologues              = EXCLUDED.nb_radiologues,
-                nb_rhumatologues            = EXCLUDED.nb_rhumatologues,
-                nb_sages_femmes             = EXCLUDED.nb_sages_femmes,
-                nb_creches                  = EXCLUDED.nb_creches,
-                nb_ecoles_maternelles_publiques = EXCLUDED.nb_ecoles_maternelles_publiques,
-                nb_ecoles_maternelles_privees   = EXCLUDED.nb_ecoles_maternelles_privees,
-                nb_ecoles_primaires_publiques   = EXCLUDED.nb_ecoles_primaires_publiques,
-                nb_ecoles_primaires_privees     = EXCLUDED.nb_ecoles_primaires_privees,
-                nb_colleges_publics             = EXCLUDED.nb_colleges_publics,
-                nb_colleges_prives              = EXCLUDED.nb_colleges_prives,
-                nb_lycees_publics               = EXCLUDED.nb_lycees_publics,
-                nb_lycees_prives                = EXCLUDED.nb_lycees_prives,
-                prix_m2_maison                  = EXCLUDED.prix_m2_maison,
-                prix_m2_appartement             = EXCLUDED.prix_m2_appartement,
-                part_residences_principales     = EXCLUDED.part_residences_principales,
-                part_residences_secondaires     = EXCLUDED.part_residences_secondaires,
-                part_taux_proprietaires         = EXCLUDED.part_taux_proprietaires,
-                part_taux_locataires            = EXCLUDED.part_taux_locataires;
-        """
-        try:
-            with psycopg2.connect(**self.pg_params) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(sql, row)
-                conn.commit()
-        except Exception as exc:
-            logging.warning(
-                "Erreur UPSERT PostgreSQL pour %s (%s): %s", row.get("nccenr"), row.get("com"), exc
-            )
+    def _build_commune_document(
+        self,
+        result: CityScrapePayload,
+        base_url: str,
+        avis_url: str,
+        sentiment_source: Dict[str, List[str]],
+    ) -> CommuneHarvestDoc:
+        m = result.metrics
+        services_keys = [k for k in m.keys() if k.startswith("nb_")]
+        now_utc = datetime.now(timezone.utc)
+        return {
+            "com": result.com,
+            "nom_commune": result.nom_commune,
+            "source": "bdmv",
+            "admin_codes": {
+                "code_dept": self._extract_dept_code_from_com(result.com),
+            },
+            "links": {"city_page": base_url, "avis_page": avis_url},
+            "admin_details": {
+                "code_postal": m.get("code_postal"),
+                "nom_region": m.get("nom_region"),
+                "nom_departement": m.get("nom_departement"),
+                "nom_metropole": m.get("nom_metropole"),
+                "nom_maire": m.get("nom_maire"),
+            },
+            "demography": {k: m.get(k) for k in m if k.startswith("part_") or k in {
+                "nb_habitant", "age_moyen", "pop_active", "taux_chomage", "pop_densite",
+                "revenu_moyen", "superficie_km2", "estimation_pop_2025", "estimation_pop_2026",
+                "participation_1er_tour", "participation_2nd_tour", "inscrits_election",
+            }},
+            "security": {k: m.get(k) for k in ("agressions", "cambriolages", "vols_degradations", "stupefiants")},
+            "quality_of_life": {k: m.get(k) for k in (
+                "note_moyenne_globale",
+                "nb_avis",
+                "score_securite",
+                "score_education",
+                "score_loisirs",
+                "score_environnement",
+                "score_vie_pratique",
+            )},
+            "services": {k: m.get(k) for k in services_keys},
+            "real_estate": result.real_estate,
+            "reviews_summary": result.reviews_summary,
+            "reviews_refs": {"count": len(result.reviews_full), "last_collected_at": now_utc},
+            "updated_at": now_utc,
+        }
 
-    def _mark_queue_processed(self, url: str) -> None:
+    def _build_commune_direct_document(self, commune_doc: CommuneHarvestDoc) -> Dict[str, Any]:
         """
-        Marque une URL comme traitée dans la file des pages ville.
+        “Table directe” : une doc par commune, avec les champs importants aplatis en colonnes.
         """
-        try:
-            with psycopg2.connect(**self.pg_params) as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        f"""
-                        UPDATE {CITY_PAGES_QUEUE_TABLE}
-                        SET is_processed = TRUE,
-                            last_update = NOW()
-                        WHERE url = %s;
-                        """,
-                        (url,),
-                    )
-                conn.commit()
-        except Exception as exc:
-            logging.warning("Impossible de marquer l'URL comme traitée (%s) : %s", url, exc)
+        direct: Dict[str, Any] = {
+            "com": commune_doc.get("com"),
+            "nom_commune": commune_doc.get("nom_commune"),
+            "source": commune_doc.get("source"),
+            "code_dept": (commune_doc.get("admin_codes") or {}).get("code_dept"),
+            "code_postal": (commune_doc.get("admin_details") or {}).get("code_postal"),
+            "nom_region": (commune_doc.get("admin_details") or {}).get("nom_region"),
+            "nom_departement": (commune_doc.get("admin_details") or {}).get("nom_departement"),
+            "nom_metropole": (commune_doc.get("admin_details") or {}).get("nom_metropole"),
+            "nom_maire": (commune_doc.get("admin_details") or {}).get("nom_maire"),
+            "city_page": (commune_doc.get("links") or {}).get("city_page"),
+            "avis_page": (commune_doc.get("links") or {}).get("avis_page"),
+            "reviews_refs_count": (commune_doc.get("reviews_refs") or {}).get("count"),
+            "reviews_refs_last_collected_at": (commune_doc.get("reviews_refs") or {}).get("last_collected_at"),
+            "updated_at": commune_doc.get("updated_at"),
+        }
+
+        # Aplatit les “blocs” principaux en champs racine (pour table / filtres front).
+        for k, v in (commune_doc.get("demography") or {}).items():
+            direct.setdefault(k, v)
+        for k, v in (commune_doc.get("security") or {}).items():
+            direct.setdefault(k, v)
+        for k, v in (commune_doc.get("quality_of_life") or {}).items():
+            direct.setdefault(k, v)
+        for k, v in (commune_doc.get("services") or {}).items():
+            direct.setdefault(k, v)
+        for k, v in (commune_doc.get("real_estate") or {}).items():
+            direct.setdefault(k, v)
+        return direct
+
+    def _upsert_departement_reference(self, commune_doc: CommuneHarvestDoc) -> None:
+        admin_codes = commune_doc.get("admin_codes") or {}
+        admin = commune_doc.get("admin_details") or {}
+        code_dept = (admin_codes.get("code_dept") or "").strip().upper()
+        if not code_dept:
+            return
+        now_utc = datetime.now(timezone.utc)
+        self.dept_store.update_one(
+            {"code_dept": code_dept},
+            {
+                "$set": {
+                    "code_dept": code_dept,
+                    "nom_departement": admin.get("nom_departement"),
+                    "updated_at": now_utc,
+                },
+                "$setOnInsert": {
+                    "created_at": now_utc,
+                },
+            },
+            upsert=True,
+        )
+
+    def _upsert_reviews_raw(
+        self,
+        com: str,
+        source: str,
+        url_page: str,
+        reviews_full: List[Dict[str, Any]],
+        nom_commune: Optional[str] = None,
+    ) -> None:
+        if not reviews_full:
+            return
+        now_utc = datetime.now(timezone.utc)
+        ops: List[UpdateOne] = []
+        for item in reviews_full:
+            text = (item.get("text") or "").strip()
+            if not text:
+                continue
+            model = ReviewRawModel(
+                com=com,
+                source=source,
+                external_comment_id=item.get("id"),
+                text=text,
+                rating=item.get("rating"),
+                date=item.get("date"),
+                collected_at=now_utc,
+                url_page=url_page,
+            )
+            selector = {
+                "source": model.source,
+                "com": model.com,
+                "external_comment_id": model.external_comment_id,
+            }
+            if not model.external_comment_id:
+                selector = {
+                    "source": model.source,
+                    "com": model.com,
+                    "text": model.text,
+                }
+            ops.append(
+                UpdateOne(
+                    selector,
+                    {
+                        "$set": {
+                            "source": model.source,
+                            "com": model.com,
+                            "nom_commune": nom_commune,
+                            "external_comment_id": model.external_comment_id,
+                            "text": model.text,
+                            "rating": model.rating,
+                            "date": model.date,
+                            "collected_at": model.collected_at,
+                            "url_page": model.url_page,
+                        }
+                    },
+                    upsert=True,
+                )
+            )
+        if ops:
+            self.reviews_store.bulk_write(ops, ordered=False)
 
     def _update_progress(self) -> None:
         """
@@ -1256,6 +1153,26 @@ class HomepediaHarvester:
             max_workers,
         )
 
+    def _mark_queue_processed_mongo(self, url: str) -> None:
+        now_utc = datetime.now(timezone.utc)
+        self.queue_store.update_one(
+            {"url": url},
+            {
+                "$set": {"is_processed": True, "processed_at": now_utc, "updated_at": now_utc},
+                "$inc": {"attempt_count": 1},
+            },
+        )
+
+    def _mark_queue_failed_mongo(self, url: str, error_msg: str) -> None:
+        now_utc = datetime.now(timezone.utc)
+        self.queue_store.update_one(
+            {"url": url},
+            {
+                "$set": {"last_error": error_msg[:500], "updated_at": now_utc},
+                "$inc": {"attempt_count": 1},
+            },
+        )
+
     def _process_queue_entry(self, entry: Tuple[str, str, str]) -> Optional[Dict[str, Any]]:
         """
         Wrapper appelé par les threads :
@@ -1263,7 +1180,7 @@ class HomepediaHarvester:
         - met à jour scrap_queue,
         - met à jour la progression.
         """
-        com, nccenr, url = entry
+        com, nom_commune, url = entry
         # Sécurité : si l'URL n'est pas valide, on loggue et on skip
         try:
             _ = self._extract_com_id_from_url(url)  # revalidation de l'URL
@@ -1277,15 +1194,17 @@ class HomepediaHarvester:
                 self.max_active_workers = self.active_workers
 
         try:
-            row = self.process_city((com, nccenr, url))
+            row = self.process_city((com, nom_commune, url))
             if row:
-                # Ne pousser dans Postgres que s'il y a un minimum de données utiles
-                if row.get("nb_habitant") or row.get("age_moyen") or row.get("pop_active"):
-                    self._upsert_commune(row)
-                # On ne marque comme traité que si scraping et parsing ont réussi
-                self._mark_queue_processed(url)
+                self._mark_queue_processed_mongo(url)
                 self._update_progress()
+            else:
+                self._mark_queue_failed_mongo(url, "Aucune donnée collectée")
             return row
+        except Exception as exc:
+            self._mark_queue_failed_mongo(url, str(exc))
+            logging.warning("Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc)
+            return None
         finally:
             with self._progress_lock:
                 self.active_workers -= 1
@@ -1294,25 +1213,26 @@ class HomepediaHarvester:
 
     def start(self) -> None:
         try:
-            # 1) Connexion PG + chargement de la file de scrap déjà initialisée
-            with psycopg2.connect(**self.pg_params) as conn:
-                queue_entries = self._load_queue_entries(conn)
+            # 1) Initialisation + chargement de la queue Mongo
+            self._sync_queue_from_sitemap(force_rescrape=True)
+            queue_entries = self._load_queue_entries()
 
             if not queue_entries:
                 return
 
             self.start_time = time.time()
+            max_workers = 12
             logging.info(
                 "Début de la collecte pour %d communes avec ThreadPoolExecutor(max_workers=%d).",
                 len(queue_entries),
-                100,
+                max_workers,
             )
 
             # 2) Multi‑threading sur la file d'URLs (ThreadPoolExecutor)
-            with ThreadPoolExecutor(max_workers=12) as executor:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 results = list(executor.map(self._process_queue_entry, queue_entries))
 
-            # 3) Statistiques finales (les mises à jour Postgres ont déjà été faites au fil de l'eau)
+            # 3) Statistiques finales
             valid_results = [r for r in results if r]
             nb_errors = len(queue_entries) - len(valid_results)
             elapsed = max(time.time() - self.start_time, 1e-6)
@@ -1334,6 +1254,11 @@ class HomepediaHarvester:
             )
         except Exception as err:
             logging.critical("Erreur fatale du pipeline : %s", err)
+        finally:
+            try:
+                self.mongo_client.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

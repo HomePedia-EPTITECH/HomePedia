@@ -1,11 +1,11 @@
 """
-Configuration centralisée : chargement du .env et paramètres de connexion Postgres / Mongo.
+Configuration centralisée : chargement du .env et paramètres MongoDB.
 Tous les scripts du projet peuvent importer depuis ici pour éviter de dupliquer le code config.
 """
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict
 
 # Racine du projet (parent du dossier util/)
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -19,17 +19,6 @@ def load_env() -> None:
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         load_dotenv(env_path, override=False)
-
-
-def get_pg_params() -> Dict[str, Any]:
-    """Paramètres de connexion PostgreSQL (pour psycopg2.connect(**get_pg_params()))."""
-    return {
-        "dbname": os.getenv("POSTGRES_DB", "homepedia"),
-        "user": os.getenv("POSTGRES_USER", "admin"),
-        "password": os.getenv("POSTGRES_PASSWORD", ""),
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    }
 
 
 def get_mongo_params() -> Dict[str, str]:

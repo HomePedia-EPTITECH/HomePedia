@@ -1,6 +1,6 @@
 # HomePedia
 
-Lancer le projet (PostgreSQL + MongoDB + données) puis le scrap.
+Lancer le projet (MongoDB + données) puis le scrap.
 
 ## Prérequis
 
@@ -10,7 +10,7 @@ Lancer le projet (PostgreSQL + MongoDB + données) puis le scrap.
 ## Premier lancement
 
 1. **Configurer l’environnement**  
-   Copie `.env.example` en `.env` à la racine et remplis les identifiants (Postgres, Mongo).
+   Copie `.env.example` en `.env` à la racine et remplis les identifiants Mongo.
 
 2. **Démarrer les bases et charger les données**  
    À la racine du projet :
@@ -19,7 +19,7 @@ Lancer le projet (PostgreSQL + MongoDB + données) puis le scrap.
    python setup.py
    ```
 
-   Cela lance Docker, attend que Postgres et Mongo soient prêts, applique les migrations et charge les données (communes, etc.).
+   Cela lance Docker, attend Mongo, applique les migrations et charge les données.
 
 3. **Lancer le scrap** (optionnel)
 

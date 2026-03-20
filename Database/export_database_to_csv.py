@@ -1,46 +1,13 @@
 import csv
 from pathlib import Path
 
-import psycopg2
-from psycopg2.extras import DictCursor
 from pymongo import MongoClient
 
-from util.config import get_pg_params, get_mongo_db_name, get_mongo_uri
+from util.config import get_mongo_db_name, get_mongo_uri
 
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "data/exports"
-
-
-def export_postgres_communes_csv() -> Path:
-    """
-    Exporte la table homepedia.communes dans un CSV unique.
-
-    - Fichier généré : exports/communes_postgres.csv
-    - Colonnes : toutes les colonnes actuelles de homepedia.communes
-    """
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUTPUT_DIR / "communes_postgres.csv"
-
-    pg_params = get_pg_params()
-    with psycopg2.connect(**pg_params) as conn:
-        with conn.cursor(cursor_factory=DictCursor) as cur:
-            cur.execute("SELECT * FROM homepedia.communes ORDER BY com, nccenr")
-            rows = cur.fetchall()
-            if not rows:
-                # Crée quand même un fichier vide avec juste l'en-tête si possible
-                with out_path.open("w", newline="", encoding="utf-8") as f:
-                    f.write("")
-                return out_path
-
-            fieldnames = [desc.name for desc in cur.description]
-            with out_path.open("w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                for row in rows:
-                    writer.writerow(dict(row))
-
-    return out_path
 
 
 def export_mongo_communes_csv() -> Path:
@@ -50,8 +17,8 @@ def export_mongo_communes_csv() -> Path:
     - Fichier généré : exports/communes_mongo.csv
     - Colonnes choisies :
         - com
+        - nom_commune
         - metrics.* (toutes les clés de metrics à plat)
-        - presentation.intro_text
         - real_estate.* (prix / parts)
         - reviews_summary.* (notes / nb_avis)
     - Les champs manquants sont laissés vides.
@@ -86,9 +53,8 @@ def export_mongo_communes_csv() -> Path:
     reviews_summary_keys = sorted(reviews_summary_keys)
 
     fieldnames = (
-        ["com"]
+        ["com", "nom_commune"]
         + [f"metrics.{k}" for k in metric_keys]
-        + ["presentation.intro_text"]
         + [f"real_estate.{k}" for k in real_estate_keys]
         + [f"reviews_summary.{k}" for k in reviews_summary_keys]
     )
@@ -100,13 +66,11 @@ def export_mongo_communes_csv() -> Path:
         for d in docs:
             row: dict = {}
             row["com"] = d.get("com")
+            row["nom_commune"] = d.get("nom_commune")
 
             metrics = d.get("metrics") or {}
             for k in metric_keys:
                 row[f"metrics.{k}"] = metrics.get(k)
-
-            presentation = d.get("presentation") or {}
-            row["presentation.intro_text"] = presentation.get("intro_text")
 
             real_estate = d.get("real_estate") or {}
             for k in real_estate_keys:
@@ -121,11 +85,46 @@ def export_mongo_communes_csv() -> Path:
     return out_path
 
 
+def export_mongo_communes_direct_csv() -> Path:
+    """
+    Exporte la collection Mongo communes_direct (doc "table" aplatie par commune) dans un CSV.
+
+    - Fichier généré : exports/communes_direct_mongo.csv
+    - Colonnes : union dynamique de toutes les clés présentes sur l'ensemble des documents
+      (hors `_id`), donc "tout direct direct".
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUTPUT_DIR / "communes_direct_mongo.csv"
+
+    client = MongoClient(get_mongo_uri())
+    db = client[get_mongo_db_name()]
+    coll = db["communes_direct"]
+
+    docs = list(coll.find({}, {"_id": 0}))
+    if not docs:
+        with out_path.open("w", newline="", encoding="utf-8") as f:
+            f.write("")
+        return out_path
+
+    fieldnames = set()
+    for d in docs:
+        fieldnames.update(d.keys())
+    fieldnames = sorted(fieldnames)
+
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for d in docs:
+            writer.writerow({k: d.get(k) for k in fieldnames})
+
+    return out_path
+
+
 def main() -> None:
-    pg_csv = export_postgres_communes_csv()
     mongo_csv = export_mongo_communes_csv()
-    print(f"PostgreSQL exporté vers : {pg_csv}")
-    print(f"MongoDB exporté vers   : {mongo_csv}")
+    print(f"MongoDB exporté vers : {mongo_csv}")
+    mongo_direct_csv = export_mongo_communes_direct_csv()
+    print(f"MongoDB (direct) exporté vers : {mongo_direct_csv}")
 
 
 if __name__ == "__main__":

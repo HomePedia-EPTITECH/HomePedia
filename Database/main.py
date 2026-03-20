@@ -1,8 +1,5 @@
 """
-Point d'entrée unique : exécution des migrations (Postgres + Mongo).
-
-Les données applicatives (communes, métriques, etc.) sont désormais chargées
-par les pipelines de scraping (ex : Scrap/script_BDMV.py) à partir des sitemaps.
+Point d'entrée unique : exécution des migrations MongoDB.
 """
 
 import subprocess
@@ -15,8 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Les scripts de chargement de données (CSV/JSON) sont désormais optionnels
 # et lancés manuellement si besoin.
 SCRIPTS = [
-    "run_migrations.py",  # applique uniquement les migrations pas encore jouées
-    "init_harvest_queue_from_sitemap.py",  # remplit homepedia.city_pages_queue à partir du sitemap
+    "run_migrations.py",
 ]
 
 
