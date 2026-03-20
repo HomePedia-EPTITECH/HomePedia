@@ -80,6 +80,10 @@ app/**/node_modules/*
 /backend/dist
 /backend/.env
 
+# Seeds test
+Database/seed_test_cities.py
+Database/seed_test_reviews.py
+
 # Python cache
 __pycache__/
 *.py[cod]
