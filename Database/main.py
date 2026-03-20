@@ -15,8 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Les scripts de chargement de données (CSV/JSON) sont désormais optionnels
 # et lancés manuellement si besoin.
 SCRIPTS = [
-    "run_migrations.py",                    # applique uniquement les migrations pas encore jouées
-    "init_harvest_queue_from_sitemap.py"    # remplit homepedia.city_pages_queue à partir du sitemap
+    "run_migrations.py",  # applique uniquement les migrations pas encore jouées
+    "init_harvest_queue_from_sitemap.py",  # remplit homepedia.city_pages_queue à partir du sitemap
 ]
 
 

@@ -1,4 +1,3 @@
-import logging
 import re
 import sys
 import time
@@ -199,9 +198,7 @@ class HomepediaHarvester:
             # On accepte les codes alphanumériques (2A, 2B, etc.).
             m = re.search(r"-([0-9A-Za-z]{3,6})$", last_segment)
             if not m:
-                raise ValueError(
-                    f"Impossible d'extraire com_id depuis le segment '{last_segment}'"
-                )
+                raise ValueError(f"Impossible d'extraire com_id depuis le segment '{last_segment}'")
             return m.group(1)
         except Exception as exc:
             # Gestion robuste des URLs malformées
@@ -332,13 +329,11 @@ class HomepediaHarvester:
                     th = row.find("th")
                     tds = row.find_all("td")
                     if th and tds and th.get_text(strip=True) in label_stats:
-                        metrics[label_stats[th.get_text(strip=True)]] = tds[0].get_text(
+                        metrics[label_stats[th.get_text(strip=True)]] = tds[0].get_text(strip=True)
+                    elif len(tds) >= 2 and tds[0].get_text(strip=True) in label_stats:
+                        metrics[label_stats[tds[0].get_text(strip=True)]] = tds[1].get_text(
                             strip=True
                         )
-                    elif len(tds) >= 2 and tds[0].get_text(strip=True) in label_stats:
-                        metrics[label_stats[tds[0].get_text(strip=True)]] = tds[
-                            1
-                        ].get_text(strip=True)
             text = soup.get_text()
             m = re.search(r"superficie\s+de\s+([\d\s]+)\s*km²", text, re.IGNORECASE)
             if m:
@@ -388,24 +383,32 @@ class HomepediaHarvester:
                         metrics[mapping[label]] = pourcent.get_text(strip=True)
             m_part1 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text)
             if m_part1:
-                metrics["participation_1er_tour"] = (
-                    m_part1.group(1).replace(",", ".").strip()
-                )
+                metrics["participation_1er_tour"] = m_part1.group(1).replace(",", ".").strip()
             m_inscrits = re.search(r"(\d[\d\s]*?)\s+inscrits", text)
             if m_inscrits:
                 metrics["inscrits_election"] = m_inscrits.group(1).replace("\xa0", " ").strip()
             idx_2nd = text.find("Second tour")
             if idx_2nd >= 0:
-                m_part2 = re.search(
-                    r"Participation\s*:\s*([\d,.\s]+)%", text[idx_2nd:]
-                )
+                m_part2 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text[idx_2nd:])
                 if m_part2:
-                    metrics["participation_2nd_tour"] = (
-                        m_part2.group(1).replace(",", ".").strip()
-                    )
-            m_cp = re.search(r"code postal (?:de \w+ )?est (\d+)", text, re.IGNORECASE)
-            if m_cp:
-                metrics["code_postal"] = m_cp.group(1)
+                    metrics["participation_2nd_tour"] = m_part2.group(1).replace(",", ".").strip()
+            # Code postal : priorité au <small> sous le titre (section #entete)
+            # Ex: <h1>Paris <small>75001 Paris</small></h1>
+            small_candidates = []
+            h1 = soup.find("h1")
+            if h1:
+                direct_small = h1.find("small")
+                if direct_small:
+                    small_candidates.append(direct_small)
+                small_candidates.extend(h1.find_all_next("small", limit=3))
+            if not small_candidates:
+                small_candidates = soup.find_all("small", limit=10)
+            for sm in small_candidates:
+                sm_txt = sm.get_text(" ", strip=True)
+                m_small = re.search(r"\b(\d{5})\b", sm_txt)
+                if m_small:
+                    metrics["code_postal"] = m_small.group(1)
+                    break
             for link in soup.select('a[href*="/regions/"]'):
                 t = link.get_text(strip=True)
                 if t and t not in {"Régions"}:
@@ -563,9 +566,7 @@ class HomepediaHarvester:
             logging.warning("Erreur extraction sécurité/services : %s", exc)
         return result
 
-    def _extract_real_estate(
-        self, session: requests.Session, base_url: str
-    ) -> Dict[str, Any]:
+    def _extract_real_estate(self, session: requests.Session, base_url: str) -> Dict[str, Any]:
         result: Dict[str, Any] = {
             "prix_m2_maison": None,
             "prix_m2_appartement": None,
@@ -721,9 +722,7 @@ class HomepediaHarvester:
                 '[itemprop="review"], article.review, div.review, li.review'
             ):
                 text_el = (
-                    container.find("p", class_="review_text")
-                    or container.find("p")
-                    or container
+                    container.find("p", class_="review_text") or container.find("p") or container
                 )
                 text = text_el.get_text(" ", strip=True) if text_el else None
                 if not text:
@@ -733,10 +732,23 @@ class HomepediaHarvester:
                 )
                 rating = rating_el.get_text(strip=True) if rating_el else None
                 date_el = container.find("time") or container.select_one(".date, .review_date")
-                date = (
-                    date_el.get("datetime") or date_el.get_text(strip=True) if date_el else None
-                )
+                date = date_el.get("datetime") or date_el.get_text(strip=True) if date_el else None
                 full_reviews.append({"text": text, "rating": rating, "date": date})
+
+            # Structure spécifique Bien-dans-ma-ville : <div class="commentaire" data-pouce="...">
+            # Exemple: https://www.bien-dans-ma-ville.fr/rennes-35238/avis.html
+            for div in soup_avis.find_all("div", class_="commentaire"):
+                # Identifiant interne du commentaire
+                comment_id = div.get("data-pouce")
+                text_el = div.find("p") or div
+                text = text_el.get_text(" ", strip=True) if text_el else None
+                if not text:
+                    continue
+                if text not in sentiment_source["all"]:
+                    sentiment_source["all"].append(text)
+                # Note et date ne sont pas triviales à extraire sur cette structure,
+                # on les laisse à None pour l'instant.
+                full_reviews.append({"text": text, "rating": None, "date": None, "id": comment_id})
         except Exception as exc:
             logging.warning("Erreur extraction avis détaillés : %s", exc)
         return full_reviews, sentiment_source
@@ -1189,7 +1201,9 @@ class HomepediaHarvester:
                     cur.execute(sql, row)
                 conn.commit()
         except Exception as exc:
-            logging.warning("Erreur UPSERT PostgreSQL pour %s (%s): %s", row.get("nccenr"), row.get("com"), exc)
+            logging.warning(
+                "Erreur UPSERT PostgreSQL pour %s (%s): %s", row.get("nccenr"), row.get("com"), exc
+            )
 
     def _mark_queue_processed(self, url: str) -> None:
         """
