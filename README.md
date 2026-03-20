@@ -130,11 +130,12 @@ Un squelette backend est disponible dans `backend/` avec une architecture légè
 Routes exposées (préfixe global `api`):
 
 - `GET /api/health`
-- `POST /api/kpis`
+- `GET /api/cities`
+- `GET /api/cities/:code`
+- `GET /api/overview`
+- `GET /api/reviews/cities/:code`
 - `GET /api/kpis`
 - `GET /api/kpis/:id`
-- `PATCH /api/kpis/:id`
-- `DELETE /api/kpis/:id`
 
 La table SQL associée est créée par la migration:
 `Database/postgres/migrations/02_create_kpis.sql`
@@ -147,3 +148,7 @@ cp .env.example .env
 npm install
 npm run start:dev
 ```
+
+Documentation interactive :
+
+- `GET /api/docs`

@@ -1,16 +1,24 @@
 # HomePedia Backend (NestJS)
 
-Backend NestJS minimal pour exposer des KPIs avec PostgreSQL.
+Backend NestJS en lecture seule pour exposer les donnees HomePedia au front.
 
 ## Arborescence
 
 ```text
 src/
-  routes/
-  controllers/
-  services/
-  repositories/
   db/
+    db.module.ts
+    db.service.ts
+    mongo.module.ts
+    mongo.service.ts
+  modules/
+    cities/
+    overview/
+    reviews/
+  controllers/
+  repositories/
+  routes/
+  services/
 ```
 
 ## Installation
@@ -27,30 +35,29 @@ npm install
 npm run start:dev
 ```
 
-Le serveur démarre sur `http://localhost:3000` avec le préfixe global `api`.
+Le serveur demarre sur `http://localhost:3000` avec le prefixe global `api`.
+
+## Swagger
+
+- `GET /api/docs`
+
+## Mode de fonctionnement
+
+- API en lecture seule
+- les bases sont alimentees par les scripts de scraping et ETL
+- le backend expose les donnees mais ne modifie pas les donnees metier
 
 ## Routes
 
 - `GET /api/health`
-- `POST /api/kpis`
+- `GET /api/cities`
+- `GET /api/cities/:code`
+- `GET /api/overview`
+- `GET /api/reviews/cities/:code`
 - `GET /api/kpis`
 - `GET /api/kpis/:id`
-- `PATCH /api/kpis/:id`
-- `DELETE /api/kpis/:id`
 
-## Exemple payload KPI
-
-```json
-{
-  "name": "median_rent",
-  "value": 17.4,
-  "unit": "EUR/m2",
-  "source": "insee",
-  "capturedAt": "2026-03-12T10:00:00Z"
-}
-```
-
-## Base de données
+## Base de donnees
 
 Appliquer les migrations existantes depuis la racine du repo:
 
@@ -58,5 +65,4 @@ Appliquer les migrations existantes depuis la racine du repo:
 python Database/run_migrations.py
 ```
 
-La migration `Database/postgres/migrations/02_create_kpis.sql` crée la table `bdd.kpis`.
-
+La migration `Database/postgres/migrations/02_create_kpis.sql` cree la table `bdd.kpis`.
