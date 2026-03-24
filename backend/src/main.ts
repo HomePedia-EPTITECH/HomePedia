@@ -4,12 +4,15 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import "reflect-metadata";
 import * as dotenv from "dotenv";
 import { AppModule } from "./app.module";
+import { createCorsOptions, validateEnvironment } from "./config/app.config";
 
 async function bootstrap() {
   dotenv.config();
+  const config = validateEnvironment(process.env);
 
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix("api");
+  app.enableCors(createCorsOptions(config.cors));
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,8 +30,7 @@ async function bootstrap() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup("api/docs", app, swaggerDocument);
 
-  const port = Number(process.env.PORT ?? 3000);
-  await app.listen(port);
+  await app.listen(config.port);
 }
 
 bootstrap();
