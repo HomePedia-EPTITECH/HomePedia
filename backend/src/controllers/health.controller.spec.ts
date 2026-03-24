@@ -44,11 +44,18 @@ describe("HealthController", () => {
       await controller.check();
       fail("Expected controller.check() to throw");
     } catch (error) {
-      expect(error).toBeInstanceOf(HttpException);
-      expect((error as HttpException).getStatus()).toBe(
+      const exception = error as HttpException;
+
+      expect(exception).toBeInstanceOf(HttpException);
+      expect(exception.getStatus()).toBe(
         HttpStatus.SERVICE_UNAVAILABLE
       );
-      expect((error as HttpException).getResponse()).toEqual(degradedResponse);
+      expect(exception.getResponse()).toEqual({
+        message: "Backend dependencies unavailable",
+        details: {
+          checks: degradedResponse.checks
+        }
+      });
     }
   });
 });
