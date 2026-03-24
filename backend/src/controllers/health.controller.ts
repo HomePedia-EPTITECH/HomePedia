@@ -1,5 +1,11 @@
 import { Controller, Get, HttpException, HttpStatus } from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiServiceUnavailableResponse,
+  ApiTags
+} from "@nestjs/swagger";
+import { HealthResponse } from "../models/health.model";
 import { HEALTH_BASE_PATH } from "../routes/health.routes";
 import { HealthService } from "../services/health.service";
 
@@ -8,7 +14,9 @@ import { HealthService } from "../services/health.service";
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
-  @ApiOperation({ summary: "Check backend availability" })
+  @ApiOperation({ summary: "Check backend and data source availability" })
+  @ApiOkResponse({ type: HealthResponse })
+  @ApiServiceUnavailableResponse({ type: HealthResponse })
   @Get()
   async check() {
     const result = await this.healthService.check();
