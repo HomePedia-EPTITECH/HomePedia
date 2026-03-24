@@ -15,13 +15,13 @@ export class MongoService implements OnModuleDestroy {
   }
 
   async getCollection<T extends Document = Document>(name: string): Promise<Collection<T>> {
-    if (!this.isConnected) {
-      await this.client.connect();
-      this.database = this.client.db(this.dbName);
-      this.isConnected = true;
-    }
+    const database = await this.getDatabase();
+    return database.collection<T>(name);
+  }
 
-    return this.database!.collection<T>(name);
+  async checkConnection(): Promise<void> {
+    const database = await this.getDatabase();
+    await database.command({ ping: 1 });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -41,5 +41,15 @@ export class MongoService implements OnModuleDestroy {
     }
 
     return `mongodb://${host}:${port}/`;
+  }
+
+  private async getDatabase(): Promise<Db> {
+    if (!this.isConnected) {
+      await this.client.connect();
+      this.database = this.client.db(this.dbName);
+      this.isConnected = true;
+    }
+
+    return this.database!;
   }
 }
