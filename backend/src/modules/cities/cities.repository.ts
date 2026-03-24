@@ -125,10 +125,12 @@ export class CitiesRepository {
     column: "score_securite" | "score_environnement",
     limit: number
   ): Promise<CityRow[]> {
+    const numericScore = toNumericExpression(column);
     const sql = `
       SELECT ${CITY_SELECT}
       FROM bdd.v_commune_2026
-      ORDER BY ${toNumericExpression(column)} DESC NULLS LAST, nccenr ASC
+      WHERE ${numericScore} IS NOT NULL
+      ORDER BY ${numericScore} DESC, nccenr ASC
       LIMIT $1
     `;
 

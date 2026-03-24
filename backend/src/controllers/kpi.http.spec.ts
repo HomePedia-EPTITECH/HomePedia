@@ -51,6 +51,15 @@ describe("KpiController HTTP", () => {
     expect(response.body).toHaveLength(1);
   });
 
+  it("returns an empty array when no KPI is available", async () => {
+    kpiService.findAll.mockResolvedValue([]);
+
+    const response = await request(app.getHttpServer()).get("/api/kpis");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+  });
+
   it("returns 400 when the KPI id is invalid", async () => {
     const response = await request(app.getHttpServer()).get("/api/kpis/not-a-number");
 
