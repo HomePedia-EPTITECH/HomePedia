@@ -1,9 +1,20 @@
+"""
+Modeles de donnees du harvester BDMV.
+
+Utilises a la fois par le scraper (construction des payloads) et par les
+scripts de migration/export. Les TypedDict servent de contrat documentaire
+pour les documents Mongo ; les dataclasses portent les donnees en memoire
+pendant le scraping.
+"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TypedDict
 
 
 class QueueDoc(TypedDict, total=False):
+    """Document de la collection city_pages_queue."""
+
     url: str
     com_id: str
     nom_commune_guess: str
@@ -16,6 +27,8 @@ class QueueDoc(TypedDict, total=False):
 
 
 class CommuneHarvestDoc(TypedDict, total=False):
+    """Document neste de la collection communes_harvest."""
+
     com: str
     nom_commune: str
     source: str
@@ -34,7 +47,7 @@ class CommuneHarvestDoc(TypedDict, total=False):
 
 @dataclass(slots=True)
 class CityScrapePayload:
-    """Modele aggregate de collecte pour une commune."""
+    """Payload intermediaire de collecte pour une commune."""
 
     com: str
     nom_commune: str
@@ -59,6 +72,8 @@ class CityScrapePayload:
 
 @dataclass(slots=True)
 class ReviewRawModel:
+    """Avis brut avant upsert dans reviews_raw."""
+
     com: str
     source: str
     external_comment_id: Optional[str]
