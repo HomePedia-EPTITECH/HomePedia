@@ -3,7 +3,7 @@ from pathlib import Path
 
 from pymongo import MongoClient
 
-from util.config import get_mongo_db_name, get_mongo_uri
+from packages.shared.util.config import get_mongo_db_name, get_mongo_uri
 
 
 ROOT = Path(__file__).resolve().parents[1]

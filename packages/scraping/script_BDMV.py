@@ -20,13 +20,13 @@ from unidecode import unidecode
 _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
-from Scrap.models import (
+from models import (
     CommuneHarvestDoc,
     CityScrapePayload,
     QueueDoc,
     ReviewRawModel,
 )
-from util.config import get_mongo_db_name, get_mongo_uri
+from packages.shared.util.config import get_mongo_db_name, get_mongo_uri
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
