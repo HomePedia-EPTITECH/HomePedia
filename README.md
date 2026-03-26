@@ -29,5 +29,5 @@ Lancer le projet (MongoDB + données) puis le scrap.
 
 ## Suite
 
-- **Conteneurs déjà démarrés** : `python Database/main.py` pour refaire uniquement migrations + chargement des données.
+- **Conteneurs déjà démarrés** : `python setup.py` pour refaire uniquement migrations + chargement des données.
 - **Détails** (migrations, baseline, réinitialisation, etc.) : voir le dossier **`Docs/`**.
