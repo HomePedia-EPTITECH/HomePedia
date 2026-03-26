@@ -3,7 +3,7 @@ Lance uniquement les migrations MongoDB.
 
 À lancer après « docker compose up », depuis la racine du projet :
 
-  python Database/run_migrations.py
+  python packages/etl/database/run_migrations.py
 """
 
 import subprocess
