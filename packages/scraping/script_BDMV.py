@@ -17,10 +17,10 @@ from pymongo import MongoClient, UpdateOne
 from pymongo.errors import OperationFailure
 from unidecode import unidecode
 
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
-from models import (
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+from packages.scraping.models import (
     CommuneHarvestDoc,
     CityScrapePayload,
     QueueDoc,
