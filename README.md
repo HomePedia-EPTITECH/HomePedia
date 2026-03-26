@@ -24,7 +24,7 @@ Lancer le projet (MongoDB + données) puis le scrap.
 3. **Lancer le scrap** (optionnel)
 
    ```bash
-   python Scrap/script_BDMV.py
+   python packages/scraping/script_BDMV.py
    ```
 
 ## Suite
