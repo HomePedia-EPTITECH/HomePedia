@@ -50,14 +50,13 @@ def resolve_compose_file() -> Path:
 def resolve_database_main() -> Path:
     candidates = [
         ROOT / "packages" / "etl" / "database" / "main.py",
-        ROOT / "Database" / "main.py",
     ]
     for path in candidates:
         if path.exists():
             return path
     print(
         "[setup] Aucun script database main.py trouvé "
-        "(attendu dans ./packages/etl/database/ ou ./Database/)."
+        "(attendu dans ./packages/etl/database/)."
     )
     sys.exit(1)
 
