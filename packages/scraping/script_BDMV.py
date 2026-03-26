@@ -1,3 +1,22 @@
+"""
+Harvester Bien-dans-ma-ville (BDMV).
+
+Collecte les donnees communales (demographie, securite, services, immobilier,
+avis) depuis bien-dans-ma-ville.fr et les persiste dans MongoDB.
+
+Pipeline :
+    1. Lecture du sitemap XML -> constitution d'une queue Mongo (URLs a scraper).
+    2. Scraping multi-threade de chaque page commune + page avis + page immobilier.
+    3. Upsert des documents dans les collections :
+       - communes_harvest   (document riche, structure nestee)
+       - communes_direct    (vue aplatie, prete pour BI / Spark)
+       - reviews_raw        (avis bruts, dedupliques par hash)
+       - departements       (reference departementale)
+
+Usage :
+    python packages/scraping/script_BDMV.py
+"""
+
 import re
 import sys
 import time
@@ -31,7 +50,9 @@ from packages.scraping.models import (
 )
 from packages.shared.util.config import get_mongo_db_name, get_mongo_uri
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -66,7 +87,6 @@ class HomepediaHarvester:
                 "Chrome/121.0.0.0 Safari/537.36"
             )
         }
-        # Compteurs pour le suivi de progression / perf
         self._progress_lock = threading.Lock()
         self._thread_local = threading.local()
         self.total_in_queue: int = 0
@@ -76,22 +96,21 @@ class HomepediaHarvester:
         self.max_active_workers: int = 0
         self.start_time: float = 0.0
 
-        # Force une validation rapide de la connectivité au démarrage.
-        self.mongo_client.admin.command("ping")
+        self.mongo_client.admin.command("ping")  # fail-fast si Mongo est injoignable
         self._ensure_mongo_indexes()
 
     def _ensure_mongo_indexes(self) -> None:
+        """Cree les index Mongo s'ils n'existent pas encore (idempotent)."""
+
         def safe_create_index(collection, keys, **kwargs) -> None:
             try:
                 collection.create_index(keys, **kwargs)
             except OperationFailure as exc:
-                # Code 85 = même index déjà présent sous un autre nom.
-                if getattr(exc, "code", None) == 85:
-                    logger.info("Index déjà présent (%s): %s", collection.name, exc)
+                if getattr(exc, "code", None) == 85:  # index existant sous un autre nom
+                    logger.info("Index deja present (%s): %s", collection.name, exc)
                     return
                 raise
 
-        # Aligner les index avec les migrations Mongo nommées.
         safe_create_index(
             self.queue_store,
             [("url", 1)],
@@ -121,7 +140,9 @@ class HomepediaHarvester:
             [("source", 1), ("com", 1), ("external_comment_id", 1)],
             unique=True,
             name="idx_reviews_raw_unique_external_id",
-            partialFilterExpression={"external_comment_id": {"$exists": True, "$type": "string"}},
+            partialFilterExpression={
+                "external_comment_id": {"$exists": True, "$type": "string"}
+            },
         )
         safe_create_index(
             self.reviews_store,
@@ -132,13 +153,15 @@ class HomepediaHarvester:
         )
         safe_create_index(self.dept_store, [("code_dept", 1)], unique=True)
 
-    # ---------- OUTILS / FILE DES PAGES VILLE ----------
+    # ------------------------------------------------------------------ #
+    #  Queue : sitemap -> URLs communes                                  #
+    # ------------------------------------------------------------------ #
 
     def _extract_com_id_from_url(self, url: str) -> str:
-        """
-        Extrait l'identifiant commune (com_id) à partir de la fin de l'URL.
+        """Extrait le code INSEE (5 car. ou 2A/2B+3) depuis le slug d'URL.
 
-        Ex : https://www.bien-dans-ma-ville.fr/paris-01284/  -> '01284'
+        Exemple : .../paris-75056/ -> '75056'
+        Leve ValueError si le format n'est pas reconnu.
         """
         try:
             parsed = urlparse(url)
@@ -146,24 +169,24 @@ class HomepediaHarvester:
             if not path:
                 raise ValueError("Chemin vide dans l'URL")
             last_segment = path.split("/")[-1]
-            # Tolère les URLs finissant en .html.
             last_segment = re.sub(r"\.html?$", "", last_segment, flags=re.IGNORECASE)
-            # Exemples valides:
-            # - olmeta-di-capocorso-2B187   -> 2B187
-            # - paris-75056                 -> 75056
-            # - paris-75056-cedex (fallback)-> 75056
-            m = re.search(r"-((?:2A|2B)\d{3}|\d{5})$", last_segment, flags=re.IGNORECASE)
+            m = re.search(
+                r"-((?:2A|2B)\d{3}|\d{5})$", last_segment, flags=re.IGNORECASE
+            )
+            if not m:  # fallback : cherche n'importe ou dans le segment
+                m = re.search(
+                    r"((?:2A|2B)\d{3}|\d{5})", last_segment, flags=re.IGNORECASE
+                )
             if not m:
-                # Fallback: dernière séquence plausible dans le segment
-                m = re.search(r"((?:2A|2B)\d{3}|\d{5})", last_segment, flags=re.IGNORECASE)
-            if not m:
-                raise ValueError(f"Impossible d'extraire com_id depuis le segment '{last_segment}'")
+                raise ValueError(
+                    f"Impossible d'extraire com_id depuis le segment '{last_segment}'"
+                )
             return m.group(1).upper()
         except Exception as exc:
-            # Gestion robuste des URLs malformées
-            raise ValueError(f"URL malformée '{url}': {exc}") from exc
+            raise ValueError(f"URL malformee '{url}': {exc}") from exc
 
     def _extract_nom_commune_from_url(self, url: str, fallback: str) -> str:
+        """Derive un nom de commune lisible depuis le slug d'URL."""
         try:
             parsed = urlparse(url)
             slug = parsed.path.rstrip("/").split("/")[-1]
@@ -175,18 +198,12 @@ class HomepediaHarvester:
             return fallback
 
     def _fetch_city_urls_from_sitemap(self) -> List[str]:
-        """
-        Récupère les URLs ville depuis le sitemap principal.
-        Gère les deux formats:
-        - sitemap index (qui pointe vers d'autres sitemaps)
-        - urlset direct
-        """
+        """Parcourt le sitemap (index ou urlset) et retourne les URLs de pages commune."""
         base_origin = f"{urlparse(SITEMAP_URL).scheme}://{urlparse(SITEMAP_URL).netloc}"
 
         def parse_xml_bytes(data: bytes) -> ET.Element:
             raw = data
-            # Certains providers servent des .xml.gz
-            if raw[:2] == b"\x1f\x8b":
+            if raw[:2] == b"\x1f\x8b":  # gzip
                 raw = gzip.decompress(raw)
             return ET.fromstring(raw)
 
@@ -199,14 +216,11 @@ class HomepediaHarvester:
                 return False
             if "/classement-" in u:
                 return False
-            # On ne veut que les pages ville à la racine: /slug-code/
-            # Exclut /blog/... , /actualites/... etc.
-            if len(segments) != 1:
+            if len(segments) != 1:  # on ne garde que les pages racine /slug-code/
                 return False
             if u.endswith(".xml") or u.endswith(".xml.gz") or "/sitemap" in u:
                 return False
-            # Filtre souple: garder les pages avec slug type "nom-nom-xxxxx".
-            if not ("-" in segment and len(segment) >= 6):
+            if not ("-" in segment and len(segment) >= 6):  # slug minimum attendu
                 return False
             try:
                 _ = self._extract_com_id_from_url(u)
@@ -214,7 +228,6 @@ class HomepediaHarvester:
                 return False
             return True
 
-        # Sources d'entrée robustes (selon config du site)
         to_visit: List[str] = [
             SITEMAP_URL,
             f"{base_origin}/sitemap_index.xml",
@@ -222,9 +235,10 @@ class HomepediaHarvester:
         visited: set[str] = set()
         city_urls: set[str] = set()
 
-        # robots.txt peut déclarer les sous-sitemaps réels
-        try:
-            robots = requests.get(f"{base_origin}/robots.txt", headers=self.headers, timeout=20)
+        try:  # robots.txt peut declarer des sitemaps supplementaires
+            robots = requests.get(
+                f"{base_origin}/robots.txt", headers=self.headers, timeout=20
+            )
             if robots.ok:
                 for line in robots.text.splitlines():
                     if line.lower().startswith("sitemap:"):
@@ -252,8 +266,7 @@ class HomepediaHarvester:
                 for loc in root.findall(".//{*}loc"):
                     if loc.text:
                         xml_locs.append(loc.text.strip())
-            except Exception:
-                # Fallback si endpoint renvoie du HTML
+            except Exception:  # fallback HTML si le XML n'est pas parsable
                 soup = BeautifulSoup(resp.text, "html.parser")
                 for a in soup.find_all("a", href=True):
                     href = a["href"].strip()
@@ -261,8 +274,7 @@ class HomepediaHarvester:
                         xml_locs.append(href)
 
             for u in xml_locs:
-                # Sous-sitemap (index)
-                if u.endswith(".xml") or u.endswith(".xml.gz") or "/sitemap" in u:
+                if u.endswith(".xml") or u.endswith(".xml.gz") or "/sitemap" in u:  # sous-sitemap
                     if u not in visited:
                         to_visit.append(u)
                     continue
@@ -272,10 +284,9 @@ class HomepediaHarvester:
         return sorted(city_urls)
 
     def _sync_queue_from_sitemap(self, force_rescrape: bool = True) -> None:
+        """Synchronise la queue Mongo avec le sitemap. Re-marque tout si force_rescrape."""
         now_utc = datetime.now(timezone.utc)
-        if force_rescrape:
-            # Important: si la queue existe déjà, on remet tout en non traité
-            # pour relancer un run complet même si le sitemap est partiellement indisponible.
+        if force_rescrape:  # reset de la queue pour un run complet
             self.queue_store.update_many(
                 {},
                 {
@@ -290,10 +301,14 @@ class HomepediaHarvester:
         try:
             urls = self._fetch_city_urls_from_sitemap()
         except Exception as exc:
-            logger.warning("Impossible de synchroniser la queue Mongo depuis le sitemap: %s", exc)
+            logger.warning(
+                "Impossible de synchroniser la queue Mongo depuis le sitemap: %s", exc
+            )
             return
         if not urls:
-            logger.warning("Sitemap vide ou non exploitable: aucune URL ajoutée à la queue.")
+            logger.warning(
+                "Sitemap vide ou non exploitable: aucune URL ajoutée à la queue."
+            )
             return
         ops: List[UpdateOne] = []
         written_ops = 0
@@ -333,7 +348,9 @@ class HomepediaHarvester:
                     self.queue_store.bulk_write(ops, ordered=False)
                     written_ops += len(ops)
                 except BulkWriteError as exc:
-                    logger.warning("BulkWrite queue partiellement échoué: %s", exc.details)
+                    logger.warning(
+                        "BulkWrite queue partiellement échoué: %s", exc.details
+                    )
                     written_ops += len(ops)
                 ops.clear()
         if ops:
@@ -359,6 +376,7 @@ class HomepediaHarvester:
             )
 
     def _load_queue_entries(self) -> Iterator[Tuple[str, str, str]]:
+        """Charge les entrees non traitees de la queue en iterateur (batch_size 500)."""
         self.total_in_queue = self.queue_store.count_documents({})
         self.already_done = self.queue_store.count_documents({"is_processed": True})
         remaining = self.queue_store.count_documents({"is_processed": False})
@@ -385,23 +403,31 @@ class HomepediaHarvester:
             com_id = d.get("com_id")
             if not url or not com_id:
                 continue
-            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(url, com_id)
+            nom_commune = d.get(
+                "nom_commune_guess"
+            ) or self._extract_nom_commune_from_url(url, com_id)
             yield (com_id, nom_commune, url)
 
-    # ---------- OUTILS HTTP / SCRAP ----------
+    # ------------------------------------------------------------------ #
+    #  HTTP / utilitaires scraping                                       #
+    # ------------------------------------------------------------------ #
 
     def _generate_url(self, com: str, name: str) -> str:
+        """Construit l'URL BDMV d'une commune a partir de son code INSEE et son nom."""
         name_clean = unidecode(name).lower().replace(" ", "-")
         return f"https://www.bien-dans-ma-ville.fr/{name_clean}-{com}/"
 
     def _normalize_review_text(self, value: str) -> str:
+        """Normalise les espaces multiples et trim."""
         return re.sub(r"\s+", " ", value or "").strip()
 
     def _compute_review_text_hash(self, text: str) -> str:
+        """SHA-1 du texte normalise (sert de cle de deduplication)."""
         normalized = self._normalize_review_text(text).lower()
         return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
 
     def _validate_commune_doc(self, doc: CommuneHarvestDoc) -> CommuneHarvestDoc:
+        """Valide les champs critiques avant l'ecriture Mongo. Leve ValueError si KO."""
         com = (doc.get("com") or "").strip().upper()
         if not com:
             raise ValueError("commune_doc.com est requis")
@@ -417,6 +443,7 @@ class HomepediaHarvester:
         return doc
 
     def _safe_get(self, session: requests.Session, url: str) -> Optional[BeautifulSoup]:
+        """GET + parse HTML. Retourne None en cas d'erreur (loggee)."""
         try:
             resp = session.get(url, headers=self.headers, timeout=20)
             resp.raise_for_status()
@@ -426,6 +453,7 @@ class HomepediaHarvester:
             return None
 
     def _get_thread_session(self) -> requests.Session:
+        """Retourne (ou cree) la session HTTP du thread courant, avec retry auto."""
         session = getattr(self._thread_local, "session", None)
         if session is None:
             session = requests.Session()
@@ -439,12 +467,17 @@ class HomepediaHarvester:
                 allowed_methods=["GET"],
                 raise_on_status=False,
             )
-            adapter = HTTPAdapter(max_retries=retries, pool_connections=20, pool_maxsize=20)
+            adapter = HTTPAdapter(
+                max_retries=retries, pool_connections=20, pool_maxsize=20
+            )
             session.mount("http://", adapter)
             session.mount("https://", adapter)
             self._thread_local.session = session
         return session
-    def _extract_demographics(self, soup: BeautifulSoup, metrics: Dict[str, Any]) -> None:
+
+    def _extract_demographics(
+        self, soup: BeautifulSoup, metrics: Dict[str, Any]
+    ) -> None:
         try:
             label_stats = {
                 "Nombre d'habitants": "nb_habitant",
@@ -468,21 +501,27 @@ class HomepediaHarvester:
                     th = row.find("th")
                     tds = row.find_all("td")
                     if th and tds and th.get_text(strip=True) in label_stats:
-                        metrics[label_stats[th.get_text(strip=True)]] = tds[0].get_text(strip=True)
-                    elif len(tds) >= 2 and tds[0].get_text(strip=True) in label_stats:
-                        metrics[label_stats[tds[0].get_text(strip=True)]] = tds[1].get_text(
+                        metrics[label_stats[th.get_text(strip=True)]] = tds[0].get_text(
                             strip=True
                         )
+                    elif len(tds) >= 2 and tds[0].get_text(strip=True) in label_stats:
+                        metrics[label_stats[tds[0].get_text(strip=True)]] = tds[
+                            1
+                        ].get_text(strip=True)
             text = soup.get_text()
             m = re.search(r"superficie\s+de\s+([\d\s]+)\s*km²", text, re.IGNORECASE)
             if m:
                 metrics["superficie_km2"] = m.group(1).replace("\xa0", " ").strip()
             m_est = re.search(r"estimée\s+à\s+([\d\s]+)\s+habitants", text)
             if m_est:
-                metrics["estimation_pop_2026"] = m_est.group(1).replace("\xa0", " ").strip()
+                metrics["estimation_pop_2026"] = (
+                    m_est.group(1).replace("\xa0", " ").strip()
+                )
             m_2025 = re.search(r"\((\d[\d\s]*?)\s+en\s+2025\)", text)
             if m_2025:
-                metrics["estimation_pop_2025"] = m_2025.group(1).replace("\xa0", " ").strip()
+                metrics["estimation_pop_2025"] = (
+                    m_2025.group(1).replace("\xa0", " ").strip()
+                )
             label_charts = {
                 "Tranche d'âge": {
                     "0-14 ans": "part_0_14_ans",
@@ -522,15 +561,21 @@ class HomepediaHarvester:
                         metrics[mapping[label]] = pourcent.get_text(strip=True)
             m_part1 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text)
             if m_part1:
-                metrics["participation_1er_tour"] = m_part1.group(1).replace(",", ".").strip()
+                metrics["participation_1er_tour"] = (
+                    m_part1.group(1).replace(",", ".").strip()
+                )
             m_inscrits = re.search(r"(\d[\d\s]*?)\s+inscrits", text)
             if m_inscrits:
-                metrics["inscrits_election"] = m_inscrits.group(1).replace("\xa0", " ").strip()
+                metrics["inscrits_election"] = (
+                    m_inscrits.group(1).replace("\xa0", " ").strip()
+                )
             idx_2nd = text.find("Second tour")
             if idx_2nd >= 0:
                 m_part2 = re.search(r"Participation\s*:\s*([\d,.\s]+)%", text[idx_2nd:])
                 if m_part2:
-                    metrics["participation_2nd_tour"] = m_part2.group(1).replace(",", ".").strip()
+                    metrics["participation_2nd_tour"] = (
+                        m_part2.group(1).replace(",", ".").strip()
+                    )
             # Code postal : priorité au <small> sous le titre (section #entete)
             # Ex: <h1>Paris <small>75001 Paris</small></h1>
             small_candidates = []
@@ -567,7 +612,9 @@ class HomepediaHarvester:
             if not section_mairie:
                 for h2 in soup.find_all("h2"):
                     if "Mairie" in (h2.get_text() or ""):
-                        section_mairie = h2.find_parent("section") or h2.find_next("section")
+                        section_mairie = h2.find_parent("section") or h2.find_next(
+                            "section"
+                        )
                         break
             if section_mairie:
                 m_maire = re.search(
@@ -582,7 +629,10 @@ class HomepediaHarvester:
     def _extract_security_services(
         self, soup: BeautifulSoup, metrics: Dict[str, Any]
     ) -> Dict[str, Any]:
-        result: Dict[str, Any] = {"services_population": [], "services_population_counts": {}}
+        result: Dict[str, Any] = {
+            "services_population": [],
+            "services_population_counts": {},
+        }
         try:
             # Mapping label -> clé de métrique normalisée
             label_to_metric = {
@@ -642,7 +692,9 @@ class HomepediaHarvester:
             if not sec_section:
                 for h2 in soup.find_all("h2"):
                     if "Sécurité" in (h2.get_text() or ""):
-                        sec_section = h2.find_parent("section") or h2.find_next("section")
+                        sec_section = h2.find_parent("section") or h2.find_next(
+                            "section"
+                        )
                         break
             if sec_section:
                 sec_table = sec_section.find("table")
@@ -664,7 +716,9 @@ class HomepediaHarvester:
             if not services_section:
                 for h2 in soup.find_all("h2"):
                     if "Services à la population" in (h2.get_text() or ""):
-                        services_section = h2.find_parent("section") or h2.find_next("section")
+                        services_section = h2.find_parent("section") or h2.find_next(
+                            "section"
+                        )
                         break
             if services_section:
                 items = services_section.find_all(["li", "p"])
@@ -699,13 +753,17 @@ class HomepediaHarvester:
                         if metric_key:
                             metrics[metric_key] = value
                         if category:
-                            by_cat = result.setdefault("services_population_counts_by_category", {})
+                            by_cat = result.setdefault(
+                                "services_population_counts_by_category", {}
+                            )
                             by_cat.setdefault(category, {})[label] = value
         except Exception as exc:
             logging.warning("Erreur extraction sécurité/services : %s", exc)
         return result
 
-    def _extract_real_estate(self, session: requests.Session, base_url: str) -> Dict[str, Any]:
+    def _extract_real_estate(
+        self, session: requests.Session, base_url: str
+    ) -> Dict[str, Any]:
         result: Dict[str, Any] = {
             "prix_m2_maison": None,
             "prix_m2_appartement": None,
@@ -757,7 +815,9 @@ class HomepediaHarvester:
             if not usage_canvas:
                 usage_canvas = soup_imm.find(
                     "canvas",
-                    attrs={"aria-label": re.compile("Usage des habitations", re.IGNORECASE)},
+                    attrs={
+                        "aria-label": re.compile("Usage des habitations", re.IGNORECASE)
+                    },
                 )
             if usage_canvas:
                 data_attr = usage_canvas.get("data-data")
@@ -806,7 +866,9 @@ class HomepediaHarvester:
             if not section_note:
                 for h2 in soup_avis.find_all("h2"):
                     if "Moyenne par critère" in (h2.get_text() or ""):
-                        section_note = h2.find_parent("section") or h2.find_next("section")
+                        section_note = h2.find_parent("section") or h2.find_next(
+                            "section"
+                        )
                         break
             if section_note:
                 table = section_note.find("table")
@@ -861,7 +923,9 @@ class HomepediaHarvester:
                 '[itemprop="review"], article.review, div.review, li.review'
             ):
                 text_el = (
-                    container.find("p", class_="review_text") or container.find("p") or container
+                    container.find("p", class_="review_text")
+                    or container.find("p")
+                    or container
                 )
                 text = text_el.get_text(" ", strip=True) if text_el else None
                 if not text:
@@ -870,8 +934,14 @@ class HomepediaHarvester:
                     '[itemprop="ratingValue"], .rating, .note, .review_note'
                 )
                 rating = rating_el.get_text(strip=True) if rating_el else None
-                date_el = container.find("time") or container.select_one(".date, .review_date")
-                date = date_el.get("datetime") or date_el.get_text(strip=True) if date_el else None
+                date_el = container.find("time") or container.select_one(
+                    ".date, .review_date"
+                )
+                date = (
+                    date_el.get("datetime") or date_el.get_text(strip=True)
+                    if date_el
+                    else None
+                )
                 full_reviews.append({"text": text, "rating": rating, "date": date})
 
             # Structure spécifique Bien-dans-ma-ville : <div class="commentaire" data-pouce="...">
@@ -887,7 +957,9 @@ class HomepediaHarvester:
                     sentiment_source["all"].append(text)
                 # Note et date ne sont pas triviales à extraire sur cette structure,
                 # on les laisse à None pour l'instant.
-                full_reviews.append({"text": text, "rating": None, "date": None, "id": comment_id})
+                full_reviews.append(
+                    {"text": text, "rating": None, "date": None, "id": comment_id}
+                )
         except Exception as exc:
             logging.warning("Erreur extraction avis détaillés : %s", exc)
         return full_reviews, sentiment_source
@@ -943,7 +1015,9 @@ class HomepediaHarvester:
             "nom_maire": None,
         }
 
-    def process_city(self, city_info: Tuple[str, str, Optional[str]]) -> Optional[Dict[str, Any]]:
+    def process_city(
+        self, city_info: Tuple[str, str, Optional[str]]
+    ) -> Optional[Dict[str, Any]]:
         """
         city_info : (com, nom_commune, base_url)
         base_url doit provenir du sitemap / scrap_queue.
@@ -967,14 +1041,20 @@ class HomepediaHarvester:
             session = self._get_thread_session()
             soup_ville = self._safe_get(session, base_url)
             if not soup_ville:
-                logger.warning("Impossible de charger la page ville pour %s (%s)", name, com)
+                logger.warning(
+                    "Impossible de charger la page ville pour %s (%s)", name, com
+                )
                 return None
             self._extract_demographics(soup_ville, result.metrics)
-            result.security_services = self._extract_security_services(soup_ville, result.metrics)
+            result.security_services = self._extract_security_services(
+                soup_ville, result.metrics
+            )
             result.real_estate = self._extract_real_estate(session, base_url)
             soup_avis = self._safe_get(session, avis_url)
             if soup_avis:
-                result.reviews_summary = self._extract_reviews_summary(soup_avis, result.metrics)
+                result.reviews_summary = self._extract_reviews_summary(
+                    soup_avis, result.metrics
+                )
                 full_reviews, sentiment_source = self._extract_reviews_full(soup_avis)
             else:
                 full_reviews, sentiment_source = (
@@ -1004,7 +1084,9 @@ class HomepediaHarvester:
                     },
                     upsert=True,
                 )
-                direct_doc = self._build_commune_direct_document(commune_doc=commune_doc)
+                direct_doc = self._build_commune_direct_document(
+                    commune_doc=commune_doc
+                )
                 self.city_direct_store.update_one(
                     {"com": com},
                     {"$set": direct_doc},
@@ -1037,7 +1119,11 @@ class HomepediaHarvester:
                     result.metrics.get("nb_habitant") or "?",
                     result.metrics.get("note_moyenne_globale") or "?",
                 )
-            return {"com": result.com, "nom_commune": result.nom_commune, "url": base_url}
+            return {
+                "com": result.com,
+                "nom_commune": result.nom_commune,
+                "url": base_url,
+            }
         except ValueError as exc:
             logger.warning("Validation impossible pour %s (%s): %s", name, com, exc)
             return None
@@ -1084,29 +1170,60 @@ class HomepediaHarvester:
                 "nom_metropole": m.get("nom_metropole"),
                 "nom_maire": m.get("nom_maire"),
             },
-            "demography": {k: m.get(k) for k in m if k.startswith("part_") or k in {
-                "nb_habitant", "age_moyen", "pop_active", "taux_chomage", "pop_densite",
-                "revenu_moyen", "superficie_km2", "estimation_pop_2025", "estimation_pop_2026",
-                "participation_1er_tour", "participation_2nd_tour", "inscrits_election",
-            }},
-            "security": {k: m.get(k) for k in ("agressions", "cambriolages", "vols_degradations", "stupefiants")},
-            "quality_of_life": {k: m.get(k) for k in (
-                "note_moyenne_globale",
-                "nb_avis",
-                "score_securite",
-                "score_education",
-                "score_loisirs",
-                "score_environnement",
-                "score_vie_pratique",
-            )},
+            "demography": {
+                k: m.get(k)
+                for k in m
+                if k.startswith("part_")
+                or k
+                in {
+                    "nb_habitant",
+                    "age_moyen",
+                    "pop_active",
+                    "taux_chomage",
+                    "pop_densite",
+                    "revenu_moyen",
+                    "superficie_km2",
+                    "estimation_pop_2025",
+                    "estimation_pop_2026",
+                    "participation_1er_tour",
+                    "participation_2nd_tour",
+                    "inscrits_election",
+                }
+            },
+            "security": {
+                k: m.get(k)
+                for k in (
+                    "agressions",
+                    "cambriolages",
+                    "vols_degradations",
+                    "stupefiants",
+                )
+            },
+            "quality_of_life": {
+                k: m.get(k)
+                for k in (
+                    "note_moyenne_globale",
+                    "nb_avis",
+                    "score_securite",
+                    "score_education",
+                    "score_loisirs",
+                    "score_environnement",
+                    "score_vie_pratique",
+                )
+            },
             "services": {k: m.get(k) for k in services_keys},
             "real_estate": result.real_estate,
             "reviews_summary": result.reviews_summary,
-            "reviews_refs": {"count": len(result.reviews_full), "last_collected_at": now_utc},
+            "reviews_refs": {
+                "count": len(result.reviews_full),
+                "last_collected_at": now_utc,
+            },
             "updated_at": now_utc,
         }
 
-    def _build_commune_direct_document(self, commune_doc: CommuneHarvestDoc) -> Dict[str, Any]:
+    def _build_commune_direct_document(
+        self, commune_doc: CommuneHarvestDoc
+    ) -> Dict[str, Any]:
         """
         “Table directe” : une doc par commune, avec les champs importants aplatis en colonnes.
         """
@@ -1117,13 +1234,19 @@ class HomepediaHarvester:
             "code_dept": (commune_doc.get("admin_codes") or {}).get("code_dept"),
             "code_postal": (commune_doc.get("admin_details") or {}).get("code_postal"),
             "nom_region": (commune_doc.get("admin_details") or {}).get("nom_region"),
-            "nom_departement": (commune_doc.get("admin_details") or {}).get("nom_departement"),
-            "nom_metropole": (commune_doc.get("admin_details") or {}).get("nom_metropole"),
+            "nom_departement": (commune_doc.get("admin_details") or {}).get(
+                "nom_departement"
+            ),
+            "nom_metropole": (commune_doc.get("admin_details") or {}).get(
+                "nom_metropole"
+            ),
             "nom_maire": (commune_doc.get("admin_details") or {}).get("nom_maire"),
             "city_page": (commune_doc.get("links") or {}).get("city_page"),
             "avis_page": (commune_doc.get("links") or {}).get("avis_page"),
             "reviews_refs_count": (commune_doc.get("reviews_refs") or {}).get("count"),
-            "reviews_refs_last_collected_at": (commune_doc.get("reviews_refs") or {}).get("last_collected_at"),
+            "reviews_refs_last_collected_at": (
+                commune_doc.get("reviews_refs") or {}
+            ).get("last_collected_at"),
             "updated_at": commune_doc.get("updated_at"),
         }
 
@@ -1227,7 +1350,11 @@ class HomepediaHarvester:
                     self.reviews_store.bulk_write(ops, ordered=False)
                     writes_count += len(ops)
                 except BulkWriteError as exc:
-                    logger.warning("BulkWrite reviews partiellement échoué pour %s: %s", com, exc.details)
+                    logger.warning(
+                        "BulkWrite reviews partiellement échoué pour %s: %s",
+                        com,
+                        exc.details,
+                    )
                     writes_count += len(ops)
                 ops.clear()
         if ops:
@@ -1235,10 +1362,16 @@ class HomepediaHarvester:
                 self.reviews_store.bulk_write(ops, ordered=False)
                 writes_count += len(ops)
             except BulkWriteError as exc:
-                logger.warning("BulkWrite reviews partiellement échoué pour %s: %s", com, exc.details)
+                logger.warning(
+                    "BulkWrite reviews partiellement échoué pour %s: %s",
+                    com,
+                    exc.details,
+                )
                 writes_count += len(ops)
         if writes_count:
-            logger.debug("Reviews raw upsert: %d opération(s) pour com=%s", writes_count, com)
+            logger.debug(
+                "Reviews raw upsert: %d opération(s) pour com=%s", writes_count, com
+            )
 
     def _update_progress(self) -> None:
         """
@@ -1276,7 +1409,11 @@ class HomepediaHarvester:
         self.queue_store.update_one(
             {"url": url},
             {
-                "$set": {"is_processed": True, "processed_at": now_utc, "updated_at": now_utc},
+                "$set": {
+                    "is_processed": True,
+                    "processed_at": now_utc,
+                    "updated_at": now_utc,
+                },
                 "$inc": {"attempt_count": 1},
             },
         )
@@ -1291,7 +1428,9 @@ class HomepediaHarvester:
             },
         )
 
-    def _process_queue_entry(self, entry: Tuple[str, str, str]) -> Optional[Dict[str, Any]]:
+    def _process_queue_entry(
+        self, entry: Tuple[str, str, str]
+    ) -> Optional[Dict[str, Any]]:
         """
         Wrapper appelé par les threads :
         - lance le scraping,
@@ -1324,7 +1463,9 @@ class HomepediaHarvester:
                 self._mark_queue_failed_mongo(url, str(exc))
             except PyMongoError:
                 logger.exception("Impossible de marquer la queue en échec pour %s", url)
-            logger.warning("Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc)
+            logger.warning(
+                "Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc
+            )
             return None
         finally:
             with self._progress_lock:
@@ -1353,7 +1494,9 @@ class HomepediaHarvester:
             success_count = 0
             failure_count = 0
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                for row in executor.map(self._process_queue_entry, queue_entries, chunksize=8):
+                for row in executor.map(
+                    self._process_queue_entry, queue_entries, chunksize=8
+                ):
                     if row:
                         success_count += 1
                     else:

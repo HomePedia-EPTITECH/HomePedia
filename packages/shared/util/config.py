@@ -25,7 +25,9 @@ def get_mongo_params() -> Dict[str, str]:
     """Paramètres Mongo (user, password, host, port, db_name)."""
     return {
         "user": os.getenv("MONGO_ROOT_USER") or os.getenv("MONGO_USER") or "root",
-        "password": os.getenv("MONGO_ROOT_PASSWORD") or os.getenv("MONGO_PASSWORD") or "",
+        "password": os.getenv("MONGO_ROOT_PASSWORD")
+        or os.getenv("MONGO_PASSWORD")
+        or "",
         "host": os.getenv("MONGO_HOST", "localhost"),
         "port": os.getenv("MONGO_PORT", "27017"),
         "db_name": os.getenv("MONGO_DB", "homepedia_raw"),

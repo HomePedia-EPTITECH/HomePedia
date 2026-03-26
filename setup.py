@@ -41,7 +41,9 @@ def resolve_compose_file() -> Path:
     for path in candidates:
         if path.exists():
             return path
-    print("[setup] Aucun fichier docker-compose.yml trouvé (attendu dans ./docker/ ou à la racine).")
+    print(
+        "[setup] Aucun fichier docker-compose.yml trouvé (attendu dans ./docker/ ou à la racine)."
+    )
     sys.exit(1)
 
 
