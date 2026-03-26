@@ -1,8 +1,5 @@
 """
-Point d'entrée unique : migrations (Postgres + Mongo) puis chargement des données.
-
-Ordre d’exécution : run_migrations.py (applique les migrations en attente), puis les scripts de données.
-Ajoute ici tout nouveau script Python à exécuter ; ils seront lancés dans l’ordre.
+Point d'entrée unique : exécution des migrations MongoDB.
 """
 
 import subprocess
@@ -11,9 +8,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+# Seules les migrations et l'initialisation de la file des pages ville sont exécutées automatiquement.
+# Les scripts de chargement de données (CSV/JSON) sont désormais optionnels
+# et lancés manuellement si besoin.
 SCRIPTS = [
-    "run_migrations.py",  # applique uniquement les migrations pas encore jouées
-    "load_communes.py",
+    "run_migrations.py",
 ]
 
 

@@ -9,7 +9,7 @@ Les fichiers dans packages/etl/database/mongo/migrations/ sont exécutés dans l
 Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-les une fois :
 
   db.schema_migrations.insertMany([
-    { _id: "01_init_city_backups.js" }, { _id: "02_xxx.js" }, ...
+    { _id: "01_init_communes_harvest.js" }, { _id: "02_xxx.js" }, ...
   ]);
 """
 
@@ -33,11 +33,12 @@ DATABASE_DIR = Path(__file__).resolve().parent
 MIGRATIONS_DIR = DATABASE_DIR / "mongo" / "migrations"
 
 COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
+COMPOSE_PROJECT_DIR = COMPOSE_FILE.parent
 COMPOSE_BASE = [
     "docker",
     "compose",
     "--project-directory",
-    str(ROOT),
+    str(COMPOSE_PROJECT_DIR),
     "-f",
     str(COMPOSE_FILE),
 ]

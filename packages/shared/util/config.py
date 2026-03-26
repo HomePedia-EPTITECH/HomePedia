@@ -1,11 +1,11 @@
 """
-Configuration centralisée : chargement du .env et paramètres de connexion Postgres / Mongo.
+Configuration centralisée : chargement du .env et paramètres MongoDB.
 Tous les scripts du projet peuvent importer depuis ici pour éviter de dupliquer le code config.
 """
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict
 
 # Racine du projet (HomePedia/) : packages/shared/util -> parents[3]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -21,22 +21,13 @@ def load_env() -> None:
         load_dotenv(env_path, override=False)
 
 
-def get_pg_params() -> Dict[str, Any]:
-    """Paramètres de connexion PostgreSQL (pour psycopg2.connect(**get_pg_params()))."""
-    return {
-        "dbname": os.getenv("POSTGRES_DB", "homepedia"),
-        "user": os.getenv("POSTGRES_USER", "admin"),
-        "password": os.getenv("POSTGRES_PASSWORD", ""),
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    }
-
-
 def get_mongo_params() -> Dict[str, str]:
     """Paramètres Mongo (user, password, host, port, db_name)."""
     return {
         "user": os.getenv("MONGO_ROOT_USER") or os.getenv("MONGO_USER") or "root",
-        "password": os.getenv("MONGO_ROOT_PASSWORD") or os.getenv("MONGO_PASSWORD") or "",
+        "password": os.getenv("MONGO_ROOT_PASSWORD")
+        or os.getenv("MONGO_PASSWORD")
+        or "",
         "host": os.getenv("MONGO_HOST", "localhost"),
         "port": os.getenv("MONGO_PORT", "27017"),
         "db_name": os.getenv("MONGO_DB", "homepedia_raw"),

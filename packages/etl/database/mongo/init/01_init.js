@@ -4,4 +4,4 @@
 const dbName = process.env.MONGO_INITDB_DATABASE || "homepedia_raw";
 db = db.getSiblingDB(dbName);
 
-db.createCollection("city_backups");
+db.createCollection("communes_harvest");
