@@ -9,7 +9,7 @@ if (!db.getCollectionNames().includes("communes_harvest")) {
 }
 
 db.communes_harvest.createIndex({ com: 1 }, { unique: true });
-db.communes_harvest.createIndex({ "metrics.nb_habitant": 1 });
-db.communes_harvest.createIndex({ "metrics.score_securite": 1 });
+db.communes_harvest.createIndex({ "demography.nb_habitant": 1 });
+db.communes_harvest.createIndex({ "quality_of_life.score_securite": 1 });
 db.communes_harvest.createIndex({ "real_estate.prix_m2_maison": 1 });
 db.communes_harvest.createIndex({ "real_estate.prix_m2_appartement": 1 });
