@@ -28,8 +28,8 @@ services:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
-      - ./Database/mongo/init:/docker-entrypoint-initdb.d:ro
-      - ./Database/mongo/migrations:/migrations:ro
+      - ../packages/etl/database/mongo/init:/docker-entrypoint-initdb.d:ro
+      - ../packages/etl/database/mongo/migrations:/migrations:ro
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' > /dev/null"]
       interval: 5s

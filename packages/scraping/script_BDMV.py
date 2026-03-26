@@ -3,18 +3,21 @@ import sys
 import time
 import threading
 import logging
+import hashlib
 import gzip
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Iterator
 from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
 from pymongo import MongoClient, UpdateOne
-from pymongo.errors import OperationFailure
+from pymongo.errors import BulkWriteError, OperationFailure, PyMongoError
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from unidecode import unidecode
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,16 +32,27 @@ from packages.scraping.models import (
 from packages.shared.util.config import get_mongo_db_name, get_mongo_uri
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
 SITEMAP_URL = "https://www.bien-dans-ma-ville.fr/sitemap.xml"
 CITY_PAGES_QUEUE_COLLECTION = "city_pages_queue"
 COMMUNES_DIRECT_COLLECTION = "communes_direct"
+MONGO_BULK_BATCH_SIZE = 500
 
 
 class HomepediaHarvester:
     def __init__(self) -> None:
-        self.mongo_client = MongoClient(get_mongo_uri())
+        self.mongo_client = MongoClient(
+            get_mongo_uri(),
+            maxPoolSize=50,
+            minPoolSize=0,
+            serverSelectionTimeoutMS=8000,
+            connectTimeoutMS=8000,
+            socketTimeoutMS=30000,
+            retryWrites=True,
+            appname="homepedia-bdmv-harvester",
+        )
         self.raw_db = self.mongo_client[get_mongo_db_name()]
         self.queue_store = self.raw_db[CITY_PAGES_QUEUE_COLLECTION]
         self.city_store = self.raw_db["communes_harvest"]
@@ -62,6 +76,8 @@ class HomepediaHarvester:
         self.max_active_workers: int = 0
         self.start_time: float = 0.0
 
+        # Force une validation rapide de la connectivité au démarrage.
+        self.mongo_client.admin.command("ping")
         self._ensure_mongo_indexes()
 
     def _ensure_mongo_indexes(self) -> None:
@@ -71,7 +87,7 @@ class HomepediaHarvester:
             except OperationFailure as exc:
                 # Code 85 = même index déjà présent sous un autre nom.
                 if getattr(exc, "code", None) == 85:
-                    logging.info("Index déjà présent (%s): %s", collection.name, exc)
+                    logger.info("Index déjà présent (%s): %s", collection.name, exc)
                     return
                 raise
 
@@ -100,6 +116,20 @@ class HomepediaHarvester:
         safe_create_index(self.city_store, [("com", 1)], unique=True)
         safe_create_index(self.city_direct_store, [("com", 1)], unique=True)
         safe_create_index(self.reviews_store, [("com", 1), ("collected_at", -1)])
+        safe_create_index(
+            self.reviews_store,
+            [("source", 1), ("com", 1), ("external_comment_id", 1)],
+            unique=True,
+            name="idx_reviews_raw_unique_external_id",
+            partialFilterExpression={"external_comment_id": {"$exists": True, "$type": "string"}},
+        )
+        safe_create_index(
+            self.reviews_store,
+            [("source", 1), ("com", 1), ("text_hash", 1)],
+            unique=True,
+            name="idx_reviews_raw_unique_text_hash",
+            partialFilterExpression={"text_hash": {"$exists": True, "$type": "string"}},
+        )
         safe_create_index(self.dept_store, [("code_dept", 1)], unique=True)
 
     # ---------- OUTILS / FILE DES PAGES VILLE ----------
@@ -201,7 +231,7 @@ class HomepediaHarvester:
                         u = line.split(":", 1)[1].strip()
                         if u and u not in to_visit:
                             to_visit.append(u)
-        except Exception:
+        except requests.RequestException:
             pass
 
         while to_visit:
@@ -213,7 +243,7 @@ class HomepediaHarvester:
             try:
                 resp = requests.get(sitemap_url, headers=self.headers, timeout=30)
                 resp.raise_for_status()
-            except Exception:
+            except requests.RequestException:
                 continue
 
             xml_locs: List[str] = []
@@ -260,12 +290,13 @@ class HomepediaHarvester:
         try:
             urls = self._fetch_city_urls_from_sitemap()
         except Exception as exc:
-            logging.warning("Impossible de synchroniser la queue Mongo depuis le sitemap: %s", exc)
+            logger.warning("Impossible de synchroniser la queue Mongo depuis le sitemap: %s", exc)
             return
         if not urls:
-            logging.warning("Sitemap vide ou non exploitable: aucune URL ajoutée à la queue.")
+            logger.warning("Sitemap vide ou non exploitable: aucune URL ajoutée à la queue.")
             return
         ops: List[UpdateOne] = []
+        written_ops = 0
         skipped_invalid = 0
         for url in urls:
             try:
@@ -297,48 +328,65 @@ class HomepediaHarvester:
                     upsert=True,
                 )
             )
+            if len(ops) >= MONGO_BULK_BATCH_SIZE:
+                try:
+                    self.queue_store.bulk_write(ops, ordered=False)
+                    written_ops += len(ops)
+                except BulkWriteError as exc:
+                    logger.warning("BulkWrite queue partiellement échoué: %s", exc.details)
+                    written_ops += len(ops)
+                ops.clear()
         if ops:
-            self.queue_store.bulk_write(ops, ordered=False)
+            try:
+                self.queue_store.bulk_write(ops, ordered=False)
+                written_ops += len(ops)
+            except BulkWriteError as exc:
+                logger.warning("BulkWrite queue partiellement échoué: %s", exc.details)
+                written_ops += len(ops)
+        if written_ops:
             mode = "rescrape complet" if force_rescrape else "ajout nouvelles URLs"
-            logging.info(
+            logger.info(
                 "Queue Mongo synchronisée depuis sitemap: %d URLs (%s), %d URL(s) ignorée(s).",
-                len(ops),
+                written_ops,
                 mode,
                 skipped_invalid,
             )
         else:
-            logging.warning(
+            logger.warning(
                 "Aucune URL exploitable après parsing sitemap (%d candidates, %d ignorées).",
                 len(urls),
                 skipped_invalid,
             )
 
-    def _load_queue_entries(self) -> List[Tuple[str, str, str]]:
+    def _load_queue_entries(self) -> Iterator[Tuple[str, str, str]]:
         self.total_in_queue = self.queue_store.count_documents({})
         self.already_done = self.queue_store.count_documents({"is_processed": True})
-        rows = list(
-            self.queue_store.find(
-                {"is_processed": False},
-                {"url": 1, "com_id": 1, "nom_commune_guess": 1},
-            ).sort("url", 1)
-        )
-        if not rows:
-            logging.info("Aucune URL à traiter dans la queue Mongo.")
-            return []
-        entries: List[Tuple[str, str, str]] = []
-        for d in rows:
-            d = d  # type: QueueDoc
-            url = d.get("url")
-            com_id = d.get("com_id")
-            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(url, com_id)
-            entries.append((com_id, nom_commune, url))
-        logging.info(
+        remaining = self.queue_store.count_documents({"is_processed": False})
+        if remaining == 0:
+            logger.info("Aucune URL à traiter dans la queue Mongo.")
+            return iter(())
+        logger.info(
             "Queue Mongo chargée : %d entrées à traiter, %d déjà traitées sur un total de %d.",
-            len(entries),
+            remaining,
             self.already_done,
             self.total_in_queue,
         )
-        return entries
+        cursor = self.queue_store.find(
+            {"is_processed": False},
+            {"url": 1, "com_id": 1, "nom_commune_guess": 1},
+        ).sort("url", 1)
+        cursor = cursor.batch_size(500)
+        return self._iter_queue_entries(cursor=cursor)
+
+    def _iter_queue_entries(self, cursor: Any) -> Iterator[Tuple[str, str, str]]:
+        for d in cursor:
+            d = d  # type: QueueDoc
+            url = d.get("url")
+            com_id = d.get("com_id")
+            if not url or not com_id:
+                continue
+            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(url, com_id)
+            yield (com_id, nom_commune, url)
 
     # ---------- OUTILS HTTP / SCRAP ----------
 
@@ -346,13 +394,35 @@ class HomepediaHarvester:
         name_clean = unidecode(name).lower().replace(" ", "-")
         return f"https://www.bien-dans-ma-ville.fr/{name_clean}-{com}/"
 
+    def _normalize_review_text(self, value: str) -> str:
+        return re.sub(r"\s+", " ", value or "").strip()
+
+    def _compute_review_text_hash(self, text: str) -> str:
+        normalized = self._normalize_review_text(text).lower()
+        return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+
+    def _validate_commune_doc(self, doc: CommuneHarvestDoc) -> CommuneHarvestDoc:
+        com = (doc.get("com") or "").strip().upper()
+        if not com:
+            raise ValueError("commune_doc.com est requis")
+        links = doc.get("links") or {}
+        city_page = (links.get("city_page") or "").strip()
+        avis_page = (links.get("avis_page") or "").strip()
+        if not city_page.startswith("http"):
+            raise ValueError(f"commune_doc.links.city_page invalide: {city_page!r}")
+        if not avis_page.startswith("http"):
+            raise ValueError(f"commune_doc.links.avis_page invalide: {avis_page!r}")
+        doc["com"] = com
+        doc["nom_commune"] = (doc.get("nom_commune") or "").strip()
+        return doc
+
     def _safe_get(self, session: requests.Session, url: str) -> Optional[BeautifulSoup]:
         try:
             resp = session.get(url, headers=self.headers, timeout=20)
             resp.raise_for_status()
             return BeautifulSoup(resp.text, "html.parser")
-        except Exception as exc:
-            logging.warning("Erreur HTTP sur %s : %s", url, exc)
+        except requests.RequestException as exc:
+            logger.warning("Erreur HTTP sur %s : %s", url, exc)
             return None
 
     def _get_thread_session(self) -> requests.Session:
@@ -360,6 +430,18 @@ class HomepediaHarvester:
         if session is None:
             session = requests.Session()
             session.headers.update(self.headers)
+            retries = Retry(
+                total=3,
+                connect=3,
+                read=3,
+                backoff_factor=0.6,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=["GET"],
+                raise_on_status=False,
+            )
+            adapter = HTTPAdapter(max_retries=retries, pool_connections=20, pool_maxsize=20)
+            session.mount("http://", adapter)
+            session.mount("https://", adapter)
             self._thread_local.session = session
         return session
     def _extract_demographics(self, soup: BeautifulSoup, metrics: Dict[str, Any]) -> None:
@@ -867,7 +949,7 @@ class HomepediaHarvester:
         base_url doit provenir du sitemap / scrap_queue.
         """
         if len(city_info) != 3:
-            logging.error("city_info invalide (attendu 3 éléments) : %r", city_info)
+            logger.error("city_info invalide (attendu 3 éléments) : %r", city_info)
             return None
 
         com, name, base_url = city_info
@@ -885,7 +967,7 @@ class HomepediaHarvester:
             session = self._get_thread_session()
             soup_ville = self._safe_get(session, base_url)
             if not soup_ville:
-                logging.warning("Impossible de charger la page ville pour %s (%s)", name, com)
+                logger.warning("Impossible de charger la page ville pour %s (%s)", name, com)
                 return None
             self._extract_demographics(soup_ville, result.metrics)
             result.security_services = self._extract_security_services(soup_ville, result.metrics)
@@ -901,43 +983,54 @@ class HomepediaHarvester:
                 )
             source_soup = soup_avis or soup_ville
             if not source_soup:
-                logging.warning("Aucun HTML exploitable pour %s (%s)", name, com)
+                logger.warning("Aucun HTML exploitable pour %s (%s)", name, com)
                 return None
             result.reviews_full = full_reviews
-            commune_doc = self._build_commune_document(
-                result=result,
-                base_url=base_url,
-                avis_url=avis_url,
-                sentiment_source=sentiment_source,
+            commune_doc = self._validate_commune_doc(
+                self._build_commune_document(
+                    result=result,
+                    base_url=base_url,
+                    avis_url=avis_url,
+                    sentiment_source=sentiment_source,
+                )
             )
-            self.city_store.update_one(
-                {"com": com},
-                {
-                    "$set": {
-                        **commune_doc,
-                    }
-                },
-                upsert=True,
-            )
-            direct_doc = self._build_commune_direct_document(commune_doc=commune_doc)
-            self.city_direct_store.update_one(
-                {"com": com},
-                {"$set": direct_doc},
-                upsert=True,
-            )
-            self._upsert_departement_reference(commune_doc)
-            self._upsert_reviews_raw(
-                com=com,
-                source="bdmv",
-                url_page=avis_url,
-                reviews_full=result.reviews_full,
-                nom_commune=result.nom_commune,
-            )
+            try:
+                self.city_store.update_one(
+                    {"com": com},
+                    {
+                        "$set": {
+                            **commune_doc,
+                        }
+                    },
+                    upsert=True,
+                )
+                direct_doc = self._build_commune_direct_document(commune_doc=commune_doc)
+                self.city_direct_store.update_one(
+                    {"com": com},
+                    {"$set": direct_doc},
+                    upsert=True,
+                )
+                self._upsert_departement_reference(commune_doc)
+                self._upsert_reviews_raw(
+                    com=com,
+                    source="bdmv",
+                    url_page=avis_url,
+                    reviews_full=result.reviews_full,
+                    nom_commune=result.nom_commune,
+                )
+            except PyMongoError:
+                logger.exception(
+                    "Erreur Mongo pendant persist ville com=%s nom=%s url=%s",
+                    com,
+                    name,
+                    base_url,
+                )
+                return None
             if not result.has_any_demographic_or_reviews():
-                logging.warning("Aucune donnée trouvée pour %s (%s)", name, com)
+                logger.warning("Aucune donnée trouvée pour %s (%s)", name, com)
             else:
                 # Log détaillé en DEBUG uniquement pour éviter le bruit en production
-                logging.debug(
+                logger.debug(
                     "Collecté: %s (%s) — %s hab., note %s",
                     name,
                     com,
@@ -945,8 +1038,14 @@ class HomepediaHarvester:
                     result.metrics.get("note_moyenne_globale") or "?",
                 )
             return {"com": result.com, "nom_commune": result.nom_commune, "url": base_url}
+        except ValueError as exc:
+            logger.warning("Validation impossible pour %s (%s): %s", name, com, exc)
+            return None
+        except requests.RequestException as exc:
+            logger.warning("Erreur HTTP sur %s (%s): %s", name, com, exc)
+            return None
         except Exception as exc:
-            logging.warning("Erreur sur %s (%s): %s", name, com, exc)
+            logger.exception("Erreur inattendue sur %s (%s): %s", name, com, exc)
             return None
 
     # ---------- GESTION QUEUE / PROGRESSION ----------
@@ -1075,14 +1174,17 @@ class HomepediaHarvester:
             return
         now_utc = datetime.now(timezone.utc)
         ops: List[UpdateOne] = []
+        writes_count = 0
         for item in reviews_full:
-            text = (item.get("text") or "").strip()
+            text = self._normalize_review_text(item.get("text") or "")
             if not text:
                 continue
+            text_hash = self._compute_review_text_hash(text)
+            external_comment_id = (item.get("id") or "").strip() or None
             model = ReviewRawModel(
                 com=com,
                 source=source,
-                external_comment_id=item.get("id"),
+                external_comment_id=external_comment_id,
                 text=text,
                 rating=item.get("rating"),
                 date=item.get("date"),
@@ -1098,7 +1200,7 @@ class HomepediaHarvester:
                 selector = {
                     "source": model.source,
                     "com": model.com,
-                    "text": model.text,
+                    "text_hash": text_hash,
                 }
             ops.append(
                 UpdateOne(
@@ -1110,6 +1212,7 @@ class HomepediaHarvester:
                             "nom_commune": nom_commune,
                             "external_comment_id": model.external_comment_id,
                             "text": model.text,
+                            "text_hash": text_hash,
                             "rating": model.rating,
                             "date": model.date,
                             "collected_at": model.collected_at,
@@ -1119,8 +1222,23 @@ class HomepediaHarvester:
                     upsert=True,
                 )
             )
+            if len(ops) >= MONGO_BULK_BATCH_SIZE:
+                try:
+                    self.reviews_store.bulk_write(ops, ordered=False)
+                    writes_count += len(ops)
+                except BulkWriteError as exc:
+                    logger.warning("BulkWrite reviews partiellement échoué pour %s: %s", com, exc.details)
+                    writes_count += len(ops)
+                ops.clear()
         if ops:
-            self.reviews_store.bulk_write(ops, ordered=False)
+            try:
+                self.reviews_store.bulk_write(ops, ordered=False)
+                writes_count += len(ops)
+            except BulkWriteError as exc:
+                logger.warning("BulkWrite reviews partiellement échoué pour %s: %s", com, exc.details)
+                writes_count += len(ops)
+        if writes_count:
+            logger.debug("Reviews raw upsert: %d opération(s) pour com=%s", writes_count, com)
 
     def _update_progress(self) -> None:
         """
@@ -1185,7 +1303,7 @@ class HomepediaHarvester:
         try:
             _ = self._extract_com_id_from_url(url)  # revalidation de l'URL
         except ValueError as exc:
-            logging.warning("Entrée de queue ignorée (URL malformée) : %s", exc)
+            logger.warning("Entrée de queue ignorée (URL malformée) : %s", exc)
             return None
 
         with self._progress_lock:
@@ -1202,8 +1320,11 @@ class HomepediaHarvester:
                 self._mark_queue_failed_mongo(url, "Aucune donnée collectée")
             return row
         except Exception as exc:
-            self._mark_queue_failed_mongo(url, str(exc))
-            logging.warning("Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc)
+            try:
+                self._mark_queue_failed_mongo(url, str(exc))
+            except PyMongoError:
+                logger.exception("Impossible de marquer la queue en échec pour %s", url)
+            logger.warning("Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc)
             return None
         finally:
             with self._progress_lock:
@@ -1216,35 +1337,39 @@ class HomepediaHarvester:
             # 1) Initialisation + chargement de la queue Mongo
             self._sync_queue_from_sitemap(force_rescrape=True)
             queue_entries = self._load_queue_entries()
-
-            if not queue_entries:
+            pending_count = self.total_in_queue - self.already_done
+            if pending_count <= 0:
                 return
 
             self.start_time = time.time()
             max_workers = 12
-            logging.info(
+            logger.info(
                 "Début de la collecte pour %d communes avec ThreadPoolExecutor(max_workers=%d).",
-                len(queue_entries),
+                pending_count,
                 max_workers,
             )
 
             # 2) Multi‑threading sur la file d'URLs (ThreadPoolExecutor)
+            success_count = 0
+            failure_count = 0
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                results = list(executor.map(self._process_queue_entry, queue_entries))
+                for row in executor.map(self._process_queue_entry, queue_entries, chunksize=8):
+                    if row:
+                        success_count += 1
+                    else:
+                        failure_count += 1
 
-            # 3) Statistiques finales
-            valid_results = [r for r in results if r]
-            nb_errors = len(queue_entries) - len(valid_results)
+            # 3) Statistiques finales (sans conserver tous les résultats en mémoire)
             elapsed = max(time.time() - self.start_time, 1e-6)
-            rate_per_min = (len(valid_results) / elapsed) * 60.0
+            rate_per_min = (success_count / elapsed) * 60.0
             elapsed_h = int(elapsed // 3600)
             elapsed_m = int((elapsed % 3600) // 60)
             elapsed_s = int(elapsed % 60)
-            logging.info(
+            logger.info(
                 "Collecte terminée: %d communes traitées, %d erreur(s) sur %d à traiter. Durée totale: %02d:%02d:%02d (%.1fs, %.2f communes/min). Max workers actifs observés: %d.",
-                len(valid_results),
-                nb_errors,
-                len(queue_entries),
+                success_count,
+                failure_count,
+                pending_count,
                 elapsed_h,
                 elapsed_m,
                 elapsed_s,
@@ -1252,8 +1377,10 @@ class HomepediaHarvester:
                 rate_per_min,
                 self.max_active_workers,
             )
+        except PyMongoError:
+            logger.exception("Erreur Mongo fatale du pipeline.")
         except Exception as err:
-            logging.critical("Erreur fatale du pipeline : %s", err)
+            logger.critical("Erreur fatale du pipeline : %s", err)
         finally:
             try:
                 self.mongo_client.close()

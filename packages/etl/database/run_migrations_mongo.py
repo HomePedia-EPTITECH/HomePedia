@@ -33,11 +33,12 @@ DATABASE_DIR = Path(__file__).resolve().parent
 MIGRATIONS_DIR = DATABASE_DIR / "mongo" / "migrations"
 
 COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
+COMPOSE_PROJECT_DIR = COMPOSE_FILE.parent
 COMPOSE_BASE = [
     "docker",
     "compose",
     "--project-directory",
-    str(ROOT),
+    str(COMPOSE_PROJECT_DIR),
     "-f",
     str(COMPOSE_FILE),
 ]

@@ -18,7 +18,8 @@ SCRIPTS = [
 
 def main():
     for name in SCRIPTS:
-        path = ROOT / "Database" / name
+        # Evite les soucis de casse (macOS) et les chemins hérités.
+        path = ROOT / "database" / name
         if not path.is_file():
             continue
         code = subprocess.run([sys.executable, str(path)], cwd=ROOT).returncode
