@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 # Seules les migrations et l'initialisation de la file des pages ville sont exécutées automatiquement.
 # Les scripts de chargement de données (CSV/JSON) sont désormais optionnels

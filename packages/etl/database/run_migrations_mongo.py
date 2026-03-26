@@ -1,8 +1,11 @@
 """
 Applique les migrations MongoDB en attente (celles pas encore dans la collection schema_migrations).
-À lancer après « docker compose up », depuis la racine du projet : python Database/run_migrations_mongo.py
+À lancer après le démarrage Docker, depuis la racine du projet :
 
-Les fichiers dans Database/mongo/migrations/ sont exécutés dans l’ordre du nom (01_..., 02_..., 14_..., etc.).
+  docker compose --project-directory . -f docker/docker-compose.yml up -d
+  python packages/etl/database/run_migrations_mongo.py
+
+Les fichiers dans packages/etl/database/mongo/migrations/ sont exécutés dans l’ordre du nom (01_..., 02_..., 14_..., etc.).
 Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-les une fois :
 
   db.schema_migrations.insertMany([
@@ -19,13 +22,25 @@ try:
 except ImportError:
     MongoClient = None
 
-_ROOT = Path(__file__).resolve().parents[1]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 from util.config import get_mongo_params
 
-ROOT = _ROOT
-MIGRATIONS_DIR = ROOT / "Database" / "mongo" / "migrations"
+ROOT = PROJECT_ROOT
+DATABASE_DIR = Path(__file__).resolve().parent
+MIGRATIONS_DIR = DATABASE_DIR / "mongo" / "migrations"
+
+COMPOSE_FILE = ROOT / "docker" / "docker-compose.yml"
+COMPOSE_BASE = [
+    "docker",
+    "compose",
+    "--project-directory",
+    str(ROOT),
+    "-f",
+    str(COMPOSE_FILE),
+]
 
 
 def get_applied(client, db_name):
@@ -69,9 +84,7 @@ def main():
             print(f"[Mongo migrations] Déjà appliqué : {name}")
             continue
         print(f"[Mongo migrations] Application : {name}")
-        cmd = [
-            "docker",
-            "compose",
+        cmd = COMPOSE_BASE + [
             "exec",
             "-T",
             "mongo",
