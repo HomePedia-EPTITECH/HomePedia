@@ -9,9 +9,10 @@
 .idea/**/shelf
 /.idea
 
-#Volumes from the project
+# Volumes from the project
 volumes
-# AWS User-specific
+
+# AWS user-specific
 .idea/**/aws.xml
 
 # Generated files
@@ -29,7 +30,6 @@ volumes
 # Gradle
 .idea/**/gradle.xml
 .idea/**/libraries
-
 
 # CMake
 cmake-build-*/
@@ -64,9 +64,8 @@ fabric.properties
 # Editor-based Rest Client
 .idea/httpRequests
 
-# Android studio 3.1+ serialized cache file
+# Android Studio 3.1+ serialized cache file
 .idea/caches/build_file_checksums.ser
-
 
 DS_Store
 .DS_Store
@@ -74,8 +73,11 @@ DS_Store
 volumes/mysql-volume/binlog.*
 volumes/mysql-volume/binlog.index
 
-# Node install
+# Node installs
 app/**/node_modules/*
+apps/**/node_modules/
+apps/**/dist/
+apps/**/.env
 /backend/node_modules
 /backend/dist
 /backend/.env
@@ -84,7 +86,7 @@ app/**/node_modules/*
 Database/seed_test_cities.py
 Database/seed_test_reviews.py
 
-# Python cache
+# Python caches
 __pycache__/
 *.py[cod]
 
