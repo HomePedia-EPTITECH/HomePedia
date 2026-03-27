@@ -34,11 +34,22 @@ Les details de baseline, de structure Mongo et d'exploitation sont dans `Docs/`.
 
 Le backend est maintenant sous `apps/backend`.
 
+Lecture de donnees actuelle:
+
+- `cities` et `overview` lisent Mongo `communes_direct`
+- `cities/:code/details` combine `communes_direct`, `communes_harvest` et `reviews_raw`
+- `departements` lit Mongo `departements`
+- `reviews` lit `communes_harvest` et `reviews_raw`
+- `kpis` est calcule depuis Mongo `communes_direct`
+
 Routes exposees:
 
 - `GET /api/health`
 - `GET /api/cities`
 - `GET /api/cities/:code`
+- `GET /api/cities/:code/details`
+- `GET /api/departements`
+- `GET /api/departements/:code`
 - `GET /api/overview`
 - `GET /api/reviews/cities/:code`
 - `GET /api/kpis`
@@ -47,10 +58,11 @@ Routes exposees:
 Demarrage rapide:
 
 ```bash
-cd apps/backend
 cp .env.example .env
-npm install
-npm run start:dev
+python setup.py
+python run_backend.py --install
 ```
 
-La migration KPI associee se trouve dans `packages/etl/database/postgres/migrations/02_create_kpis.sql`.
+La migration KPI historique se trouve dans `packages/etl/database/postgres/migrations/02_create_kpis.sql`, mais l'API KPI courante est calculee depuis Mongo.
+
+Tu peux aussi lancer un autre script npm backend depuis la racine, par exemple `python run_backend.py --script test`.

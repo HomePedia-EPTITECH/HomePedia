@@ -13,6 +13,7 @@ src/
     mongo.service.ts
   modules/
     cities/
+    departements/
     overview/
     reviews/
   controllers/
@@ -51,6 +52,8 @@ MONGO_ROOT_USER=CHANGE_ME
 MONGO_ROOT_PASSWORD=CHANGE_ME
 ```
 
+Le backend charge d'abord le `.env` racine du repo, puis complete avec `apps/backend/.env` si present.
+
 Notes sur le CORS:
 
 - `CORS_ORIGIN=*` autorise toutes les origines
@@ -66,6 +69,12 @@ npm run start:dev
 
 Le serveur demarre sur `http://localhost:3000` avec le prefixe global `api`.
 
+Depuis la racine du repo, tu peux aussi lancer le backend avec:
+
+```bash
+python run_backend.py --install
+```
+
 ## Tests
 
 ```bash
@@ -77,6 +86,7 @@ La suite couvre:
 - la validation de configuration runtime
 - le healthcheck
 - des tests HTTP sur `cities`, `reviews`, `overview` et `kpis`
+- des tests d'integration Mongo sur `communes_direct`, `communes_harvest`, `reviews_raw` et `departements`
 
 ## Swagger
 
@@ -87,23 +97,71 @@ La suite couvre:
 - API en lecture seule
 - les bases sont alimentees par les scripts de scraping et ETL
 - le backend expose les donnees sans modifier les donnees metier
+- `cities` et `overview` lisent la collection Mongo `communes_direct`
+- `cities/:code/details` combine `communes_direct`, `communes_harvest` et `reviews_raw`
+- `departements` lit la collection Mongo `departements`
+- `reviews` combine `communes_harvest` et `reviews_raw`
+- `kpis` est calcule a la volee depuis Mongo `communes_direct`
 
 ## Routes
 
 - `GET /api/health`
 - `GET /api/cities`
 - `GET /api/cities/:code`
+- `GET /api/cities/:code/details`
+- `GET /api/departements`
+- `GET /api/departements/:code`
 - `GET /api/overview`
 - `GET /api/reviews/cities/:code`
 - `GET /api/kpis`
 - `GET /api/kpis/:id`
 
+### Filtres `GET /api/cities`
+
+Parametres principaux disponibles:
+
+- `search`
+- `code_dept`
+- `nom_region`
+- `note_moyenne_globale_min`
+- `nb_avis_min`
+- `prix_m2_maison_max`
+- `prix_m2_appartement_max`
+- `sortBy`
+- `order`
+- `page`
+- `limit`
+
+## Exemple `GET /api/cities/75056/details`
+
+```json
+{
+  "data": {
+    "city": {
+      "code": "75056",
+      "name": "Paris"
+    },
+    "admin": {
+      "codeDept": "75",
+      "postalCode": "75000",
+      "region": "Ile-de-France"
+    },
+    "reviews": {
+      "count": 120,
+      "positive": ["Ville tres dynamique"],
+      "negative": ["Trafic dense"]
+    }
+  }
+}
+```
+
 ## Healthcheck
 
 `GET /api/health` verifie l'accessibilite de PostgreSQL et MongoDB.
 
-- `200 OK` si PostgreSQL et MongoDB sont joignables
-- `503 Service Unavailable` si au moins une des deux dependances est indisponible
+- `200 OK` si MongoDB est joignable
+- PostgreSQL est remonte dans les checks mais reste optionnel pour les routes hors KPI
+- `503 Service Unavailable` si MongoDB est indisponible
 
 ## Exemple `GET /api/reviews/cities/75056`
 
@@ -138,4 +196,4 @@ Appliquer les migrations existantes depuis la racine du repo:
 python packages/etl/database/run_migrations.py
 ```
 
-La migration `packages/etl/database/postgres/migrations/02_create_kpis.sql` cree la table `bdd.kpis`.
+Les KPI exposes par l'API sont derives de `communes_direct`. La migration `packages/etl/database/postgres/migrations/02_create_kpis.sql` reste legacy et n'est plus necessaire au fonctionnement courant de `/api/kpis`.
