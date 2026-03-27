@@ -74,7 +74,7 @@ Le serveur demarre sur `http://localhost:3000` avec le prefixe global `api`.
 Construire et lancer le backend avec les bases depuis la racine du repo:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build backend
+docker compose --env-file .env -f docker/docker-compose.yml up -d --build backend
 ```
 
 Le service `backend`:
@@ -82,13 +82,14 @@ Le service `backend`:
 - build l'image depuis `apps/backend/Dockerfile`
 - expose l'API sur `http://localhost:3000`
 - attend `mongo` et `postgres` via `depends_on`
-- reutilise les credentials du `.env` racine du repo
+- declare explicitement ses variables `environment` avec interpolation `${...}`
+- attend un lancement depuis la racine avec `--env-file .env`
 - utilise `mongo` et `postgres` comme hosts reseau Docker
 
 Arreter le backend conteneurise:
 
 ```bash
-docker compose -f docker/docker-compose.yml stop backend
+docker compose --env-file .env -f docker/docker-compose.yml stop backend
 ```
 
 ## Tests
