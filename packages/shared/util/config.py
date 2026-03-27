@@ -5,7 +5,7 @@ Tous les scripts du projet peuvent importer depuis ici pour éviter de dupliquer
 
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Dict
 
 # Racine du projet (HomePedia/) : packages/shared/util -> parents[3]
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -19,17 +19,6 @@ def load_env() -> None:
     env_path = PROJECT_ROOT / ".env"
     if env_path.exists():
         load_dotenv(env_path, override=False)
-
-
-def get_pg_params() -> Dict[str, Any]:
-    """Parametres PostgreSQL utilises par les scripts ETL et migrations."""
-    return {
-        "dbname": os.getenv("POSTGRES_DB", "homepedia"),
-        "user": os.getenv("POSTGRES_USER", "admin"),
-        "password": os.getenv("POSTGRES_PASSWORD", ""),
-        "host": os.getenv("POSTGRES_HOST", "localhost"),
-        "port": int(os.getenv("POSTGRES_PORT", "5432")),
-    }
 
 
 def get_mongo_params() -> Dict[str, str]:

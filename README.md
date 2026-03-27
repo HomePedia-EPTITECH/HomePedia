@@ -1,77 +1,33 @@
 # HomePedia
 
-Lancer le projet, appliquer les migrations, puis executer le scraping si besoin.
+Lancer le projet (MongoDB + données) puis le scrap.
 
-## Prerequis
+## Prérequis
 
-- Docker installe et demarre
-- Python 3 avec `pip install -r requirements.txt`
+- **Docker** installé et démarré
+- **Python 3** avec `pip install -r requirements.txt`
 
 ## Premier lancement
 
-1. Copier `.env.example` vers `.env` a la racine.
-2. Lancer `python setup.py`.
-3. Lancer le scraper si besoin avec `python packages/scraping/script_BDMV.py`.
+1. **Configurer l’environnement**  
+   Copie `.env.example` en `.env` à la racine et remplis les identifiants Mongo.
 
-`setup.py` demarre Docker, attend MongoDB, puis applique les migrations disponibles pour PostgreSQL et MongoDB.
+2. **Démarrer les bases et charger les données**  
+   À la racine du projet :
 
-## Migrations et donnees
+   ```bash
+   python setup.py
+   ```
 
-- Migrations globales: `python packages/etl/database/main.py`
-- Migrations uniquement: `python packages/etl/database/run_migrations.py`
-- Chargement PostgreSQL de communes de test: `python packages/etl/database/load_communes.py --file <chemin>`
+   Cela lance Docker, attend Mongo, applique les migrations et charge les données.
 
-Chemins principaux:
+3. **Lancer le scrap** (optionnel)
 
-- `docker/docker-compose.yml`
-- `apps/backend/`
-- `packages/etl/database/postgres/`
-- `packages/etl/database/mongo/`
-- `packages/scraping/`
-- `packages/shared/`
+   ```bash
+   python packages/scraping/script_BDMV.py
+   ```
 
-Les details de baseline, de structure Mongo et d'exploitation sont dans `Docs/`.
+## Suite
 
-## Backend NestJS
-
-Le backend NestJS est dans `apps/backend/`.
-
-Lecture de donnees actuelle:
-
-- `cities` et `overview` lisent Mongo `communes_direct`
-- `cities/:code/details` combine `communes_direct`, `communes_harvest` et `reviews_raw`
-- `departements` lit Mongo `departements`
-- `reviews` lit `communes_harvest` et `reviews_raw`
-- `kpis` est calcule depuis Mongo `communes_direct`
-
-Routes exposees:
-
-- `GET /api/health`
-- `GET /api/cities`
-- `GET /api/cities/:code`
-- `GET /api/cities/:code/details`
-- `GET /api/departements`
-- `GET /api/departements/:code`
-- `GET /api/departements/:code/cities`
-- `GET /api/overview`
-- `GET /api/reviews/cities/:code`
-- `GET /api/kpis`
-- `GET /api/kpis/:id`
-
-Contrat OpenAPI:
-
-- UI Swagger: `GET /api/docs`
-- Fichier genere: `apps/backend/openapi.json`
-- Generation: `python run_backend.py --script openapi:generate`
-
-Demarrage rapide:
-
-```bash
-cp .env.example .env
-python setup.py
-python run_backend.py --install
-```
-
-Le script SQL `packages/etl/database/postgres/migrations/02_create_kpis.sql` est present dans le depot, mais `/api/kpis` calcule actuellement ses KPI depuis Mongo.
-
-Tu peux aussi lancer un autre script npm backend depuis la racine, par exemple `python run_backend.py --script test`.
+- **Conteneurs déjà démarrés** : `python setup.py` pour refaire uniquement migrations + chargement des données.
+- **Détails** (migrations, baseline, réinitialisation, etc.) : voir le dossier **`Docs/`**.

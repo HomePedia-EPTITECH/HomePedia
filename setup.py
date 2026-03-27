@@ -1,11 +1,11 @@
 """
-Setup en une commande : lance Docker, attend Mongo, puis execute les migrations HomePedia.
+Setup en une commande : lance Docker, attend Mongo, puis exécute les scripts Database (Mongo uniquement).
 
-A la racine du projet :
+À la racine du projet :
 
   python setup.py
 
-Prerequis : Docker installe et demarre, fichier .env configure.
+Prérequis : Docker installé et démarré, fichier .env configuré.
 """
 
 import subprocess
@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from packages.shared.util.config import get_mongo_uri, load_env
+from packages.shared.util.config import load_env, get_mongo_uri
 
 load_env()
 
@@ -24,13 +24,13 @@ load_env()
 def run(cmd, check=True):
     print(f"[setup] {subprocess.list2cmdline(cmd)}")
     try:
-        result = subprocess.run(cmd, cwd=ROOT)
+        r = subprocess.run(cmd, cwd=ROOT)
     except FileNotFoundError as exc:
         print(f"[setup] Commande introuvable: {cmd[0]} ({exc})")
         sys.exit(1)
-    if check and result.returncode != 0:
-        sys.exit(result.returncode)
-    return result.returncode
+    if check and r.returncode != 0:
+        sys.exit(r.returncode)
+    return r.returncode
 
 
 def resolve_compose_file() -> Path:
@@ -41,7 +41,9 @@ def resolve_compose_file() -> Path:
     for path in candidates:
         if path.exists():
             return path
-    print("[setup] Aucun fichier docker-compose.yml trouve (attendu dans ./docker/ ou a la racine).")
+    print(
+        "[setup] Aucun fichier docker-compose.yml trouvé (attendu dans ./docker/ ou à la racine)."
+    )
     sys.exit(1)
 
 
@@ -52,7 +54,10 @@ def resolve_database_main() -> Path:
     for path in candidates:
         if path.exists():
             return path
-    print("[setup] Aucun script database main.py trouve (attendu dans ./packages/etl/database/).")
+    print(
+        "[setup] Aucun script database main.py trouvé "
+        "(attendu dans ./packages/etl/database/)."
+    )
     sys.exit(1)
 
 
@@ -60,30 +65,31 @@ def wait_mongo(timeout=120):
     try:
         from pymongo import MongoClient
     except ImportError:
-        print("[setup] pymongo non installe, attente 10 s supplementaire...")
+        print("[setup] pymongo non installé, attente 10 s supplémentaire…")
         time.sleep(10)
         return
-
     uri = get_mongo_uri()
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             client = MongoClient(uri, serverSelectionTimeoutMS=2000)
             client.admin.command("ping")
-            print("[setup] Mongo pret.")
+            print("[setup] Mongo prêt.")
             return
         except Exception:
             time.sleep(2)
-    print("[setup] Timeout : Mongo ne repond pas.")
+    print("[setup] Timeout : Mongo ne répond pas.")
     sys.exit(1)
 
 
 def main():
     compose_file = resolve_compose_file()
     database_main = resolve_database_main()
+    print("[setup] Lancement des conteneurs Docker…")
+    # Important: aligner le project-directory avec les scripts de migrations.
+    # Ici on se base sur le dossier du fichier compose (ex: ./docker),
+    # sinon `docker compose exec mongo ...` peut viser un autre "projet" Compose.
     project_dir = compose_file.parent
-
-    print("[setup] Lancement des conteneurs Docker...")
     run(
         [
             "docker",
@@ -97,13 +103,13 @@ def main():
         ]
     )
 
-    print("[setup] Attente de Mongo...")
+    print("[setup] Attente de Mongo…")
     wait_mongo()
 
-    print("[setup] Execution des migrations HomePedia...")
+    print("[setup] Exécution des scripts Database (migrations + données)…")
     run([sys.executable, str(database_main)])
 
-    print("[setup] Termine. Tu peux lancer le scrap ou l'app.")
+    print("[setup] Terminé. Tu peux lancer le scrap ou l’app.")
 
 
 if __name__ == "__main__":

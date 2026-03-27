@@ -1,13 +1,16 @@
 """
-Applique les migrations MongoDB en attente.
-
-A lancer apres le demarrage Docker, depuis la racine du projet :
+Applique les migrations MongoDB en attente (celles pas encore dans la collection schema_migrations).
+À lancer après le démarrage Docker, depuis la racine du projet :
 
   docker compose --project-directory . -f docker/docker-compose.yml up -d
   python packages/etl/database/run_migrations_mongo.py
 
-Les fichiers dans packages/etl/database/mongo/migrations/ sont executes dans l'ordre du nom
-(01_..., 02_..., 14_..., etc.).
+Les fichiers dans packages/etl/database/mongo/migrations/ sont exécutés dans l’ordre du nom (01_..., 02_..., 14_..., etc.).
+Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-les une fois :
+
+  db.schema_migrations.insertMany([
+    { _id: "01_init_communes_harvest.js" }, { _id: "02_xxx.js" }, ...
+  ]);
 """
 
 import subprocess
@@ -20,15 +23,10 @@ except ImportError:
     MongoClient = None
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
-
-from packages.shared.util.config import (
-    get_mongo_db_name,
-    get_mongo_params,
-    get_mongo_uri,
-    load_env,
-)
+SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
+from util.config import get_mongo_params
 
 ROOT = PROJECT_ROOT
 DATABASE_DIR = Path(__file__).resolve().parent
@@ -70,24 +68,21 @@ def main():
         print("[Mongo migrations] Aucun fichier .js dans", MIGRATIONS_DIR)
         return
 
-    load_env()
     params = get_mongo_params()
-    db_name = get_mongo_db_name()
-    uri = get_mongo_uri()
-
+    uri = f"mongodb://{params['user']}:{params['password']}@{params['host']}:{params['port']}/?authSource=admin"
     try:
         client = MongoClient(uri)
         client.admin.command("ping")
-    except Exception as exc:
-        print("[Mongo migrations] Connexion impossible :", exc)
+    except Exception as e:
+        print("[Mongo migrations] Connexion impossible :", e)
         sys.exit(1)
 
-    applied = get_applied(client, db_name)
+    applied = get_applied(client, params["db_name"])
 
     for path in files:
         name = path.name
         if name in applied:
-            print(f"[Mongo migrations] Deja applique : {name}")
+            print(f"[Mongo migrations] Déjà appliqué : {name}")
             continue
         print(f"[Mongo migrations] Application : {name}")
         cmd = COMPOSE_BASE + [
@@ -101,7 +96,7 @@ def main():
             params["password"],
             "--authenticationDatabase",
             "admin",
-            db_name,
+            params["db_name"],
             "--file",
             f"/migrations/{name}",
         ]
@@ -109,9 +104,9 @@ def main():
         if result.returncode != 0:
             print(f"[Mongo migrations] Erreur lors de {name}")
             sys.exit(result.returncode)
-        record_applied(client, db_name, name)
+        record_applied(client, params["db_name"], name)
 
-    print("[Mongo migrations] Termine.")
+    print("[Mongo migrations] Terminé.")
 
 
 if __name__ == "__main__":
