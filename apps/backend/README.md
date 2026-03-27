@@ -91,6 +91,13 @@ La suite couvre:
 ## Swagger
 
 - `GET /api/docs`
+- `openapi.json` genere a la racine de `apps/backend`
+
+Generer le contrat OpenAPI statique:
+
+```bash
+npm run openapi:generate
+```
 
 ## Mode de fonctionnement
 

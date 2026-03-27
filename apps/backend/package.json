@@ -5,6 +5,7 @@
   "description": "NestJS backend for HomePedia KPIs",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "openapi:generate": "npm run build && node dist/openapi.js",
     "start": "node dist/main.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "test": "jest --runInBand",

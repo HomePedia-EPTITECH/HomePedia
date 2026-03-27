@@ -58,6 +58,12 @@ Routes exposees:
 - `GET /api/kpis`
 - `GET /api/kpis/:id`
 
+Contrat OpenAPI:
+
+- UI Swagger: `GET /api/docs`
+- Fichier genere: `apps/backend/openapi.json`
+- Generation: `python run_backend.py --script openapi:generate`
+
 Demarrage rapide:
 
 ```bash

@@ -1,0 +1,1498 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "summary": "Check backend and data source availability",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/kpis": {
+      "get": {
+        "operationId": "KpiController_findAll",
+        "summary": "List computed KPI entries derived from current Mongo data",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Computed KPI list derived from communes_direct",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Kpi"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "kpis"
+        ]
+      }
+    },
+    "/api/kpis/{id}": {
+      "get": {
+        "operationId": "KpiController_findOne",
+        "summary": "Get a computed KPI by id",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Single computed KPI entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Kpi"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "kpis"
+        ]
+      }
+    },
+    "/api/cities": {
+      "get": {
+        "operationId": "CitiesController_findAll",
+        "summary": "List cities from communes_direct with search, filters and pagination",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Search by INSEE code or city name",
+            "schema": {
+              "example": "Paris",
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_dept",
+            "required": false,
+            "in": "query",
+            "description": "Filter by departement code",
+            "schema": {
+              "example": "75",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nom_region",
+            "required": false,
+            "in": "query",
+            "description": "Case-insensitive exact match on region name",
+            "schema": {
+              "example": "Ile-de-France",
+              "type": "string"
+            }
+          },
+          {
+            "name": "note_moyenne_globale_min",
+            "required": false,
+            "in": "query",
+            "description": "Minimum city rating from communes_direct",
+            "schema": {
+              "minimum": 0,
+              "maximum": 5,
+              "example": 3.5,
+              "type": "number"
+            }
+          },
+          {
+            "name": "nb_avis_min",
+            "required": false,
+            "in": "query",
+            "description": "Minimum review count from communes_direct",
+            "schema": {
+              "minimum": 0,
+              "example": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "prix_m2_maison_max",
+            "required": false,
+            "in": "query",
+            "description": "Maximum house price per square meter",
+            "schema": {
+              "minimum": 0,
+              "example": 5000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "prix_m2_appartement_max",
+            "required": false,
+            "in": "query",
+            "description": "Maximum apartment price per square meter",
+            "schema": {
+              "minimum": 0,
+              "example": 4500,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Sort key. health and transport are kept for API stability and may be null in Mongo.",
+            "schema": {
+              "enum": [
+                "name",
+                "population",
+                "security",
+                "environment",
+                "health",
+                "transport",
+                "education"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated city list for search and ranking UIs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitiesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cities"
+        ]
+      }
+    },
+    "/api/cities/{code}/details": {
+      "get": {
+        "operationId": "CitiesController_findDetails",
+        "summary": "Get a rich city payload by INSEE code from direct, harvest and review collections",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75056",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detailed city payload assembled from Mongo collections",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cities"
+        ]
+      }
+    },
+    "/api/cities/{code}": {
+      "get": {
+        "operationId": "CitiesController_findOne",
+        "summary": "Get a city by INSEE code",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75056",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lightweight city payload for cards and lists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "cities"
+        ]
+      }
+    },
+    "/api/departements": {
+      "get": {
+        "operationId": "DepartementsController_findAll",
+        "summary": "List departements available in the Mongo dataset",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Departement list with computed city counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartementsResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "departements"
+        ]
+      }
+    },
+    "/api/departements/{code}/cities": {
+      "get": {
+        "operationId": "DepartementsController_findCities",
+        "summary": "List cities for one departement with the standard city filters",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Search by INSEE code or city name within the departement",
+            "schema": {
+              "example": "Paris",
+              "type": "string"
+            }
+          },
+          {
+            "name": "code_dept",
+            "required": false,
+            "in": "query",
+            "description": "Filter by departement code",
+            "schema": {
+              "example": "75",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nom_region",
+            "required": false,
+            "in": "query",
+            "description": "Optional region filter applied in addition to the departement scope",
+            "schema": {
+              "example": "Ile-de-France",
+              "type": "string"
+            }
+          },
+          {
+            "name": "note_moyenne_globale_min",
+            "required": false,
+            "in": "query",
+            "description": "Minimum city rating from communes_direct",
+            "schema": {
+              "minimum": 0,
+              "maximum": 5,
+              "example": 3.5,
+              "type": "number"
+            }
+          },
+          {
+            "name": "nb_avis_min",
+            "required": false,
+            "in": "query",
+            "description": "Minimum review count from communes_direct",
+            "schema": {
+              "minimum": 0,
+              "example": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "prix_m2_maison_max",
+            "required": false,
+            "in": "query",
+            "description": "Maximum house price per square meter",
+            "schema": {
+              "minimum": 0,
+              "example": 5000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "prix_m2_appartement_max",
+            "required": false,
+            "in": "query",
+            "description": "Maximum apartment price per square meter",
+            "schema": {
+              "minimum": 0,
+              "example": 4500,
+              "type": "number"
+            }
+          },
+          {
+            "name": "sortBy",
+            "required": false,
+            "in": "query",
+            "description": "Sort key. code_dept is forced from the path parameter.",
+            "schema": {
+              "enum": [
+                "name",
+                "population",
+                "security",
+                "environment",
+                "health",
+                "transport",
+                "education"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated cities scoped to one departement",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitiesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "departements"
+        ]
+      }
+    },
+    "/api/departements/{code}": {
+      "get": {
+        "operationId": "DepartementsController_findOne",
+        "summary": "Get a departement by code",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Single departement with computed city count",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepartementResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "departements"
+        ]
+      }
+    },
+    "/api/reviews/cities/{code}": {
+      "get": {
+        "operationId": "ReviewsController_findByCityCode",
+        "summary": "Get text reviews and metrics snapshot for a city",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75056",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw review buckets and harvest snapshot for one city",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityReviewsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "operationId": "OverviewController_getOverview",
+        "summary": "Get dashboard totals, averages and highlights computed from communes_direct",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Homepage overview payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "overview"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "HomePedia API",
+    "description": "Backend API for HomePedia exploratory data endpoints.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "schemas": {
+      "HealthChecks": {
+        "type": "object",
+        "properties": {
+          "postgres": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "example": "up"
+          },
+          "mongo": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "example": "up"
+          }
+        },
+        "required": [
+          "postgres",
+          "mongo"
+        ]
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "error"
+            ],
+            "example": "ok"
+          },
+          "service": {
+            "type": "string",
+            "example": "homepedia-backend"
+          },
+          "timestamp": {
+            "type": "string",
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "checks": {
+            "$ref": "#/components/schemas/HealthChecks"
+          }
+        },
+        "required": [
+          "status",
+          "service",
+          "timestamp",
+          "checks"
+        ]
+      },
+      "ApiErrorResponse": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 400
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request"
+          },
+          "message": {
+            "type": "string",
+            "example": "Validation failed"
+          },
+          "path": {
+            "type": "string",
+            "example": "/api/cities?limit=101"
+          },
+          "timestamp": {
+            "type": "string",
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "details": {
+            "oneOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "example": [
+                  "limit must not be greater than 100"
+                ]
+              },
+              {
+                "type": "object",
+                "example": {
+                  "checks": {
+                    "postgres": "up",
+                    "mongo": "down"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "statusCode",
+          "error",
+          "message",
+          "path",
+          "timestamp"
+        ]
+      },
+      "Kpi": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "total_cities"
+          },
+          "value": {
+            "type": "number",
+            "example": 34871
+          },
+          "unit": {
+            "type": "object",
+            "nullable": true,
+            "example": "cities"
+          },
+          "source": {
+            "type": "object",
+            "nullable": true,
+            "example": "mongo:communes_direct"
+          },
+          "capturedAt": {
+            "type": "string",
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "example": "2026-03-24T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "value",
+          "capturedAt",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CityScores": {
+        "type": "object",
+        "properties": {
+          "security": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.8
+          },
+          "environment": {
+            "type": "object",
+            "nullable": true,
+            "example": 4.1
+          },
+          "practicalLife": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.4
+          },
+          "leisure": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.2
+          },
+          "health": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.9
+          },
+          "transport": {
+            "type": "object",
+            "nullable": true,
+            "example": 4.3
+          },
+          "education": {
+            "type": "object",
+            "nullable": true,
+            "example": 4
+          }
+        }
+      },
+      "CityMetrics": {
+        "type": "object",
+        "properties": {
+          "population": {
+            "type": "object",
+            "nullable": true,
+            "example": 2145906
+          },
+          "averageAge": {
+            "type": "object",
+            "nullable": true,
+            "example": 36
+          },
+          "activePopulation": {
+            "type": "object",
+            "nullable": true,
+            "example": 65
+          },
+          "scores": {
+            "$ref": "#/components/schemas/CityScores"
+          }
+        },
+        "required": [
+          "scores"
+        ]
+      },
+      "City": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "75056"
+          },
+          "name": {
+            "type": "string",
+            "example": "Paris"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/CityMetrics"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "metrics"
+        ]
+      },
+      "CitiesMeta": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "example": 1
+          },
+          "limit": {
+            "type": "number",
+            "example": 20
+          },
+          "total": {
+            "type": "number",
+            "example": 34871
+          },
+          "totalPages": {
+            "type": "number",
+            "example": 1744
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "total",
+          "totalPages"
+        ]
+      },
+      "CitiesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/City"
+            }
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CitiesMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "CityDetailAdmin": {
+        "type": "object",
+        "properties": {
+          "codeDept": {
+            "type": "object",
+            "nullable": true,
+            "example": "75"
+          },
+          "postalCode": {
+            "type": "object",
+            "nullable": true,
+            "example": "75000"
+          },
+          "region": {
+            "type": "object",
+            "nullable": true,
+            "example": "Ile-de-France"
+          },
+          "departement": {
+            "type": "object",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "metropole": {
+            "type": "object",
+            "nullable": true,
+            "example": "Metropole du Grand Paris"
+          },
+          "mayor": {
+            "type": "object",
+            "nullable": true,
+            "example": "Anne Hidalgo"
+          }
+        }
+      },
+      "CityDetailSource": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "object",
+            "nullable": true,
+            "example": "ville-ideale"
+          },
+          "cityPage": {
+            "type": "object",
+            "nullable": true,
+            "example": "https://www.bien-dans-ma-ville.fr/paris-75056/"
+          },
+          "reviewsPage": {
+            "type": "object",
+            "nullable": true,
+            "example": "https://www.bien-dans-ma-ville.fr/paris-75056/avis.html"
+          },
+          "harvestedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-03-24T12:00:00.000Z"
+          }
+        }
+      },
+      "CityDetailObjectBlock": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "example": {
+              "nb_habitant": "2145906",
+              "age_moyen": "36"
+            }
+          }
+        },
+        "required": [
+          "values"
+        ]
+      },
+      "CityDetailBlocks": {
+        "type": "object",
+        "properties": {
+          "demography": {
+            "$ref": "#/components/schemas/CityDetailObjectBlock"
+          },
+          "security": {
+            "$ref": "#/components/schemas/CityDetailObjectBlock"
+          },
+          "qualityOfLife": {
+            "$ref": "#/components/schemas/CityDetailObjectBlock"
+          },
+          "services": {
+            "$ref": "#/components/schemas/CityDetailObjectBlock"
+          },
+          "realEstate": {
+            "$ref": "#/components/schemas/CityDetailObjectBlock"
+          }
+        },
+        "required": [
+          "demography",
+          "security",
+          "qualityOfLife",
+          "services",
+          "realEstate"
+        ]
+      },
+      "CityDetailReviews": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number",
+            "example": 12
+          },
+          "positive": {
+            "example": [
+              "Ville calme et agreable"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "negative": {
+            "example": [
+              "Transports compliques"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "example": [
+              "Ville calme et agreable",
+              "Transports compliques"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "count",
+          "positive",
+          "negative",
+          "all"
+        ]
+      },
+      "CityDetail": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "$ref": "#/components/schemas/City"
+          },
+          "admin": {
+            "$ref": "#/components/schemas/CityDetailAdmin"
+          },
+          "source": {
+            "$ref": "#/components/schemas/CityDetailSource"
+          },
+          "blocks": {
+            "$ref": "#/components/schemas/CityDetailBlocks"
+          },
+          "reviews": {
+            "$ref": "#/components/schemas/CityDetailReviews"
+          }
+        },
+        "required": [
+          "city",
+          "admin",
+          "source",
+          "blocks",
+          "reviews"
+        ]
+      },
+      "CityDetailResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CityDetail"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "CityResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/City"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "Departement": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "75"
+          },
+          "name": {
+            "type": "object",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "cityCount": {
+            "type": "number",
+            "example": 1
+          },
+          "updatedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-03-24T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "code",
+          "cityCount"
+        ]
+      },
+      "DepartementsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Departement"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "DepartementResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Departement"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "ReviewsBuckets": {
+        "type": "object",
+        "properties": {
+          "positive": {
+            "example": [
+              "Ville calme et agreable"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "negative": {
+            "example": [
+              "Transports compliques"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "all": {
+            "example": [
+              "Ville calme et agreable",
+              "Transports compliques"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "positive",
+          "negative",
+          "all"
+        ]
+      },
+      "CityReviews": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "75056"
+          },
+          "sourceUrl": {
+            "type": "object",
+            "nullable": true,
+            "example": "https://www.bien-dans-ma-ville.fr/paris-75056/"
+          },
+          "harvestedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-03-24T12:00:00.000Z"
+          },
+          "reviews": {
+            "$ref": "#/components/schemas/ReviewsBuckets"
+          },
+          "metricsSnapshot": {
+            "type": "object",
+            "additionalProperties": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "example": {
+              "nb_habitant": "2145906",
+              "score_securite": "3.8"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "reviews",
+          "metricsSnapshot"
+        ]
+      },
+      "CityReviewsMeta": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "example": "mongo"
+          },
+          "collection": {
+            "type": "string",
+            "example": "communes_harvest"
+          }
+        },
+        "required": [
+          "source",
+          "collection"
+        ]
+      },
+      "CityReviewsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CityReviews"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/CityReviewsMeta"
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
+      "OverviewTotals": {
+        "type": "object",
+        "properties": {
+          "cities": {
+            "type": "number",
+            "example": 34871
+          },
+          "reviewedCities": {
+            "type": "number",
+            "example": 10234
+          },
+          "reviewsAvailable": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "cities",
+          "reviewedCities",
+          "reviewsAvailable"
+        ]
+      },
+      "OverviewAverages": {
+        "type": "object",
+        "properties": {
+          "population": {
+            "type": "object",
+            "nullable": true,
+            "example": 52743.18
+          },
+          "securityScore": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.74
+          },
+          "environmentScore": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.92
+          }
+        }
+      },
+      "OverviewCityCard": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "75056"
+          },
+          "name": {
+            "type": "string",
+            "example": "Paris"
+          },
+          "securityScore": {
+            "type": "object",
+            "nullable": true,
+            "example": 3.8
+          },
+          "environmentScore": {
+            "type": "object",
+            "nullable": true,
+            "example": 4.1
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "OverviewHighlights": {
+        "type": "object",
+        "properties": {
+          "safestCities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OverviewCityCard"
+            }
+          },
+          "greenestCities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OverviewCityCard"
+            }
+          }
+        },
+        "required": [
+          "safestCities",
+          "greenestCities"
+        ]
+      },
+      "OverviewData": {
+        "type": "object",
+        "properties": {
+          "totals": {
+            "$ref": "#/components/schemas/OverviewTotals"
+          },
+          "averages": {
+            "$ref": "#/components/schemas/OverviewAverages"
+          },
+          "highlights": {
+            "$ref": "#/components/schemas/OverviewHighlights"
+          }
+        },
+        "required": [
+          "totals",
+          "averages",
+          "highlights"
+        ]
+      },
+      "OverviewResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/OverviewData"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      }
+    }
+  }
+}
