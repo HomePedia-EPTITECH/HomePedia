@@ -52,6 +52,7 @@ Routes exposees:
 - `GET /api/cities/:code/details`
 - `GET /api/departements`
 - `GET /api/departements/:code`
+- `GET /api/departements/:code/cities`
 - `GET /api/overview`
 - `GET /api/reviews/cities/:code`
 - `GET /api/kpis`

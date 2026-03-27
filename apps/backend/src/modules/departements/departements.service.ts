@@ -1,4 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { CitiesService } from "../cities/cities.service";
+import { GetCitiesQueryDto } from "../cities/dto/get-cities-query.dto";
+import { CitiesResponse } from "../cities/models/city.model";
 import {
   Departement,
   DepartementResponse,
@@ -10,7 +13,10 @@ type DepartementRow = Awaited<ReturnType<DepartementsRepository["findByCode"]>>;
 
 @Injectable()
 export class DepartementsService {
-  constructor(private readonly repository: DepartementsRepository) {}
+  constructor(
+    private readonly repository: DepartementsRepository,
+    private readonly citiesService: CitiesService
+  ) {}
 
   async findAll(): Promise<DepartementsResponse> {
     const rows = await this.repository.findAll();
@@ -28,6 +34,20 @@ export class DepartementsService {
     return {
       data: this.toDepartement(row)
     };
+  }
+
+  async findCities(code: string, query: GetCitiesQueryDto): Promise<CitiesResponse> {
+    const row = await this.repository.findByCode(code);
+    if (!row) {
+      throw new NotFoundException(`Departement ${code} not found`);
+    }
+
+    const scopedQuery: GetCitiesQueryDto = {
+      ...query,
+      code_dept: row.code
+    };
+
+    return this.citiesService.getCities(scopedQuery);
   }
 
   private toDepartement(row: NonNullable<DepartementRow>): Departement {

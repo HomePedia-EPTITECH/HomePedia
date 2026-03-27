@@ -7,6 +7,7 @@ import { CitiesService } from "./cities.service";
 @Module({
   imports: [MongoModule],
   controllers: [CitiesController],
-  providers: [CitiesService, CitiesRepository]
+  providers: [CitiesService, CitiesRepository],
+  exports: [CitiesService]
 })
 export class CitiesModule {}

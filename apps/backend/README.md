@@ -111,6 +111,7 @@ La suite couvre:
 - `GET /api/cities/:code/details`
 - `GET /api/departements`
 - `GET /api/departements/:code`
+- `GET /api/departements/:code/cities`
 - `GET /api/overview`
 - `GET /api/reviews/cities/:code`
 - `GET /api/kpis`
@@ -131,6 +132,8 @@ Parametres principaux disponibles:
 - `order`
 - `page`
 - `limit`
+
+`GET /api/departements/:code/cities` reutilise les memes filtres que `GET /api/cities`, avec `code_dept` impose par le parametre d'URL.
 
 ## Exemple `GET /api/cities/75056/details`
 
