@@ -78,13 +78,6 @@ app/**/node_modules/*
 apps/**/node_modules/
 apps/**/dist/
 apps/**/.env
-/backend/node_modules
-/backend/dist
-/backend/.env
-
-# Seeds test
-Database/seed_test_cities.py
-Database/seed_test_reviews.py
 
 # Python caches
 __pycache__/

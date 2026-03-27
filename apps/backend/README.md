@@ -196,4 +196,4 @@ Appliquer les migrations existantes depuis la racine du repo:
 python packages/etl/database/run_migrations.py
 ```
 
-Les KPI exposes par l'API sont derives de `communes_direct`. La migration `packages/etl/database/postgres/migrations/02_create_kpis.sql` reste legacy et n'est plus necessaire au fonctionnement courant de `/api/kpis`.
+Les KPI exposes par l'API sont derives de `communes_direct`. Le script SQL `packages/etl/database/postgres/migrations/02_create_kpis.sql` n'est pas utilise par `/api/kpis`.

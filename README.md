@@ -21,18 +21,20 @@ Lancer le projet, appliquer les migrations, puis executer le scraping si besoin.
 - Migrations uniquement: `python packages/etl/database/run_migrations.py`
 - Chargement PostgreSQL de communes de test: `python packages/etl/database/load_communes.py --file <chemin>`
 
-Les chemins principaux sont maintenant:
+Chemins principaux:
 
 - `docker/docker-compose.yml`
+- `apps/backend/`
 - `packages/etl/database/postgres/`
 - `packages/etl/database/mongo/`
 - `packages/scraping/`
+- `packages/shared/`
 
 Les details de baseline, de structure Mongo et d'exploitation sont dans `Docs/`.
 
 ## Backend NestJS
 
-Le backend est maintenant sous `apps/backend`.
+Le backend NestJS est dans `apps/backend/`.
 
 Lecture de donnees actuelle:
 
@@ -63,6 +65,6 @@ python setup.py
 python run_backend.py --install
 ```
 
-La migration KPI historique se trouve dans `packages/etl/database/postgres/migrations/02_create_kpis.sql`, mais l'API KPI courante est calculee depuis Mongo.
+Le script SQL `packages/etl/database/postgres/migrations/02_create_kpis.sql` est present dans le depot, mais `/api/kpis` calcule actuellement ses KPI depuis Mongo.
 
 Tu peux aussi lancer un autre script npm backend depuis la racine, par exemple `python run_backend.py --script test`.
