@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { PostgresCitiesRepository } from "../cities/cities.postgres.repository";
 import { CitiesRepository } from "../cities/cities.repository";
 import { ReviewsRepository } from "../reviews/reviews.repository";
 import { OverviewResponse } from "./models/overview.model";
@@ -9,15 +10,45 @@ type CityRow = Awaited<ReturnType<CitiesRepository["findByCode"]>>;
 export class OverviewService {
   constructor(
     private readonly citiesRepository: CitiesRepository,
-    private readonly reviewsRepository: ReviewsRepository
+    private readonly reviewsRepository: ReviewsRepository,
+    @Optional() private readonly postgresCitiesRepository?: PostgresCitiesRepository
   ) {}
 
   async getOverview(): Promise<OverviewResponse> {
-    const [metrics, safestCities, greenestCities] = await Promise.all([
-      this.citiesRepository.getOverviewMetrics(),
-      this.citiesRepository.findTopCitiesByScore("score_securite", 3),
-      this.citiesRepository.findTopCitiesByScore("score_environnement", 3)
+    const [postgresMetrics, postgresSafestCities, postgresGreenestCities] = await Promise.all([
+      this.safePostgresCall(() => this.postgresCitiesRepository?.getOverviewMetrics()),
+      this.safePostgresCall(() =>
+        this.postgresCitiesRepository?.findTopCitiesByScore("score_securite", 3)
+      ),
+      this.safePostgresCall(() =>
+        this.postgresCitiesRepository?.findTopCitiesByScore("score_environnement", 3)
+      )
     ]);
+
+    const [mongoMetrics, mongoSafestCities, mongoGreenestCities] = await Promise.all([
+      this.safeMongoMetricsLookup(),
+      this.safeMongoTopCitiesLookup("score_securite"),
+      this.safeMongoTopCitiesLookup("score_environnement")
+    ]);
+
+    const metrics =
+      postgresMetrics && postgresMetrics.total_cities > 0
+        ? postgresMetrics
+        : mongoMetrics ?? {
+            total_cities: 0,
+            avg_population: null,
+            avg_security: null,
+            avg_environment: null
+          };
+    const safestCities =
+      postgresSafestCities && postgresSafestCities.length > 0
+        ? postgresSafestCities
+        : mongoSafestCities ?? [];
+    const greenestCities =
+      postgresGreenestCities && postgresGreenestCities.length > 0
+        ? postgresGreenestCities
+        : mongoGreenestCities ?? [];
+
     const reviewsSummary = await this.getReviewedCitiesSummary();
 
     return {
@@ -94,5 +125,31 @@ export class OverviewService {
     }
 
     return Math.round(value * 100) / 100;
+  }
+
+  private async safePostgresCall<T>(callback: () => Promise<T | null> | undefined): Promise<T | null> {
+    try {
+      return (await callback()) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async safeMongoMetricsLookup() {
+    try {
+      return await this.citiesRepository.getOverviewMetrics();
+    } catch {
+      return null;
+    }
+  }
+
+  private async safeMongoTopCitiesLookup(
+    column: "score_securite" | "score_environnement"
+  ) {
+    try {
+      return await this.citiesRepository.findTopCitiesByScore(column, 3);
+    } catch {
+      return null;
+    }
   }
 }

@@ -7,7 +7,7 @@ import { ReviewsService } from "./reviews.service";
 @Module({
   imports: [MongoModule],
   controllers: [ReviewsController],
-  providers: [ReviewsService, ReviewsRepository]
+  providers: [ReviewsService, ReviewsRepository],
+  exports: [ReviewsRepository]
 })
 export class ReviewsModule {}
-

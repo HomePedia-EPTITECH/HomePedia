@@ -1,13 +1,12 @@
 import { Module } from "@nestjs/common";
-import { MongoModule } from "../../db/mongo.module";
-import { CitiesRepository } from "../cities/cities.repository";
+import { CitiesModule } from "../cities/cities.module";
 import { OverviewController } from "./overview.controller";
 import { OverviewService } from "./overview.service";
-import { ReviewsRepository } from "../reviews/reviews.repository";
+import { ReviewsModule } from "../reviews/reviews.module";
 
 @Module({
-  imports: [MongoModule],
+  imports: [CitiesModule, ReviewsModule],
   controllers: [OverviewController],
-  providers: [OverviewService, CitiesRepository, ReviewsRepository]
+  providers: [OverviewService]
 })
 export class OverviewModule {}

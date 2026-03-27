@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, Optional } from "@nestjs/common";
 import { CitiesService } from "../cities/cities.service";
 import { GetCitiesQueryDto } from "../cities/dto/get-cities-query.dto";
 import { CitiesResponse } from "../cities/models/city.model";
@@ -7,26 +7,30 @@ import {
   DepartementResponse,
   DepartementsResponse
 } from "./models/departement.model";
+import { PostgresDepartementsRepository } from "./departements.postgres.repository";
+import { DepartementRow } from "./departements.read-model";
 import { DepartementsRepository } from "./departements.repository";
-
-type DepartementRow = Awaited<ReturnType<DepartementsRepository["findByCode"]>>;
 
 @Injectable()
 export class DepartementsService {
   constructor(
     private readonly repository: DepartementsRepository,
-    private readonly citiesService: CitiesService
+    private readonly citiesService: CitiesService,
+    @Optional() private readonly postgresRepository?: PostgresDepartementsRepository
   ) {}
 
   async findAll(): Promise<DepartementsResponse> {
-    const rows = await this.repository.findAll();
+    const sqlRows = await this.safePostgresCall(() => this.postgresRepository?.findAll());
+    const rows = sqlRows && sqlRows.length > 0 ? sqlRows : await this.repository.findAll();
+
     return {
       data: rows.map((row) => this.toDepartement(row))
     };
   }
 
   async findOne(code: string): Promise<DepartementResponse> {
-    const row = await this.repository.findByCode(code);
+    const sqlRow = await this.safePostgresCall(() => this.postgresRepository?.findByCode(code));
+    const row = sqlRow ?? (await this.repository.findByCode(code));
     if (!row) {
       throw new NotFoundException(`Departement ${code} not found`);
     }
@@ -37,7 +41,8 @@ export class DepartementsService {
   }
 
   async findCities(code: string, query: GetCitiesQueryDto): Promise<CitiesResponse> {
-    const row = await this.repository.findByCode(code);
+    const sqlRow = await this.safePostgresCall(() => this.postgresRepository?.findByCode(code));
+    const row = sqlRow ?? (await this.repository.findByCode(code));
     if (!row) {
       throw new NotFoundException(`Departement ${code} not found`);
     }
@@ -74,5 +79,13 @@ export class DepartementsService {
 
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+
+  private async safePostgresCall<T>(callback: () => Promise<T | null> | undefined): Promise<T | null> {
+    try {
+      return (await callback()) ?? null;
+    } catch {
+      return null;
+    }
   }
 }

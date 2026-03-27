@@ -1,8 +1,9 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import { Document } from "mongodb";
 import { buildMongoNumericExpression } from "../common/mongo-numeric";
 import { MongoService } from "../db/mongo.service";
 import { Kpi } from "../models/kpi.model";
+import { PostgresKpiRepository, PostgresKpiSnapshot } from "./kpi.postgres.repository";
 
 type KpiSnapshot = {
   total_cities: number;
@@ -92,21 +93,41 @@ const KPI_DEFINITIONS: KpiDefinition[] = [
 
 @Injectable()
 export class KpiRepository {
-  constructor(private readonly mongoService: MongoService) {}
+  constructor(
+    private readonly mongoService: MongoService,
+    @Optional() private readonly postgresRepository?: PostgresKpiRepository
+  ) {}
 
   async findAll(): Promise<Kpi[]> {
-    const snapshot = await this.computeSnapshot();
-    if (!snapshot || snapshot.total_cities === 0) {
+    const [mongoSnapshot, postgresSnapshot] = await Promise.all([
+      this.safeMongoSnapshot(),
+      this.safePostgresSnapshot()
+    ]);
+
+    const hasMongoData = Boolean(mongoSnapshot && mongoSnapshot.total_cities > 0);
+    const hasPostgresData = Boolean(postgresSnapshot && postgresSnapshot.total_cities > 0);
+
+    if (!hasMongoData && !hasPostgresData) {
       return [];
     }
 
-    const timestamp = this.toIsoString(snapshot.captured_at) ?? new Date().toISOString();
+    const timestamp =
+      this.toIsoString(postgresSnapshot?.captured_at ?? mongoSnapshot?.captured_at ?? null) ??
+      new Date().toISOString();
 
     return KPI_DEFINITIONS.flatMap((definition) => {
-      const rawValue = definition.selectValue(snapshot);
+      const rawValue =
+        (hasPostgresData ? this.selectPostgresValue(definition.name, postgresSnapshot!) : null) ??
+        (hasMongoData ? definition.selectValue(mongoSnapshot!) : null);
+
       if (rawValue === null) {
         return [];
       }
+
+      const source =
+        hasPostgresData && this.selectPostgresValue(definition.name, postgresSnapshot!) !== null
+          ? this.resolvePostgresSource(definition.name)
+          : definition.source;
 
       return [
         {
@@ -114,7 +135,7 @@ export class KpiRepository {
           name: definition.name,
           value: definition.round ? this.round(rawValue) : rawValue,
           unit: definition.unit,
-          source: definition.source,
+          source,
           capturedAt: timestamp,
           createdAt: timestamp,
           updatedAt: timestamp
@@ -128,7 +149,7 @@ export class KpiRepository {
     return kpis.find((kpi) => kpi.id === id) ?? null;
   }
 
-  private async computeSnapshot(): Promise<KpiSnapshot | null> {
+  private async computeMongoSnapshot(): Promise<KpiSnapshot | null> {
     const collection = await this.mongoService.getCollection<Document>("communes_direct");
     const [snapshot] = await collection
       .aggregate<KpiSnapshot>([
@@ -182,6 +203,42 @@ export class KpiRepository {
     return snapshot ?? null;
   }
 
+  private selectPostgresValue(
+    name: string,
+    snapshot: PostgresKpiSnapshot
+  ): number | null {
+    switch (name) {
+      case "total_cities":
+        return snapshot.total_cities;
+      case "average_population":
+        return snapshot.avg_population;
+      case "average_security_score":
+        return snapshot.avg_security_score;
+      case "average_environment_score":
+        return snapshot.avg_environment_score;
+      case "average_house_price_m2":
+        return snapshot.avg_house_price_m2;
+      case "average_apartment_price_m2":
+        return snapshot.avg_apartment_price_m2;
+      default:
+        return null;
+    }
+  }
+
+  private resolvePostgresSource(name: string): string {
+    switch (name) {
+      case "total_cities":
+      case "average_population":
+      case "average_security_score":
+      case "average_environment_score":
+      case "average_house_price_m2":
+      case "average_apartment_price_m2":
+        return "postgres:v1";
+      default:
+        return "mongo:communes_direct";
+    }
+  }
+
   private round(value: number): number {
     return Math.round(value * 100) / 100;
   }
@@ -205,5 +262,21 @@ export class KpiRepository {
 
   private toNumericExpression(field: string): Document {
     return buildMongoNumericExpression(field);
+  }
+
+  private async safePostgresSnapshot(): Promise<PostgresKpiSnapshot | null> {
+    try {
+      return (await this.postgresRepository?.computeSnapshot()) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async safeMongoSnapshot(): Promise<KpiSnapshot | null> {
+    try {
+      return await this.computeMongoSnapshot();
+    } catch {
+      return null;
+    }
   }
 }
