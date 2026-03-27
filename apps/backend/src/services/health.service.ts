@@ -19,7 +19,7 @@ export class HealthService {
     ]);
 
     const response: HealthResponse = {
-      status: postgres === "up" && mongo === "up" ? "ok" : "error",
+      status: mongo === "up" ? "ok" : "error",
       service: "homepedia-backend",
       timestamp: new Date().toISOString(),
       checks: {
@@ -29,7 +29,7 @@ export class HealthService {
     };
 
     return {
-      healthy: response.status === "ok",
+      healthy: mongo === "up",
       response
     };
   }

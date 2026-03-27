@@ -1,9 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { GetCitiesQueryDto } from "./dto/get-cities-query.dto";
 import { CitiesRepository } from "./cities.repository";
-import { City, CityResponse, CitiesResponse } from "./models/city.model";
+import { City, CityDetailResponse, CityResponse, CitiesResponse } from "./models/city.model";
 
 type CityRow = Awaited<ReturnType<CitiesRepository["findByCode"]>>;
+type CityDetailRecord = Awaited<ReturnType<CitiesRepository["findDetailByCode"]>>;
 
 @Injectable()
 export class CitiesService {
@@ -34,6 +35,47 @@ export class CitiesService {
 
     return {
       data: this.toCity(row)
+    };
+  }
+
+  async getCityDetailsByCode(code: string): Promise<CityDetailResponse> {
+    const detail = await this.repository.findDetailByCode(code);
+    if (!detail) {
+      throw new NotFoundException(`City ${code} not found`);
+    }
+
+    return {
+      data: {
+        city: this.toCity(detail.city),
+        admin: {
+          codeDept: detail.admin.codeDept,
+          postalCode: detail.admin.postalCode,
+          region: detail.admin.region,
+          departement: detail.admin.departement,
+          metropole: detail.admin.metropole,
+          mayor: detail.admin.mayor
+        },
+        source: {
+          provider: detail.source.provider,
+          cityPage: detail.source.cityPage,
+          reviewsPage: detail.source.reviewsPage,
+          harvestedAt: this.toIsoString(detail.source.harvestedAt),
+          updatedAt: this.toIsoString(detail.source.updatedAt)
+        },
+        blocks: {
+          demography: { values: detail.blocks.demography },
+          security: { values: detail.blocks.security },
+          qualityOfLife: { values: detail.blocks.qualityOfLife },
+          services: { values: detail.blocks.services },
+          realEstate: { values: detail.blocks.realEstate }
+        },
+        reviews: {
+          count: detail.reviews.count,
+          positive: detail.reviews.positive,
+          negative: detail.reviews.negative,
+          all: detail.reviews.all
+        }
+      }
     };
   }
 
@@ -78,5 +120,22 @@ export class CitiesService {
 
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private toIsoString(value: Date | string | number | null | undefined): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    if (typeof value === "number") {
+      return new Date(value).toISOString();
+    }
+
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 }

@@ -4,7 +4,7 @@ export class OverviewCityCard {
   @ApiProperty({ example: "75056" })
   code!: string;
 
-  @ApiProperty({ example: "Paris 75056" })
+  @ApiProperty({ example: "Paris" })
   name!: string;
 
   @ApiPropertyOptional({ nullable: true, example: 3.8 })

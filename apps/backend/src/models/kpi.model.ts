@@ -4,16 +4,16 @@ export class Kpi {
   @ApiProperty({ example: 1 })
   id!: number;
 
-  @ApiProperty({ example: "population_growth" })
+  @ApiProperty({ example: "total_cities" })
   name!: string;
 
-  @ApiProperty({ example: 2.4 })
+  @ApiProperty({ example: 34871 })
   value!: number;
 
-  @ApiPropertyOptional({ nullable: true, example: "%" })
+  @ApiPropertyOptional({ nullable: true, example: "cities" })
   unit!: string | null;
 
-  @ApiPropertyOptional({ nullable: true, example: "insee" })
+  @ApiPropertyOptional({ nullable: true, example: "mongo:communes_direct" })
   source!: string | null;
 
   @ApiProperty({ example: "2026-03-24T12:00:00.000Z" })
@@ -25,4 +25,3 @@ export class Kpi {
   @ApiProperty({ example: "2026-03-24T12:00:00.000Z" })
   updatedAt!: string;
 }
-

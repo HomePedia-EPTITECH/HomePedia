@@ -17,8 +17,8 @@ export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
   @ApiOperation({ summary: "Get text reviews and metrics snapshot for a city" })
-  @ApiParam({ name: "code", type: String })
-  @ApiOkResponse({ type: CityReviewsResponse })
+  @ApiParam({ name: "code", type: String, example: "75056" })
+  @ApiOkResponse({ type: CityReviewsResponse, description: "Raw review buckets and harvest snapshot for one city" })
   @ApiNotFoundResponse({ type: ApiErrorResponse })
   @ApiServiceUnavailableResponse({ type: ApiErrorResponse })
   @Get("cities/:code")

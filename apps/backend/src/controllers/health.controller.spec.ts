@@ -24,6 +24,24 @@ describe("HealthController", () => {
     await expect(controller.check()).resolves.toEqual(healthyResponse);
   });
 
+  it("returns the health payload when only postgres is unavailable", async () => {
+    const degradedButHealthyResponse: HealthResponse = {
+      ...healthyResponse,
+      checks: {
+        postgres: "down",
+        mongo: "up"
+      }
+    };
+    const controller = new HealthController({
+      check: jest.fn().mockResolvedValue({
+        healthy: true,
+        response: degradedButHealthyResponse
+      })
+    } as never);
+
+    await expect(controller.check()).resolves.toEqual(degradedButHealthyResponse);
+  });
+
   it("throws a 503 when a dependency is unavailable", async () => {
     const degradedResponse: HealthResponse = {
       ...healthyResponse,

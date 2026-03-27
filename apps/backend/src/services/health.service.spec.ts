@@ -19,6 +19,24 @@ describe("HealthService", () => {
     });
   });
 
+  it("keeps the backend healthy when postgres is unavailable but mongo is up", async () => {
+    const service = new HealthService(
+      { checkConnection: jest.fn().mockRejectedValue(new Error("postgres down")) } as never,
+      { checkConnection: jest.fn().mockResolvedValue(undefined) } as never
+    );
+
+    await expect(service.check()).resolves.toMatchObject({
+      healthy: true,
+      response: {
+        status: "ok",
+        checks: {
+          postgres: "down",
+          mongo: "up"
+        }
+      }
+    });
+  });
+
   it("reports error when mongo is unavailable", async () => {
     const service = new HealthService(
       { checkConnection: jest.fn().mockResolvedValue(undefined) } as never,

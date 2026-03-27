@@ -35,10 +35,10 @@ describe("KpiController HTTP", () => {
     kpiService.findAll.mockResolvedValue([
       {
         id: 1,
-        name: "population_growth",
-        value: 2.4,
-        unit: "%",
-        source: "insee",
+        name: "total_cities",
+        value: 34871,
+        unit: "cities",
+        source: "mongo:communes_direct",
         capturedAt: "2026-03-24T12:00:00.000Z",
         createdAt: "2026-03-24T12:00:00.000Z",
         updatedAt: "2026-03-24T12:00:00.000Z"
