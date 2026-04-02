@@ -16,6 +16,7 @@ class QueueDoc(TypedDict, total=False):
     """Document de la collection city_pages_queue."""
 
     url: str
+    source: str
     com_id: str
     nom_commune_guess: str
     is_processed: bool
@@ -41,6 +42,33 @@ class CommuneHarvestDoc(TypedDict, total=False):
     services: Dict[str, Any]
     real_estate: Dict[str, Any]
     reviews_summary: Dict[str, Any]
+    reviews_refs: Dict[str, Any]
+    updated_at: datetime
+
+
+class VilleIdealeNotesDoc(TypedDict, total=False):
+    """Notes /10 Ville-Idéale, formatées pour Spark (float ou None)."""
+
+    note_environnement_10: Optional[float]
+    note_transports_10: Optional[float]
+    note_sante_10: Optional[float]
+    note_securite_10: Optional[float]
+    note_sports_loisirs_10: Optional[float]
+    note_culture_10: Optional[float]
+    note_enseignement_10: Optional[float]
+    note_commerces_10: Optional[float]
+    note_qualite_vie_10: Optional[float]
+
+
+class CommuneHarvestVIDoc(TypedDict, total=False):
+    """Document de la collection communes_harvest_vi (Ville-Idéale)."""
+
+    com: str
+    nom_commune: str
+    source: str
+    links: Dict[str, str]
+    notes: VilleIdealeNotesDoc
+    nb_avis: Optional[int]
     reviews_refs: Dict[str, Any]
     updated_at: datetime
 
