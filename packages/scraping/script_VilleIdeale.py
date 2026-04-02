@@ -18,6 +18,7 @@ Usage :
 import gzip
 import hashlib
 import logging
+import random
 import re
 import sys
 import threading
@@ -62,6 +63,10 @@ COMMUNES_DIRECT_VI_COLLECTION = "communes_direct_vi"
 MONGO_BULK_BATCH_SIZE = 500
 MAX_REVIEW_PAGES_PER_CITY = 80  # garde-fou anti-boucle / pagination infinie
 USE_VILLE_IDEALE_SITEMAP = False  # le sitemap VI n'est pas fiable (204/500). On s'appuie sur BDMV.
+MAX_CONCURRENT_HTTP = 1  # anti-ban : 1 requête à la fois (plus sûr)
+MIN_SECONDS_BETWEEN_REQUESTS = 1.25  # anti-ban : délai global minimal entre 2 requêtes
+USE_PLAYWRIGHT_FALLBACK = True  # si le site renvoie un body vide via requests, fallback navigateur
+MAX_CONSECUTIVE_HTTP_BLOCKS = 8  # arrêt sécurité si ban persistant
 
 
 class VilleIdealeHarvester:
@@ -92,6 +97,11 @@ class VilleIdealeHarvester:
 
         self._progress_lock = threading.Lock()
         self._thread_local = threading.local()
+        self._http_semaphore = threading.Semaphore(MAX_CONCURRENT_HTTP)
+        self._http_throttle_lock = threading.Lock()
+        self._last_http_ts: float = 0.0
+        self._playwright_lock = threading.Lock()
+        self._consecutive_http_blocks: int = 0
         self.total_in_queue: int = 0
         self.already_done: int = 0
         self.newly_processed: int = 0
@@ -631,6 +641,7 @@ class VilleIdealeHarvester:
                 status_forcelist=[429, 500, 502, 503, 504],
                 allowed_methods=["GET"],
                 raise_on_status=False,
+                respect_retry_after_header=True,
             )
             adapter = HTTPAdapter(max_retries=retries, pool_connections=20, pool_maxsize=20)
             session.mount("http://", adapter)
@@ -638,14 +649,98 @@ class VilleIdealeHarvester:
             self._thread_local.session = session
         return session
 
+    def _polite_wait(self) -> None:
+        """Throttle global + jitter pour éviter le ban IP."""
+        with self._http_throttle_lock:
+            now = time.monotonic()
+            wait_for = (self._last_http_ts + MIN_SECONDS_BETWEEN_REQUESTS) - now
+            if wait_for > 0:
+                time.sleep(wait_for)
+            # jitter pour éviter un pattern trop régulier (plus large)
+            time.sleep(random.uniform(0.20, 0.60))
+            self._last_http_ts = time.monotonic()
+
+    def _register_http_block(self, reason: str, url: str) -> None:
+        self._consecutive_http_blocks += 1
+        # backoff progressif (cap à ~2 minutes)
+        sleep_s = min(120.0, (2.0 ** min(self._consecutive_http_blocks, 6)) + random.uniform(0.0, 3.0))
+        logger.warning(
+            "Blocage HTTP détecté (%s). consecutive=%d, sleep=%.1fs url=%s",
+            reason,
+            self._consecutive_http_blocks,
+            sleep_s,
+            url,
+        )
+        time.sleep(sleep_s)
+        if self._consecutive_http_blocks >= MAX_CONSECUTIVE_HTTP_BLOCKS:
+            raise RuntimeError(
+                f"Blocage HTTP persistant (>= {MAX_CONSECUTIVE_HTTP_BLOCKS}). "
+                f"Stop pour éviter un ban plus long. Dernière URL: {url}"
+            )
+
+    def _reset_http_blocks_on_success(self) -> None:
+        if self._consecutive_http_blocks:
+            self._consecutive_http_blocks = 0
+
     def _safe_get(self, session: requests.Session, url: str) -> Optional[BeautifulSoup]:
-        try:
-            resp = session.get(url, headers=self.headers, timeout=20)
-            resp.raise_for_status()
-            return BeautifulSoup(resp.text, "html.parser")
-        except requests.RequestException as exc:
-            logger.warning("Erreur HTTP sur %s : %s", url, exc)
-            return None
+        # Limite les requêtes simultanées + throttle global.
+        with self._http_semaphore:
+            self._polite_wait()
+            try:
+                resp = session.get(url, headers=self.headers, timeout=20)
+                # Backoff explicite si 429/403 (même si Retry gère une partie)
+                if resp.status_code in (403, 429):
+                    self._register_http_block(f"status={resp.status_code}", url)
+                    return None
+                resp.raise_for_status()
+                if not resp.content:
+                    self._register_http_block("empty_body", url)
+                    return None
+                self._reset_http_blocks_on_success()
+                return BeautifulSoup(resp.text, "html.parser")
+            except requests.RequestException as exc:
+                logger.warning("Erreur HTTP sur %s : %s", url, exc)
+                if USE_PLAYWRIGHT_FALLBACK:
+                    soup = self._safe_get_playwright(url)
+                    if soup:
+                        self._reset_http_blocks_on_success()
+                        return soup
+                return None
+
+    def _safe_get_playwright(self, url: str) -> Optional[BeautifulSoup]:
+        """
+        Fallback navigateur (Playwright) : utile si le site renvoie un body vide aux clients non-browser.
+        Garde un lock global pour éviter de lancer trop d'instances en parallèle.
+        """
+        with self._playwright_lock:
+            try:
+                from playwright.sync_api import sync_playwright  # type: ignore
+            except Exception:
+                logger.warning(
+                    "Playwright indisponible: impossible de fallback navigateur pour %s",
+                    url,
+                )
+                return None
+            try:
+                with sync_playwright() as p:
+                    browser = p.chromium.launch(headless=True)
+                    context = browser.new_context(
+                        user_agent=self.headers.get("User-Agent"),
+                        locale="fr-FR",
+                    )
+                    page = context.new_page()
+                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    html = page.content() or ""
+                    context.close()
+                    browser.close()
+                html = html.strip()
+                if not html:
+                    logger.warning("Playwright a aussi renvoyé un body vide pour %s", url)
+                    return None
+                return BeautifulSoup(html, "html.parser")
+            except Exception as exc:
+                logger.warning("Fallback Playwright en échec sur %s: %s", url, exc)
+                return None
 
     # ------------------------------------------------------------------ #
     #  Extracteurs Ville-Idéale                                          #
@@ -653,45 +748,49 @@ class VilleIdealeHarvester:
 
     def _extract_notes(self, soup: BeautifulSoup) -> Dict[str, Optional[float]]:
         """
-        Notes /10 attendues dans div#notes_graph table.
+        Notes /10 attendues dans table#tablonotes.
         Retourne un mapping standardisé.
         """
         mapping = {
             "environnement": "note_environnement_10",
             "transports": "note_transports_10",
-            "santé": "note_sante_10",
             "sante": "note_sante_10",
             "sécurité": "note_securite_10",
             "securite": "note_securite_10",
             "sports et loisirs": "note_sports_loisirs_10",
-            "sport et loisirs": "note_sports_loisirs_10",
+            "sportset loisirs": "note_sports_loisirs_10",
             "culture": "note_culture_10",
             "enseignement": "note_enseignement_10",
             "commerces": "note_commerces_10",
-            "qualité de vie": "note_qualite_vie_10",
             "qualite de vie": "note_qualite_vie_10",
+            "qualité de vie": "note_qualite_vie_10",
         }
         out: VilleIdealeNotesDoc = {v: None for v in mapping.values()}  # type: ignore[assignment]
 
-        container = soup.find("div", id="notes_graph") or soup.select_one("#notes_graph")
-        if not container:
-            return out
-        table = container.find("table") if container else None
+        table = soup.select_one("table#tablonotes")
         if not table:
             return out
 
         for row in table.find_all("tr"):
-            cells = row.find_all(["th", "td"])
-            if len(cells) < 2:
+            th = row.find("th")
+            td = row.find("td")
+            if not th or not td:
                 continue
-            label = self._normalize_spaces(cells[0].get_text(" ", strip=True)).lower()
-            val = self._normalize_spaces(cells[-1].get_text(" ", strip=True))
-            if not label:
+            label_raw = self._normalize_spaces(th.get_text(" ", strip=True))
+            val = self._normalize_spaces(td.get_text(" ", strip=True))
+            if not label_raw:
                 continue
-            key = mapping.get(label)
+            label = self._normalize_spaces(label_raw).lower()
+            label_norm = (
+                unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode("ascii")
+            )
+            label_norm = self._normalize_spaces(label_norm)
+            key = mapping.get(label_norm) or mapping.get(label)
             if not key:
-                label = re.sub(r"\s+", " ", label)
-                key = mapping.get(label)
+                # fallback : retire ponctuation / doubles espaces
+                label_norm2 = re.sub(r"[^a-z0-9 ]+", " ", label_norm)
+                label_norm2 = self._normalize_spaces(label_norm2)
+                key = mapping.get(label_norm2)
             if key:
                 out[key] = self._parse_float(val)
         return out  # type: ignore[return-value]
@@ -750,58 +849,89 @@ class VilleIdealeHarvester:
 
     def _extract_reviews_from_soup(self, soup: BeautifulSoup) -> List[Dict[str, Any]]:
         """
-        Avis attendus dans section#avis article.review.
-        On extrait séparément p.pos / p.neg.
+        Avis attendus dans div.comm.
+        - ID externe : div.interact
+        - Note avis : strong.moyenne
+        - Points positifs/négatifs : <p> avec <b>/<strong> 'Les points positifs :' / 'Les points négatifs :'
         """
         reviews: List[Dict[str, Any]] = []
-        avis_section = soup.find("section", id="avis") or soup.select_one("section#avis")
-        scope = avis_section or soup
+        scope = soup
 
-        for article in scope.select("article.review"):
-            external_id = (
-                article.get("data-id")
-                or article.get("id")
-                or (article.get("data-review-id") if article else None)
+        def extract_points_from_p(p_tag: Any, expected_label: str) -> Optional[str]:
+            """
+            p contient typiquement: <p><b>Les points positifs : </b>...texte...</p>
+            On enlève le label du texte final.
+            """
+            if not p_tag:
+                return None
+            label_el = p_tag.find(["b", "strong"])
+            if not label_el:
+                return None
+            label_txt = self._normalize_spaces(label_el.get_text(" ", strip=True)).lower()
+            expected = self._normalize_spaces(expected_label).lower()
+            # accepte "Les points positifs :" ou "Les points positifs : " etc.
+            if not label_txt.startswith(expected):
+                return None
+            # texte complet du <p>, puis suppression du préfixe
+            full = self._normalize_spaces(p_tag.get_text(" ", strip=True))
+            # retire "Les points positifs :" (avec ou sans espaces)
+            cleaned = re.sub(
+                r"^les points positifs\s*:\s*",
+                "",
+                full,
+                flags=re.IGNORECASE,
             )
+            cleaned = re.sub(
+                r"^les points negatifs\s*:\s*",
+                "",
+                cleaned,
+                flags=re.IGNORECASE,
+            )
+            cleaned = self._normalize_spaces(cleaned)
+            return cleaned or None
 
-            pos_parts = [
-                self._normalize_spaces(p.get_text(" ", strip=True))
-                for p in article.select("p.pos")
-            ]
-            neg_parts = [
-                self._normalize_spaces(p.get_text(" ", strip=True))
-                for p in article.select("p.neg")
-            ]
-            pos_text = self._normalize_spaces(" ".join([x for x in pos_parts if x]))
-            neg_text = self._normalize_spaces(" ".join([x for x in neg_parts if x]))
+        for comm in scope.select("div.comm"):
+            # ID externe
+            external_id = None
+            interact = comm.select_one("div.interact")
+            if interact:
+                # HTML réel : <div class="interact" id="131011">
+                attr_id = self._normalize_spaces(interact.get("id") or "")
+                if attr_id.isdigit():
+                    external_id = attr_id
+                else:
+                    m = re.search(r"\b(\d{3,})\b", interact.get_text(" ", strip=True))
+                    if m:
+                        external_id = m.group(1)
 
-            # texte fallback si le HTML n'utilise pas pos/neg partout
-            raw_text = self._normalize_spaces(article.get_text(" ", strip=True))
-            if not (pos_text or neg_text):
-                # on garde un texte non vide pour ne pas perdre l'avis
-                pos_text = None
-                neg_text = None
-                text_for_model = raw_text
-            else:
-                text_for_model = self._normalize_spaces(
-                    " | ".join([t for t in [pos_text and f"+ {pos_text}", neg_text and f"- {neg_text}"] if t])
-                )
+            # Note avis
+            rating = None
+            note_el = comm.select_one("strong.moyenne")
+            if note_el:
+                rating = self._parse_float(note_el.get_text(" ", strip=True))
 
-            # rating / date (best effort)
-            rating_el = article.select_one('[itemprop="ratingValue"], .rating, .note, .score')
-            rating = self._parse_float(rating_el.get_text(" ", strip=True)) if rating_el else None
-            time_el = article.find("time")
-            date_val = None
-            if time_el:
-                date_val = time_el.get("datetime") or time_el.get_text(" ", strip=True)
-            else:
-                date_candidate = article.select_one(".date, .review_date")
-                if date_candidate:
-                    date_val = date_candidate.get_text(" ", strip=True)
-            date_iso = self._parse_date_iso(date_val)
+            pos_text = None
+            neg_text = None
+
+            for p in comm.find_all("p"):
+                pos_text = pos_text or extract_points_from_p(p, "Les points positifs :")
+                neg_text = neg_text or extract_points_from_p(p, "Les points négatifs :")
+                # fallback sans accent
+                neg_text = neg_text or extract_points_from_p(p, "Les points negatifs :")
+
+            # Texte intégral pour IA: concat propre (sans labels)
+            text_parts = []
+            if pos_text:
+                text_parts.append(pos_text)
+            if neg_text:
+                text_parts.append(neg_text)
+            text_for_model = self._normalize_spaces("\n\n".join(text_parts))
 
             if not text_for_model:
-                continue
+                # fallback: texte brut du bloc avis (si la structure diffère)
+                text_for_model = self._normalize_spaces(comm.get_text(" ", strip=True))
+                if not text_for_model:
+                    continue
 
             reviews.append(
                 {
@@ -810,7 +940,7 @@ class VilleIdealeHarvester:
                     "positive": pos_text,
                     "negative": neg_text,
                     "rating": rating,
-                    "date": date_iso,
+                    "date": None,
                 }
             )
         return reviews
