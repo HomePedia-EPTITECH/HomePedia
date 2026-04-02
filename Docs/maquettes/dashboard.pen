@@ -8836,55 +8836,86 @@
           "id": "lHq4W",
           "name": "kpiGrid",
           "width": "fill_container",
-          "gap": 12,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            32,
+            48,
+            16,
+            48
+          ],
           "children": [
             {
               "type": "frame",
-              "id": "PxHQo",
-              "name": "kpi1",
+              "id": "VejDQ",
+              "name": "dnav",
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#334155"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
               "children": [
                 {
+                  "type": "text",
+                  "id": "bmfC2",
+                  "fill": "#F1F5F9",
+                  "content": "Villes à explorer",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "700"
+                },
+                {
                   "type": "frame",
-                  "id": "l43k4",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
+                  "id": "Medxd",
+                  "name": "darrows",
+                  "gap": 8,
+                  "alignItems": "center",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "FJpAo",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
+                      "id": "Swn3l",
+                      "name": "dprev",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "#1E293B",
+                      "cornerRadius": 16,
                       "stroke": {
-                        "align": "outside",
                         "thickness": 1,
                         "fill": "#334155"
-                      }
+                      },
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "tPHp0",
+                          "width": 16,
+                          "height": 16,
+                          "iconFontName": "chevron-left",
+                          "iconFontFamily": "lucide",
+                          "fill": "#94A3B8"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "XwHTF",
+                      "name": "dnext",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "#3B82F6",
+                      "cornerRadius": 16,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "0bRKI",
+                          "width": 16,
+                          "height": 16,
+                          "iconFontName": "chevron-right",
+                          "iconFontFamily": "lucide",
+                          "fill": "#FFFFFF"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -8892,51 +8923,384 @@
             },
             {
               "type": "frame",
-              "id": "R1kyi",
-              "name": "kpi1",
+              "id": "2IACz",
+              "name": "dcards",
+              "clip": true,
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#334155"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
+              "gap": 16,
               "children": [
                 {
                   "type": "frame",
-                  "id": "QlVk8",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
+                  "id": "a3Wrs",
+                  "name": "dc1",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#1E293B",
+                  "cornerRadius": 12,
+                  "layout": "vertical",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "9IZPQ",
-                      "name": "carteMapCard",
+                      "id": "Ullvs",
+                      "name": "dc1img",
                       "metadata": {
                         "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
+                        "username": "nahuelblna",
+                        "link": "https://unsplash.com/@nahuelblna",
+                        "author": "Nahuel Balbuena Espinola"
                       },
                       "clip": true,
                       "width": "fill_container",
-                      "height": 300,
+                      "height": 160,
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
+                        "url": "https://images.unsplash.com/photo-1771114810319-7eee10e092b2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzMjF8&ixlib=rb-4.1.0&q=80&w=1080",
                         "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#334155"
                       }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jByOh",
+                      "name": "dc1info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "sen5q",
+                          "fill": "#F1F5F9",
+                          "content": "Paris",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "SvZuA",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "8bMeF",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 1 247 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kQqe5",
+                  "name": "dc2",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#1E293B",
+                  "cornerRadius": 12,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "7HrMb",
+                      "name": "dc2img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "bastien_nvs",
+                        "link": "https://unsplash.com/@bastien_nvs",
+                        "author": "Bastien Nvs"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1612116155691-5250b2eaad97?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzMjJ8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "FKLmt",
+                      "name": "dc2info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "zzerT",
+                          "fill": "#F1F5F9",
+                          "content": "Lyon",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "aLXik",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PhKB8",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 893 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "id8zi",
+                  "name": "dc3",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#1E293B",
+                  "cornerRadius": 12,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "qE1vq",
+                      "name": "dc3img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "atlasalexa",
+                        "link": "https://unsplash.com/@atlasalexa",
+                        "author": "Alexa Portoraro"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1675972754425-9d2e717cacf7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzMjN8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "UsSZY",
+                      "name": "dc3info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "5JseK",
+                          "fill": "#F1F5F9",
+                          "content": "Bordeaux",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "MlTJa",
+                          "fill": "#F59E0B",
+                          "content": "★★★★★",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "V2rYZ",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 621 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "GSb0y",
+                  "name": "dc4",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#1E293B",
+                  "cornerRadius": 12,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "m9lqC",
+                      "name": "dc4img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "fpeeters",
+                        "link": "https://unsplash.com/@fpeeters",
+                        "author": "Florian Peeters"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1728325796274-c7ce393c0f44?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzNDZ8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "CW57B",
+                      "name": "dc4info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "erbR9",
+                          "fill": "#F1F5F9",
+                          "content": "Marseille",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "4O5t3",
+                          "fill": "#F59E0B",
+                          "content": "★★★☆☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "2RHeG",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 756 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cde3b",
+                  "name": "dc5",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#1E293B",
+                  "cornerRadius": 12,
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "w5o5m",
+                      "name": "dc5img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "pbernardon",
+                        "link": "https://unsplash.com/@pbernardon",
+                        "author": "Pascal Bernardon"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1762371031024-09ebe6d0edb2?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzNDZ8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "eg52x",
+                      "name": "dc5info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "9Kfqa",
+                          "fill": "#F1F5F9",
+                          "content": "Rennes",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "bjT54",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "LuRGc",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 293 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -8944,157 +9308,52 @@
             },
             {
               "type": "frame",
-              "id": "B5RIq",
-              "name": "kpi1",
+              "id": "hbrdY",
+              "name": "ddots",
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#334155"
-              },
-              "layout": "vertical",
               "gap": 6,
-              "padding": 16,
+              "justifyContent": "center",
+              "alignItems": "center",
               "children": [
                 {
-                  "type": "frame",
-                  "id": "RgDil",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "X3mUy",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#334155"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "00u55",
-              "name": "kpi1",
-              "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#334155"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
-              "children": [
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "EBOKY",
+                  "fill": "#3B82F6",
+                  "width": 20,
+                  "height": 6
+                },
                 {
-                  "type": "frame",
-                  "id": "ePdAg",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "FAw9q",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#334155"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "BRucq",
-              "name": "kpi1",
-              "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#334155"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
-              "children": [
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "t8mG4",
+                  "fill": "#334155",
+                  "width": 6,
+                  "height": 6
+                },
                 {
-                  "type": "frame",
-                  "id": "6vdXL",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "xnbWz",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#334155"
-                      }
-                    }
-                  ]
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "emzks",
+                  "fill": "#334155",
+                  "width": 6,
+                  "height": 6
+                },
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "NopcO",
+                  "fill": "#334155",
+                  "width": 6,
+                  "height": 6
+                },
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "xjNmx",
+                  "fill": "#334155",
+                  "width": 6,
+                  "height": 6
                 }
               ]
             }
@@ -18439,55 +18698,86 @@
           "id": "ENBSp",
           "name": "kpiGrid",
           "width": "fill_container",
-          "gap": 12,
+          "layout": "vertical",
+          "gap": 16,
+          "padding": [
+            32,
+            48,
+            16,
+            48
+          ],
           "children": [
             {
               "type": "frame",
-              "id": "DRKvQ",
-              "name": "kpi1",
+              "id": "ly3BX",
+              "name": "lnav",
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#E2E8F0"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
+              "justifyContent": "space_between",
+              "alignItems": "center",
               "children": [
                 {
+                  "type": "text",
+                  "id": "rCRf6",
+                  "fill": "#0F172A",
+                  "content": "Villes à explorer",
+                  "fontFamily": "Inter",
+                  "fontSize": 18,
+                  "fontWeight": "700"
+                },
+                {
                   "type": "frame",
-                  "id": "l68Th",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
+                  "id": "dDob6",
+                  "name": "larrows",
+                  "gap": 8,
+                  "alignItems": "center",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "8lhlD",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
+                      "id": "QUbvC",
+                      "name": "lprev",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "#F1F5F9",
+                      "cornerRadius": 16,
                       "stroke": {
-                        "align": "outside",
                         "thickness": 1,
                         "fill": "#E2E8F0"
-                      }
+                      },
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "xvOHE",
+                          "width": 16,
+                          "height": 16,
+                          "iconFontName": "chevron-left",
+                          "iconFontFamily": "lucide",
+                          "fill": "#64748B"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "cZsn6",
+                      "name": "lnext",
+                      "width": 32,
+                      "height": 32,
+                      "fill": "#3B82F6",
+                      "cornerRadius": 16,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon_font",
+                          "id": "71QUc",
+                          "width": 16,
+                          "height": 16,
+                          "iconFontName": "chevron-right",
+                          "iconFontFamily": "lucide",
+                          "fill": "#FFFFFF"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -18495,51 +18785,434 @@
             },
             {
               "type": "frame",
-              "id": "1l6OE",
-              "name": "kpi1",
+              "id": "3mq3A",
+              "name": "lcards",
+              "clip": true,
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#E2E8F0"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
+              "gap": 16,
               "children": [
                 {
                   "type": "frame",
-                  "id": "yt210",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
+                  "id": "8g0AB",
+                  "name": "lc1",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000012",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 16
+                  },
+                  "layout": "vertical",
                   "children": [
                     {
                       "type": "frame",
-                      "id": "FK4vR",
-                      "name": "carteMapCard",
+                      "id": "Q4oZQ",
+                      "name": "lc1img",
                       "metadata": {
                         "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
+                        "username": "bastien_nvs",
+                        "link": "https://unsplash.com/@bastien_nvs",
+                        "author": "Bastien Nvs"
                       },
                       "clip": true,
                       "width": "fill_container",
-                      "height": 300,
+                      "height": 160,
                       "fill": {
                         "type": "image",
                         "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
+                        "url": "https://images.unsplash.com/photo-1632951909927-ce0207d2a42b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzNzN8&ixlib=rb-4.1.0&q=80&w=1080",
                         "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#E2E8F0"
                       }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "soF4n",
+                      "name": "lc1info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "imNWE",
+                          "fill": "#0F172A",
+                          "content": "Paris",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "dOo9O",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "lm0SS",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 1 247 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "3K44G",
+                  "name": "lc2",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000012",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 16
+                  },
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "qzoK6",
+                      "name": "lc2img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "ninjagexly",
+                        "link": "https://unsplash.com/@ninjagexly",
+                        "author": "Kristina Bekher"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1771153492790-4ac537ae2670?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzNzN8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "88N8A",
+                      "name": "lc2info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "LS2Iv",
+                          "fill": "#0F172A",
+                          "content": "Lyon",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "sUE4S",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "ev0ZY",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 893 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "4wJEI",
+                  "name": "lc3",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000012",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 16
+                  },
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "uZB08",
+                      "name": "lc3img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "czapp_arpad",
+                        "link": "https://unsplash.com/@czapp_arpad",
+                        "author": "Árpád Czapp"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1632485904373-3ee3a74aa74b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzNzR8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "sl2d1",
+                      "name": "lc3info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "8aPgV",
+                          "fill": "#0F172A",
+                          "content": "Bordeaux",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "AN6Ux",
+                          "fill": "#F59E0B",
+                          "content": "★★★★★",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "OFyvp",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 621 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "flQuR",
+                  "name": "lc4",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000012",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 16
+                  },
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "1kDse",
+                      "name": "lc4img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "satvik_s",
+                        "link": "https://unsplash.com/@satvik_s",
+                        "author": "Satvik"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1687689785639-b42967e626d3?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzODd8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "4Au3l",
+                      "name": "lc4info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "GWMll",
+                          "fill": "#0F172A",
+                          "content": "Marseille",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "MeE8A",
+                          "fill": "#F59E0B",
+                          "content": "★★★☆☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "izJDj",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 756 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "cPE8I",
+                  "name": "lc5",
+                  "clip": true,
+                  "width": 260,
+                  "fill": "#FFFFFF",
+                  "cornerRadius": 12,
+                  "effect": {
+                    "type": "shadow",
+                    "shadowType": "outer",
+                    "color": "#00000012",
+                    "offset": {
+                      "x": 0,
+                      "y": 4
+                    },
+                    "blur": 16
+                  },
+                  "layout": "vertical",
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "KwOJH",
+                      "name": "lc5img",
+                      "metadata": {
+                        "type": "unsplash",
+                        "username": "ahmed_sl___",
+                        "link": "https://unsplash.com/@ahmed_sl___",
+                        "author": "Ahmed Slimene"
+                      },
+                      "clip": true,
+                      "width": "fill_container",
+                      "height": 160,
+                      "fill": {
+                        "type": "image",
+                        "enabled": true,
+                        "url": "https://images.unsplash.com/photo-1773179949405-5a9c4d37a384?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w4NDM0ODN8MHwxfHJhbmRvbXx8fHx8fHx8fDE3NzQ2MTEzODh8&ixlib=rb-4.1.0&q=80&w=1080",
+                        "mode": "fill"
+                      }
+                    },
+                    {
+                      "type": "frame",
+                      "id": "Y65Vz",
+                      "name": "lc5info",
+                      "width": "fill_container",
+                      "layout": "vertical",
+                      "gap": 4,
+                      "padding": [
+                        10,
+                        14,
+                        14,
+                        14
+                      ],
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "ZchIu",
+                          "fill": "#0F172A",
+                          "content": "Rennes",
+                          "fontFamily": "Inter",
+                          "fontSize": 15,
+                          "fontWeight": "700"
+                        },
+                        {
+                          "type": "text",
+                          "id": "PhM5i",
+                          "fill": "#F59E0B",
+                          "content": "★★★★☆",
+                          "fontFamily": "Inter",
+                          "fontSize": 13,
+                          "fontWeight": "normal"
+                        },
+                        {
+                          "type": "text",
+                          "id": "DhC0S",
+                          "fill": "#3B82F6",
+                          "content": "Voir les 293 avis",
+                          "fontFamily": "Inter",
+                          "fontSize": 11,
+                          "fontWeight": "normal"
+                        }
+                      ]
                     }
                   ]
                 }
@@ -18547,157 +19220,52 @@
             },
             {
               "type": "frame",
-              "id": "v8QXA",
-              "name": "kpi1",
+              "id": "i3jLL",
+              "name": "ldots",
               "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#E2E8F0"
-              },
-              "layout": "vertical",
               "gap": 6,
-              "padding": 16,
+              "justifyContent": "center",
+              "alignItems": "center",
               "children": [
                 {
-                  "type": "frame",
-                  "id": "GQxzL",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "7VaLj",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#E2E8F0"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "UjLUR",
-              "name": "kpi1",
-              "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#E2E8F0"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
-              "children": [
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "sn9mb",
+                  "fill": "#3B82F6",
+                  "width": 20,
+                  "height": 6
+                },
                 {
-                  "type": "frame",
-                  "id": "W5vIR",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "PEjYE",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#E2E8F0"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "frame",
-              "id": "zCiXO",
-              "name": "kpi1",
-              "width": "fill_container",
-              "cornerRadius": 8,
-              "stroke": {
-                "align": "outside",
-                "thickness": 1,
-                "fill": "#E2E8F0"
-              },
-              "layout": "vertical",
-              "gap": 6,
-              "padding": 16,
-              "children": [
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "lha2W",
+                  "fill": "#E2E8F0",
+                  "width": 6,
+                  "height": 6
+                },
                 {
-                  "type": "frame",
-                  "id": "Z9fFs",
-                  "name": "carte2col",
-                  "width": "fill_container",
-                  "gap": 20,
-                  "children": [
-                    {
-                      "type": "frame",
-                      "id": "2yIo5",
-                      "name": "carteMapCard",
-                      "metadata": {
-                        "type": "unsplash",
-                        "username": "iamgaryrdz",
-                        "link": "https://unsplash.com/@iamgaryrdz",
-                        "author": "Gary Ruiz"
-                      },
-                      "clip": true,
-                      "width": "fill_container",
-                      "height": 300,
-                      "fill": {
-                        "type": "image",
-                        "enabled": true,
-                        "url": "./image/Capture d'écran 2026-03-26 165042.png",
-                        "mode": "fill"
-                      },
-                      "cornerRadius": 8,
-                      "stroke": {
-                        "align": "outside",
-                        "thickness": 1,
-                        "fill": "#E2E8F0"
-                      }
-                    }
-                  ]
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "eXSKp",
+                  "fill": "#E2E8F0",
+                  "width": 6,
+                  "height": 6
+                },
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "sl55r",
+                  "fill": "#E2E8F0",
+                  "width": 6,
+                  "height": 6
+                },
+                {
+                  "type": "rectangle",
+                  "cornerRadius": 3,
+                  "id": "bDyAp",
+                  "fill": "#E2E8F0",
+                  "width": 6,
+                  "height": 6
                 }
               ]
             }
