@@ -9,8 +9,14 @@
 ## Collection `city_pages_queue`
 
 - Rôle : file de pages à scraper, alimentée depuis les sitemaps.
+- Note Ville-Idéale : en pratique on **n’utilise pas** le sitemap (non fiable). La queue `source=ville_ideale`
+  est alimentée depuis les communes déjà connues via BDMV (`com_id` + `nom_commune`), en générant des URLs
+  de forme `https://www.ville-ideale.fr/<slug>_<com_id>`.
+- Pour Ville-Idéale, l’upsert queue se fait par couple (`source`, `com_id`) et l’URL peut être ajustée
+  en fin de scraping (champ `resolved_url`).
 - Champs :
   - `url`
+  - `resolved_url` (optionnel)
   - `source`
   - `com_id`
   - `nom_commune_guess`
@@ -115,3 +121,4 @@
 - `05_init_communes_harvest_vi.js`
 - `06_init_communes_direct_vi.js`
 - `07_add_source_indexes_vi_and_reviews_texthash.js`
+- `08_backfill_city_pages_queue_source.js` (normalisation robuste du champ `source` : absent/null/vide + stats)

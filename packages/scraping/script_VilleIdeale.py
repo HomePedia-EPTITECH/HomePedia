@@ -22,12 +22,13 @@ import re
 import sys
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import unquote, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -60,6 +61,7 @@ COMMUNES_HARVEST_VI_COLLECTION = "communes_harvest_vi"
 COMMUNES_DIRECT_VI_COLLECTION = "communes_direct_vi"
 MONGO_BULK_BATCH_SIZE = 500
 MAX_REVIEW_PAGES_PER_CITY = 80  # garde-fou anti-boucle / pagination infinie
+USE_VILLE_IDEALE_SITEMAP = False  # le sitemap VI n'est pas fiable (204/500). On s'appuie sur BDMV.
 
 
 class VilleIdealeHarvester:
@@ -242,8 +244,9 @@ class VilleIdealeHarvester:
         """
         parsed = urlparse(url)
         segment = parsed.path.rstrip("/").split("/")[-1]
+        segment = unquote(segment)
         segment = re.sub(r"\.html?$", "", segment, flags=re.IGNORECASE)
-        m = re.search(r"_((?:2A|2B)\d{3}|\d{5})\b", segment, flags=re.IGNORECASE)
+        m = re.search(r"[_-]((?:2A|2B)\d{3}|\d{5})\b", segment, flags=re.IGNORECASE)
         if not m:
             raise ValueError(f"Impossible d'extraire com_id depuis '{segment}'")
         return m.group(1).upper()
@@ -252,13 +255,150 @@ class VilleIdealeHarvester:
         try:
             parsed = urlparse(url)
             segment = parsed.path.rstrip("/").split("/")[-1]
+            segment = unquote(segment)
             segment = re.sub(r"\.html?$", "", segment, flags=re.IGNORECASE)
-            m = re.search(r"_((?:2A|2B)\d{3}|\d{5})\b", segment, flags=re.IGNORECASE)
+            m = re.search(r"[_-]((?:2A|2B)\d{3}|\d{5})\b", segment, flags=re.IGNORECASE)
             name_part = segment[: m.start()] if m else segment
             name_part = name_part.replace("-", " ").replace("_", " ").strip()
             return name_part.upper() if name_part else fallback
         except Exception:
             return fallback
+
+    def _slugify_city_name(self, value: str) -> str:
+        """
+        Slug compatible Ville-Idéale depuis nom commune.
+        Ex:
+            "L'Haÿ-les-Roses" -> "l-hay-les-roses"
+            "PARIS 15E ARRONDISSEMENT" -> "paris-15e-arrondissement"
+        """
+        s = (value or "").strip().lower()
+        s = s.replace("’", "'")
+        s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+        s = s.replace("'", "-")
+        s = re.sub(r"[^a-z0-9]+", "-", s)
+        s = re.sub(r"-{2,}", "-", s).strip("-")
+        return s
+
+    def _build_vi_url(self, nom_commune: str, com_id: str) -> str:
+        slug = self._slugify_city_name(nom_commune)
+        return f"https://www.ville-ideale.fr/{slug}_{com_id}"
+
+    def _fetch_city_candidates_from_bdmv_data(self) -> List[Tuple[str, str]]:
+        """
+        Récupère les couples (com_id, nom_commune) depuis les données déjà collectées BDMV.
+        Ordre de priorité :
+            1) city_pages_queue (source=bdmv)
+            2) communes_direct
+            3) communes_harvest
+        """
+        candidates: Dict[str, str] = {}
+
+        # 1) Queue BDMV (y compris anciennes lignes sans champ source)
+        cursor_q = self.queue_store.find(
+            {
+                "$or": [
+                    {"source": "bdmv"},
+                    {"source": {"$exists": False}, "url": {"$regex": r"bien-dans-ma-ville\.fr", "$options": "i"}},
+                ]
+            },
+            {"com_id": 1, "nom_commune_guess": 1, "url": 1},
+        ).batch_size(1000)
+        for d in cursor_q:
+            com_id = (d.get("com_id") or "").strip().upper()
+            url = (d.get("url") or "").strip()
+            if not com_id and url:
+                try:
+                    com_id = self._extract_com_id_from_url(url)
+                except ValueError:
+                    com_id = ""
+            name = (d.get("nom_commune_guess") or "").strip()
+            if not name and url:
+                name = self._extract_nom_commune_from_url(url, com_id)
+            if com_id and name and com_id not in candidates:
+                candidates[com_id] = name
+
+        # 2) communes_direct (nom réel de commune)
+        direct_store = self.raw_db["communes_direct"]
+        cursor_d = direct_store.find({}, {"com": 1, "nom_commune": 1}).batch_size(1000)
+        for d in cursor_d:
+            com_id = (d.get("com") or "").strip().upper()
+            name = (d.get("nom_commune") or "").strip()
+            if com_id and name and com_id not in candidates:
+                candidates[com_id] = name
+
+        # 3) communes_harvest
+        harvest_store = self.raw_db["communes_harvest"]
+        cursor_h = harvest_store.find({}, {"com": 1, "nom_commune": 1}).batch_size(1000)
+        for d in cursor_h:
+            com_id = (d.get("com") or "").strip().upper()
+            name = (d.get("nom_commune") or "").strip()
+            if com_id and name and com_id not in candidates:
+                candidates[com_id] = name
+
+        return sorted(candidates.items(), key=lambda x: x[0])
+
+    def _sync_queue_from_bdmv_reference(self, force_rescrape: bool = True) -> int:
+        """
+        Fallback si sitemap Ville-Idéale indisponible :
+        fabrique les URLs Ville-Idéale depuis les communes déjà connues côté BDMV.
+        """
+        now_utc = datetime.now(timezone.utc)
+        city_pairs = self._fetch_city_candidates_from_bdmv_data()
+        if not city_pairs:
+            logger.warning("Aucune commune source trouvée côté BDMV pour fallback VI.")
+            return 0
+
+        ops: List[UpdateOne] = []
+        written_ops = 0
+        for com_id, nom_commune in city_pairs:
+            url = self._build_vi_url(nom_commune=nom_commune, com_id=com_id)
+            update_set: Dict[str, Any] = {
+                "updated_at": now_utc,
+                "source": SOURCE,
+                "com_id": com_id,
+                "nom_commune_guess": nom_commune,
+            }
+            if force_rescrape:
+                update_set["is_processed"] = False
+                update_set["processed_at"] = None
+                update_set["last_error"] = None
+            ops.append(
+                UpdateOne(
+                    # Priorité : ligne VI existante par (source, com_id),
+                    # fallback : ligne déjà présente avec la même URL VI (legacy sans source).
+                    {"$or": [{"source": SOURCE, "com_id": com_id}, {"url": url}]},
+                    {
+                        "$setOnInsert": {
+                            "attempt_count": 0,
+                            "created_at": now_utc,
+                        },
+                        "$set": {
+                            **update_set,
+                            "url": url,
+                        },
+                    },
+                    upsert=True,
+                )
+            )
+            if len(ops) >= MONGO_BULK_BATCH_SIZE:
+                try:
+                    res = self.queue_store.bulk_write(ops, ordered=False)
+                    written_ops += (res.upserted_count or 0) + (res.modified_count or 0)
+                except BulkWriteError as exc:
+                    logger.warning("BulkWrite queue fallback partiellement échoué: %s", exc.details)
+                ops.clear()
+        if ops:
+            try:
+                res = self.queue_store.bulk_write(ops, ordered=False)
+                written_ops += (res.upserted_count or 0) + (res.modified_count or 0)
+            except BulkWriteError as exc:
+                logger.warning("BulkWrite queue fallback partiellement échoué: %s", exc.details)
+
+        logger.info(
+            "Queue VI alimentée depuis référentiel BDMV: %d écriture(s) effectives.",
+            written_ops,
+        )
+        return written_ops
 
     def _fetch_city_urls_from_sitemap(self) -> List[str]:
         base_origin = f"{urlparse(SITEMAP_URL).scheme}://{urlparse(SITEMAP_URL).netloc}"
@@ -273,7 +413,7 @@ class VilleIdealeHarvester:
             p = urlparse(u)
             if p.netloc and p.netloc != urlparse(base_origin).netloc:
                 return False
-            path = p.path.rstrip("/")
+            path = unquote(p.path.rstrip("/"))
             segs = [s for s in path.split("/") if s]
             if not segs:
                 return False
@@ -283,7 +423,7 @@ class VilleIdealeHarvester:
                 return False
             if len(segs) != 1:
                 return False
-            if not re.search(r"_((?:2a|2b)\d{3}|\d{5})\b", last, flags=re.IGNORECASE):
+            if not re.search(r"[_-]((?:2a|2b)\d{3}|\d{5})\b", last, flags=re.IGNORECASE):
                 return False
             try:
                 _ = self._extract_com_id_from_url(u)
@@ -355,13 +495,20 @@ class VilleIdealeHarvester:
                 },
             )
 
+        if not USE_VILLE_IDEALE_SITEMAP:
+            self._sync_queue_from_bdmv_reference(force_rescrape=force_rescrape)
+            return
+
         try:
             urls = self._fetch_city_urls_from_sitemap()
         except Exception as exc:
             logger.warning("Impossible de synchroniser la queue depuis le sitemap: %s", exc)
-            return
+            urls = []
         if not urls:
-            logger.warning("Sitemap vide/non exploitable: aucune URL ajoutée à la queue.")
+            logger.warning("Sitemap vide/non exploitable: fallback depuis les communes BDMV.")
+            written = self._sync_queue_from_bdmv_reference(force_rescrape=force_rescrape)
+            if written <= 0:
+                logger.warning("Aucune URL VI générée via fallback BDMV.")
             return
 
         ops: List[UpdateOne] = []
@@ -424,11 +571,22 @@ class VilleIdealeHarvester:
         )
 
     def _load_queue_entries(self) -> Iterator[Tuple[str, str, str]]:
+        """
+        IMPORTANT : ne pas utiliser `yield` directement ici.
+        Sinon la fonction devient un générateur lazy et les compteurs (total/already_done)
+        ne sont pas initialisés avant l'itération.
+        """
         self.total_in_queue = self.queue_store.count_documents({"source": SOURCE})
-        self.already_done = self.queue_store.count_documents({"source": SOURCE, "is_processed": True})
-        remaining = self.queue_store.count_documents({"source": SOURCE, "is_processed": False})
+        self.already_done = self.queue_store.count_documents(
+            {"source": SOURCE, "is_processed": True}
+        )
+        remaining = self.queue_store.count_documents(
+            {"source": SOURCE, "is_processed": False}
+        )
         if remaining == 0:
-            logger.info("Aucune URL à traiter dans la queue Mongo pour source=%s.", SOURCE)
+            logger.info(
+                "Aucune URL à traiter dans la queue Mongo pour source=%s.", SOURCE
+            )
             return iter(())
         logger.info(
             "Queue chargée (%s) : %d entrée(s) à traiter, %d déjà traitée(s) sur %d.",
@@ -437,21 +595,23 @@ class VilleIdealeHarvester:
             self.already_done,
             self.total_in_queue,
         )
-        cursor = (
-            self.queue_store.find(
-                {"source": SOURCE, "is_processed": False},
-                {"url": 1, "com_id": 1, "nom_commune_guess": 1},
-            )
-            .sort("url", 1)
-            .batch_size(500)
-        )
+        cursor = self.queue_store.find(
+            {"source": SOURCE, "is_processed": False},
+            {"url": 1, "com_id": 1, "nom_commune_guess": 1},
+        ).sort("url", 1)
+        cursor = cursor.batch_size(500)
+        return self._iter_queue_entries(cursor=cursor)
+
+    def _iter_queue_entries(self, cursor: Any) -> Iterator[Tuple[str, str, str]]:
         for d in cursor:
             d = d  # type: QueueDoc
             url = d.get("url")
             com_id = d.get("com_id")
             if not url or not com_id:
                 continue
-            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(url, com_id)
+            nom_commune = d.get("nom_commune_guess") or self._extract_nom_commune_from_url(
+                url, com_id
+            )
             yield (com_id, nom_commune, url)
 
     # ------------------------------------------------------------------ #
@@ -767,16 +927,26 @@ class VilleIdealeHarvester:
         if not soup:
             return None
 
+        resolved_city_url = base_url
+        canonical_el = soup.select_one('link[rel="canonical"][href]')
+        if canonical_el:
+            candidate = self._canonicalize_url(base_url, canonical_el.get("href", ""))
+            try:
+                if self._extract_com_id_from_url(candidate) == com:
+                    resolved_city_url = candidate
+            except ValueError:
+                pass
+
         payload = CityScrapePayload(com=com, nom_commune=name)
         notes: VilleIdealeNotesDoc = self._extract_notes(soup)  # type: ignore[assignment]
-        reviews_full, review_pages = self._extract_all_reviews(session, base_url)
+        reviews_full, review_pages = self._extract_all_reviews(session, resolved_city_url)
 
         now_utc = datetime.now(timezone.utc)
         doc: CommuneHarvestVIDoc = {
             "com": com,
             "nom_commune": name,
             "source": SOURCE,
-            "links": {"city_page": base_url},
+            "links": {"city_page": resolved_city_url},
             "notes": notes,
             "nb_avis": len(reviews_full),
             "reviews_refs": {
@@ -793,7 +963,7 @@ class VilleIdealeHarvester:
             self.city_direct_store.update_one({"com": com}, {"$set": direct_doc}, upsert=True)
             self._upsert_reviews_raw(
                 com=com,
-                url_page=base_url,
+                url_page=resolved_city_url,
                 reviews_full=reviews_full,
                 nom_commune=name,
             )
@@ -801,7 +971,7 @@ class VilleIdealeHarvester:
             logger.exception("Erreur Mongo pendant persist ville com=%s nom=%s url=%s", com, name, base_url)
             return None
 
-        return {"com": com, "nom_commune": name, "url": base_url}
+        return {"com": com, "nom_commune": name, "url": resolved_city_url}
 
     def _build_commune_direct_document(self, commune_doc: CommuneHarvestVIDoc) -> CommuneDirectVIDoc:
         """Aplatit communes_harvest_vi -> communes_direct_vi (Spark-ready), style BDMV."""
@@ -860,18 +1030,34 @@ class VilleIdealeHarvester:
             max_workers,
         )
 
-    def _mark_queue_processed_mongo(self, url: str) -> None:
+    def _mark_queue_processed_mongo(self, com_id: str, old_url: str, resolved_url: Optional[str] = None) -> None:
         now_utc = datetime.now(timezone.utc)
         self.queue_store.update_one(
-            {"url": url},
-            {"$set": {"is_processed": True, "processed_at": now_utc, "updated_at": now_utc}, "$inc": {"attempt_count": 1}},
+            {"source": SOURCE, "com_id": com_id},
+            {
+                "$set": {
+                    "is_processed": True,
+                    "processed_at": now_utc,
+                    "updated_at": now_utc,
+                    "url": resolved_url or old_url,
+                    "resolved_url": resolved_url or old_url,
+                },
+                "$inc": {"attempt_count": 1},
+            },
         )
 
-    def _mark_queue_failed_mongo(self, url: str, error_msg: str) -> None:
+    def _mark_queue_failed_mongo(self, com_id: str, old_url: str, error_msg: str) -> None:
         now_utc = datetime.now(timezone.utc)
         self.queue_store.update_one(
-            {"url": url},
-            {"$set": {"last_error": error_msg[:500], "updated_at": now_utc}, "$inc": {"attempt_count": 1}},
+            {"source": SOURCE, "com_id": com_id},
+            {
+                "$set": {
+                    "last_error": error_msg[:500],
+                    "updated_at": now_utc,
+                    "url": old_url,
+                },
+                "$inc": {"attempt_count": 1},
+            },
         )
 
     def _process_queue_entry(self, entry: Tuple[str, str, str]) -> Optional[Dict[str, Any]]:
@@ -883,14 +1069,18 @@ class VilleIdealeHarvester:
         try:
             row = self.process_city((com, nom_commune, url))
             if row:
-                self._mark_queue_processed_mongo(url)
+                self._mark_queue_processed_mongo(
+                    com_id=com,
+                    old_url=url,
+                    resolved_url=(row.get("url") if isinstance(row, dict) else None),
+                )
                 self._update_progress()
             else:
-                self._mark_queue_failed_mongo(url, "Aucune donnée collectée")
+                self._mark_queue_failed_mongo(com_id=com, old_url=url, error_msg="Aucune donnée collectée")
             return row
         except Exception as exc:
             try:
-                self._mark_queue_failed_mongo(url, str(exc))
+                self._mark_queue_failed_mongo(com_id=com, old_url=url, error_msg=str(exc))
             except PyMongoError:
                 logger.exception("Impossible de marquer la queue en échec pour %s", url)
             logger.warning("Erreur de traitement queue pour %s (%s): %s", nom_commune, com, exc)
@@ -906,9 +1096,25 @@ class VilleIdealeHarvester:
     def start(self) -> None:
         try:
             self._sync_queue_from_sitemap(force_rescrape=True)
+            vi_total = self.queue_store.count_documents({"source": SOURCE})
+            vi_pending = self.queue_store.count_documents(
+                {"source": SOURCE, "is_processed": False}
+            )
+            logger.info(
+                "Snapshot queue (%s): total=%d, pending=%d",
+                SOURCE,
+                vi_total,
+                vi_pending,
+            )
             queue_entries = self._load_queue_entries()
             pending_count = self.total_in_queue - self.already_done
             if pending_count <= 0:
+                logger.warning(
+                    "Aucune entrée pending à scraper pour source=%s (total=%d, already_done=%d).",
+                    SOURCE,
+                    self.total_in_queue,
+                    self.already_done,
+                )
                 return
 
             self.start_time = time.time()
