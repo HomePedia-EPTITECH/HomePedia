@@ -1,7 +1,14 @@
-# Champs scrapés (liste unique, sans doublons)
+# Champs scrapés (liste unique, multi-sources)
+
+## Champs pivots communs
 
 - `com`
 - `nom_commune`
+- `source`
+- `nb_avis`
+
+## Champs BDMV (communes_harvest / communes_direct)
+
 - `nb_habitant`
 - `age_moyen`
 - `pop_active`
@@ -39,7 +46,6 @@
 - `vols_degradations`
 - `stupefiants`
 - `note_moyenne_globale`
-- `nb_avis`
 - `score_securite`
 - `score_education`
 - `score_loisirs`
@@ -99,14 +105,29 @@
 - `part_residences_secondaires`
 - `part_taux_proprietaires`
 - `part_taux_locataires`
-- `reviews_summary`
+
+## Champs Ville-Idéale (communes_harvest_vi / communes_direct_vi)
+
+- `note_environnement_10`
+- `note_transports_10`
+- `note_sante_10`
+- `note_securite_10`
+- `note_sports_loisirs_10`
+- `note_culture_10`
+- `note_enseignement_10`
+- `note_commerces_10`
+- `note_qualite_vie_10`
+
+## Champs avis bruts (`reviews_raw`)
+
+- `external_comment_id`
 - `text`
+- `text_hash`
 - `rating`
 - `date`
-- `id`
-- `external_comment_id`
-- `source`
 - `collected_at`
 - `url_page`
-- `sentiment_score`
-- `sentiment_label`
+- `positive` (Ville-Idéale)
+- `negative` (Ville-Idéale)
+- `sentiment_score` (post-traitement)
+- `sentiment_label` (post-traitement)

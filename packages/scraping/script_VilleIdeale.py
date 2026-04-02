@@ -42,6 +42,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from packages.scraping.models import (  # noqa: E402
     CityScrapePayload,
+    CommuneDirectVIDoc,
     CommuneHarvestVIDoc,
     QueueDoc,
     ReviewRawModel,
@@ -56,6 +57,7 @@ SOURCE = "ville_ideale"
 SITEMAP_URL = "https://www.ville-ideale.fr/sitemap.xml"
 CITY_PAGES_QUEUE_COLLECTION = "city_pages_queue"
 COMMUNES_HARVEST_VI_COLLECTION = "communes_harvest_vi"
+COMMUNES_DIRECT_VI_COLLECTION = "communes_direct_vi"
 MONGO_BULK_BATCH_SIZE = 500
 MAX_REVIEW_PAGES_PER_CITY = 80  # garde-fou anti-boucle / pagination infinie
 
@@ -75,6 +77,7 @@ class VilleIdealeHarvester:
         self.raw_db = self.mongo_client[get_mongo_db_name()]
         self.queue_store = self.raw_db[CITY_PAGES_QUEUE_COLLECTION]
         self.city_store = self.raw_db[COMMUNES_HARVEST_VI_COLLECTION]
+        self.city_direct_store = self.raw_db[COMMUNES_DIRECT_VI_COLLECTION]
         self.reviews_store = self.raw_db["reviews_raw"]
 
         self.headers = {
@@ -126,6 +129,7 @@ class VilleIdealeHarvester:
         )
 
         safe_create_index(self.city_store, [("com", 1)], unique=True)
+        safe_create_index(self.city_direct_store, [("com", 1)], unique=True)
         safe_create_index(self.reviews_store, [("com", 1), ("collected_at", -1)])
         safe_create_index(
             self.reviews_store,
@@ -782,13 +786,11 @@ class VilleIdealeHarvester:
             },
             "updated_at": now_utc,
         }
-
-        # Spark-ready: on duplique les notes en colonnes racine (comme communes_direct côté BDMV)
-        for k, v in (notes or {}).items():
-            doc[k] = v  # type: ignore[index]
+        direct_doc = self._build_commune_direct_document(commune_doc=doc)
 
         try:
             self.city_store.update_one({"com": com}, {"$set": doc}, upsert=True)
+            self.city_direct_store.update_one({"com": com}, {"$set": direct_doc}, upsert=True)
             self._upsert_reviews_raw(
                 com=com,
                 url_page=base_url,
@@ -800,6 +802,32 @@ class VilleIdealeHarvester:
             return None
 
         return {"com": com, "nom_commune": name, "url": base_url}
+
+    def _build_commune_direct_document(self, commune_doc: CommuneHarvestVIDoc) -> CommuneDirectVIDoc:
+        """Aplatit communes_harvest_vi -> communes_direct_vi (Spark-ready), style BDMV."""
+        notes = commune_doc.get("notes") or {}
+        reviews_refs = commune_doc.get("reviews_refs") or {}
+        links = commune_doc.get("links") or {}
+        direct: CommuneDirectVIDoc = {
+            "com": commune_doc.get("com"),
+            "nom_commune": commune_doc.get("nom_commune"),
+            "source": commune_doc.get("source"),
+            "city_page": links.get("city_page"),
+            "nb_avis": commune_doc.get("nb_avis"),
+            "reviews_refs_count": reviews_refs.get("count"),
+            "reviews_refs_last_collected_at": reviews_refs.get("last_collected_at"),
+            "updated_at": commune_doc.get("updated_at"),
+            "note_environnement_10": notes.get("note_environnement_10"),
+            "note_transports_10": notes.get("note_transports_10"),
+            "note_sante_10": notes.get("note_sante_10"),
+            "note_securite_10": notes.get("note_securite_10"),
+            "note_sports_loisirs_10": notes.get("note_sports_loisirs_10"),
+            "note_culture_10": notes.get("note_culture_10"),
+            "note_enseignement_10": notes.get("note_enseignement_10"),
+            "note_commerces_10": notes.get("note_commerces_10"),
+            "note_qualite_vie_10": notes.get("note_qualite_vie_10"),
+        }
+        return direct
 
     # ------------------------------------------------------------------ #
     #  Progression / queue                                               #

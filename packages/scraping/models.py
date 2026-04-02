@@ -73,6 +73,28 @@ class CommuneHarvestVIDoc(TypedDict, total=False):
     updated_at: datetime
 
 
+class CommuneDirectVIDoc(TypedDict, total=False):
+    """Vue aplatie (Spark-ready) pour Ville-Idéale : collection communes_direct_vi."""
+
+    com: str
+    nom_commune: str
+    source: str
+    city_page: Optional[str]
+    nb_avis: Optional[int]
+    reviews_refs_count: Optional[int]
+    reviews_refs_last_collected_at: Optional[datetime]
+    updated_at: datetime
+    note_environnement_10: Optional[float]
+    note_transports_10: Optional[float]
+    note_sante_10: Optional[float]
+    note_securite_10: Optional[float]
+    note_sports_loisirs_10: Optional[float]
+    note_culture_10: Optional[float]
+    note_enseignement_10: Optional[float]
+    note_commerces_10: Optional[float]
+    note_qualite_vie_10: Optional[float]
+
+
 @dataclass(slots=True)
 class CityScrapePayload:
     """Payload intermediaire de collecte pour une commune."""
