@@ -63,6 +63,23 @@ MONGO_BULK_BATCH_SIZE = 500
 SOURCE = "bdmv"
 
 
+def _empty_strings_to_none(obj: Any) -> Any:
+    """
+    Remplace les chaines vides ou blanches par None, recursivement (dict / list).
+    """
+    if isinstance(obj, dict):
+        for k in list(obj.keys()):
+            obj[k] = _empty_strings_to_none(obj[k])
+        return obj
+    if isinstance(obj, list):
+        for i in range(len(obj)):
+            obj[i] = _empty_strings_to_none(obj[i])
+        return obj
+    if isinstance(obj, str) and not obj.strip():
+        return None
+    return obj
+
+
 class HomepediaHarvester:
     def __init__(self) -> None:
         self.mongo_client = MongoClient(
@@ -1086,14 +1103,14 @@ class HomepediaHarvester:
                 logger.warning("Aucun HTML exploitable pour %s (%s)", name, com)
                 return None
             result.reviews_full = full_reviews
-            commune_doc = self._validate_commune_doc(
-                self._build_commune_document(
-                    result=result,
-                    base_url=base_url,
-                    avis_url=avis_url,
-                    sentiment_source=sentiment_source,
-                )
+            commune_doc = self._build_commune_document(
+                result=result,
+                base_url=base_url,
+                avis_url=avis_url,
+                sentiment_source=sentiment_source,
             )
+            _empty_strings_to_none(commune_doc)
+            commune_doc = self._validate_commune_doc(commune_doc)
             try:
                 self.city_store.update_one(
                     {"com": com},
