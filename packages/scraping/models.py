@@ -112,6 +112,12 @@ class RealEstateHistoryDoc(TypedDict, total=False):
     transaction_id: str
     source: str
     com: str
+    id_mutation: Optional[str]
+    code_postal: Optional[str]
+    nom_commune: Optional[str]
+    longitude: Optional[float]
+    latitude: Optional[float]
+    id_parcelle: Optional[str]
     date_mutation: Optional[str]
     nature_mutation: str
     type_local: Optional[str]

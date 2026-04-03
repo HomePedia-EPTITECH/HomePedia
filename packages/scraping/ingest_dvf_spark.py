@@ -1,35 +1,37 @@
 """
-Ingestion DVF (Demandes de Valeurs Foncieres) avec PySpark.
+Ingestion DVF vers MongoDB (Python standard uniquement : csv + gzip + hashlib).
 
-Objectif:
-    - Lire un CSV DVF massif (y compris .gz).
-    - Nettoyer les mutations pour ne garder que les ventes exploitables.
-    - Calculer le prix au m2.
-    - Agreger par code INSEE commune (pivot `com`).
-    - Upsert dans MongoDB:
-        * `communes_direct` (merge sur `com`) avec indicateurs DVF.
-        * `real_estate_history` (transactions simplifiees par commune).
+Pas de PySpark ni Java, pas de pandas : lecture ligne a ligne du CSV (fichiers
+gros ou petits), agrege par commune, ecriture bulk Mongo.
 
-Usage:
-    python packages/etl/database/ingest_dvf_spark.py --input /path/to/valeursfoncieres-YYYY.txt.gz
+Formats :
+    - full (data.gouv, snake_case) : code_commune, nom_commune, code_postal, ...
+    - cerema (|) : Code commune, Nature mutation, ...
+
+Defaut : packages/scraping/full.csv
+
+Usage :
+    python packages/scraping/ingest_dvf_spark.py
+    python packages/scraping/ingest_dvf_spark.py --input data.txt.gz --format cerema --sep '|'
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
+import gzip
+import hashlib
+import re
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, DefaultDict, Dict, Iterator, List, Optional, TextIO, Tuple
 
 from pymongo import MongoClient, UpdateOne
-from pymongo.errors import PyMongoError
 
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, IntegerType
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_SCRAPER_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
@@ -41,339 +43,393 @@ COMMUNES_DIRECT_COLLECTION = "communes_direct"
 REAL_ESTATE_HISTORY_COLLECTION = "real_estate_history"
 DVF_SOURCE = "dvf"
 MONGO_BULK_BATCH_SIZE = 1000
+DEFAULT_INPUT_CSV = _SCRAPER_DIR / "full.csv"
+
+AggBucket = Dict[str, Any]
 
 
-def _normalized_number(col_name: str) -> Any:
-    cleaned = F.regexp_replace(F.col(col_name).cast("string"), r"\u00A0", "")
-    cleaned = F.regexp_replace(cleaned, r"\s+", "")
-    cleaned = F.regexp_replace(cleaned, ",", ".")
-    cleaned = F.regexp_replace(cleaned, r"[^0-9.\-]", "")
-    return cleaned.cast(DoubleType())
+def _norm_spaces(s: Optional[str]) -> str:
+    if s is None:
+        return ""
+    return re.sub(r"\s+", " ", str(s).strip())
 
 
-def _normalized_code(col_name: str) -> Any:
-    return F.upper(F.regexp_replace(F.trim(F.col(col_name).cast("string")), r"\s+", ""))
+def _norm_code(s: Optional[str]) -> str:
+    return re.sub(r"\s+", "", _norm_spaces(s)).upper()
 
 
-def _build_com_code_expr() -> Any:
-    dept = _normalized_code("Code departement")
-    commune = _normalized_code("Code commune")
-    commune_padded = F.when(F.length(dept) >= 3, F.lpad(commune, 2, "0")).otherwise(
-        F.lpad(commune, 3, "0")
+def _parse_float(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    t = str(value).replace("\xa0", "")
+    t = re.sub(r"\s+", "", t)
+    t = t.replace(",", ".")
+    t = re.sub(r"[^0-9.\-]", "", t)
+    if not t or t in ("-", "."):
+        return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def _build_com(dept_raw: Optional[str], commune_raw: Optional[str]) -> Optional[str]:
+    dept = _norm_code(dept_raw)
+    commune = _norm_code(commune_raw)
+    if not commune:
+        return None
+    if len(commune) >= 5:
+        return commune
+    if not dept:
+        return None
+    pad = 2 if len(dept) >= 3 else 3
+    comm_padded = commune.zfill(pad)
+    return dept + comm_padded
+
+
+def _parse_date_mutation(raw: Optional[str], fmt: str) -> Optional[str]:
+    s = _norm_spaces(raw)
+    if not s:
+        return None
+    if fmt == "full":
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+        if m:
+            return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+        return None
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return None
+
+
+def _type_local_norm(raw: Optional[str]) -> Optional[str]:
+    s = _norm_spaces(raw)
+    if not s:
+        return None
+    return s.lower().title()
+
+
+def _detect_format(fieldnames: Optional[List[str]]) -> str:
+    if not fieldnames:
+        raise ValueError("CSV sans en-tete.")
+    cols = set(fieldnames)
+    if "code_commune" in cols and "nature_mutation" in cols:
+        return "full"
+    if "Code commune" in cols and "Nature mutation" in cols:
+        return "cerema"
+    raise ValueError(
+        "Format DVF inconnu. Utilisez --format full ou --format cerema."
     )
-    return (
-        F.when(F.length(commune) >= 5, commune)
-        .when((F.length(dept) > 0) & (F.length(commune) > 0), F.concat(dept, commune_padded))
-        .otherwise(F.lit(None))
-    )
 
 
-def _assert_required_columns(df: DataFrame) -> None:
-    required = {
-        "Nature mutation",
-        "Valeur fonciere",
-        "Surface reelle bati",
-        "Type local",
-        "Code commune",
-        "Code departement",
-        "Date mutation",
+def _resolve_sep_and_format(
+    input_path: str, format_arg: str, sep_arg: Optional[str]
+) -> Tuple[str, str]:
+    if format_arg != "auto":
+        sep = sep_arg if sep_arg is not None else ("," if format_arg == "full" else "|")
+        return sep, format_arg
+    p = Path(input_path)
+    if p.is_file():
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        first = text.splitlines()[0] if text else ""
+        if "code_commune" in first:
+            return (sep_arg or ",", "full")
+        if "Code commune" in first:
+            return (sep_arg or "|", "cerema")
+    return (sep_arg or ",", "full")
+
+
+def _row_val(row: Dict[str, str], full_key: str, cerema_key: str, fmt: str) -> str:
+    key = full_key if fmt == "full" else cerema_key
+    v = row.get(key)
+    return "" if v is None else str(v)
+
+
+def _process_row(
+    row: Dict[str, str],
+    fmt: str,
+    min_prix_m2: float,
+    max_prix_m2: float,
+) -> Optional[Dict[str, Any]]:
+    nature = _norm_spaces(_row_val(row, "nature_mutation", "Nature mutation", fmt)).lower()
+    if nature != "vente":
+        return None
+
+    if fmt == "full":
+        com = _build_com(
+            _row_val(row, "code_departement", "", fmt) or None,
+            _row_val(row, "code_commune", "", fmt) or None,
+        )
+        valeur = _parse_float(_row_val(row, "valeur_fonciere", "", fmt))
+        surface = _parse_float(_row_val(row, "surface_reelle_bati", "", fmt))
+        date_iso = _parse_date_mutation(
+            _row_val(row, "date_mutation", "", fmt) or None, "full"
+        )
+        nature_disp = _norm_spaces(_row_val(row, "nature_mutation", "", fmt)) or "Vente"
+        type_raw = _row_val(row, "type_local", "", fmt) or None
+    else:
+        com = _build_com(
+            _row_val(row, "", "Code departement", fmt) or None,
+            _row_val(row, "", "Code commune", fmt) or None,
+        )
+        valeur = _parse_float(_row_val(row, "", "Valeur fonciere", fmt))
+        surface = _parse_float(_row_val(row, "", "Surface reelle bati", fmt))
+        date_iso = _parse_date_mutation(
+            _row_val(row, "", "Date mutation", fmt) or None, "cerema"
+        )
+        nature_disp = _norm_spaces(_row_val(row, "", "Nature mutation", fmt)) or "Vente"
+        type_raw = _row_val(row, "", "Type local", fmt) or None
+
+    if not com or len(com) < 5:
+        return None
+    if valeur is None or valeur <= 0 or surface is None or surface <= 0:
+        return None
+    prix_m2 = valeur / surface
+    if prix_m2 < min_prix_m2 or prix_m2 > max_prix_m2:
+        return None
+
+    tnorm = _type_local_norm(type_raw)
+
+    id_mut = _norm_spaces(_row_val(row, "id_mutation", "", fmt)) if fmt == "full" else ""
+    id_parcelle = _norm_spaces(_row_val(row, "id_parcelle", "", fmt)) if fmt == "full" else ""
+    code_postal = _norm_spaces(_row_val(row, "code_postal", "", fmt)) if fmt == "full" else ""
+    nom_commune = _norm_spaces(_row_val(row, "nom_commune", "", fmt)) if fmt == "full" else ""
+    lon = _parse_float(_row_val(row, "longitude", "", fmt)) if fmt == "full" else None
+    lat = _parse_float(_row_val(row, "latitude", "", fmt)) if fmt == "full" else None
+    no_disp = _norm_spaces(_row_val(row, "numero_disposition", "No disposition", fmt))
+
+    tx_parts = [
+        id_mut,
+        id_parcelle,
+        com,
+        date_iso or "",
+        nature_disp,
+        tnorm or "",
+        str(valeur),
+        str(surface),
+        str(prix_m2),
+        no_disp,
+    ]
+    tx_id = hashlib.sha256("|".join(tx_parts).encode("utf-8")).hexdigest()
+
+    return {
+        "transaction_id": tx_id,
+        "com": com,
+        "date_mutation": date_iso,
+        "nature_mutation": nature_disp,
+        "type_local": tnorm,
+        "valeur_fonciere": valeur,
+        "surface_reelle_bati": surface,
+        "prix_m2": prix_m2,
+        "id_mutation": id_mut or None,
+        "id_parcelle": id_parcelle or None,
+        "code_postal": code_postal or None,
+        "nom_commune": nom_commune or None,
+        "longitude": lon,
+        "latitude": lat,
     }
-    missing = sorted(c for c in required if c not in set(df.columns))
-    if missing:
-        raise ValueError(
-            "Colonnes DVF manquantes dans le CSV: "
-            + ", ".join(missing)
-            + ". Verifiez le separateur et la version du fichier."
-        )
 
 
-def _build_clean_dvf_df(df_raw: DataFrame, min_prix_m2: float, max_prix_m2: float) -> DataFrame:
-    vente_df = (
-        df_raw.withColumn("com", _build_com_code_expr())
-        .withColumn("nature_mutation_norm", F.lower(F.trim(F.col("Nature mutation"))))
-        .filter(F.col("nature_mutation_norm") == F.lit("vente"))
-        .withColumn("type_local_norm", F.initcap(F.lower(F.trim(F.col("Type local")))))
-        .withColumn("valeur_fonciere_num", _normalized_number("Valeur fonciere"))
-        .withColumn("surface_reelle_bati_num", _normalized_number("Surface reelle bati"))
-        .withColumn(
-            "date_mutation_iso",
-            F.date_format(F.to_date(F.col("Date mutation"), "dd/MM/yyyy"), "yyyy-MM-dd"),
-        )
-        .filter(F.col("com").isNotNull() & (F.length(F.col("com")) >= 5))
-        .filter(F.col("valeur_fonciere_num").isNotNull() & (F.col("valeur_fonciere_num") > 0))
-        .filter(
-            F.col("surface_reelle_bati_num").isNotNull()
-            & (F.col("surface_reelle_bati_num") > 0)
-        )
-        .withColumn(
-            "prix_m2",
-            (F.col("valeur_fonciere_num") / F.col("surface_reelle_bati_num")).cast(DoubleType()),
-        )
-        .filter(F.col("prix_m2").isNotNull())
-        .filter((F.col("prix_m2") >= F.lit(min_prix_m2)) & (F.col("prix_m2") <= F.lit(max_prix_m2)))
-    )
-    return vente_df
+def _open_text_input(path: str) -> Tuple[TextIO, Callable[[], None]]:
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"Fichier introuvable : {path}")
+    if path.lower().endswith(".gz"):
+        f = gzip.open(path, "rt", encoding="utf-8", newline="")
+        return f, f.close
+    f = open(path, "r", encoding="utf-8", newline="")
+    return f, f.close
 
 
-def _build_aggregate_df(df_clean: DataFrame) -> DataFrame:
-    maison = F.when(F.col("type_local_norm") == F.lit("Maison"), F.col("prix_m2"))
-    appartement = F.when(F.col("type_local_norm") == F.lit("Appartement"), F.col("prix_m2"))
-    return df_clean.groupBy("com").agg(
-        F.avg(maison).cast(DoubleType()).alias("prix_m2_moyen_maison"),
-        F.avg(appartement).cast(DoubleType()).alias("prix_m2_moyen_appartement"),
-        F.count(F.lit(1)).cast(IntegerType()).alias("nb_ventes_totales"),
-    )
-
-
-def _build_history_df(df_clean: DataFrame) -> DataFrame:
-    no_disposition_expr = (
-        F.coalesce(F.col("No disposition").cast("string"), F.lit(""))
-        if "No disposition" in df_clean.columns
-        else F.lit("")
-    )
-    tx_id = F.sha2(
-        F.concat_ws(
-            "|",
-            F.coalesce(F.col("com"), F.lit("")),
-            F.coalesce(F.col("date_mutation_iso"), F.lit("")),
-            F.coalesce(F.col("Nature mutation").cast("string"), F.lit("")),
-            F.coalesce(F.col("type_local_norm"), F.lit("")),
-            F.coalesce(F.col("valeur_fonciere_num").cast("string"), F.lit("")),
-            F.coalesce(F.col("surface_reelle_bati_num").cast("string"), F.lit("")),
-            F.coalesce(F.col("prix_m2").cast("string"), F.lit("")),
-            no_disposition_expr,
-        ),
-        256,
-    )
-    return df_clean.select(
-        tx_id.alias("transaction_id"),
-        F.lit(DVF_SOURCE).alias("source"),
-        F.col("com"),
-        F.col("date_mutation_iso").alias("date_mutation"),
-        F.col("Nature mutation").alias("nature_mutation"),
-        F.col("type_local_norm").alias("type_local"),
-        F.col("valeur_fonciere_num").alias("valeur_fonciere"),
-        F.col("surface_reelle_bati_num").alias("surface_reelle_bati"),
-        F.col("prix_m2"),
-    )
-
-
-def _flush_bulk(collection: Any, operations: List[UpdateOne]) -> int:
-    if not operations:
-        return 0
-    result = collection.bulk_write(operations, ordered=False)
-    return (result.upserted_count or 0) + (result.modified_count or 0)
-
-
-def _upsert_history_partition(
-    rows: Iterable[Any],
-    mongo_uri: str,
-    mongo_db_name: str,
-    now_utc: datetime,
-) -> None:
-    client: Optional[MongoClient] = None
-    try:
-        client = MongoClient(mongo_uri, retryWrites=True)
-        coll = client[mongo_db_name][REAL_ESTATE_HISTORY_COLLECTION]
-        ops: List[UpdateOne] = []
-        for row in rows:
-            data = row.asDict(recursive=True)
-            tx_id = data.get("transaction_id")
-            com = data.get("com")
-            if not tx_id or not com:
-                continue
-            payload: RealEstateHistoryDoc = {
-                "transaction_id": tx_id,
-                "source": DVF_SOURCE,
-                "com": str(com),
-                "date_mutation": data.get("date_mutation"),
-                "nature_mutation": data.get("nature_mutation") or "Vente",
-                "type_local": data.get("type_local"),
-                "valeur_fonciere": float(data["valeur_fonciere"])
-                if data.get("valeur_fonciere") is not None
-                else None,
-                "surface_reelle_bati": float(data["surface_reelle_bati"])
-                if data.get("surface_reelle_bati") is not None
-                else None,
-                "prix_m2": float(data["prix_m2"]) if data.get("prix_m2") is not None else None,
-                "updated_at": now_utc,
-            }
-            ops.append(
-                UpdateOne(
-                    {"transaction_id": payload["transaction_id"]},
-                    {
-                        "$set": payload,
-                        "$setOnInsert": {"created_at": now_utc},
-                    },
-                    upsert=True,
-                )
-            )
-            if len(ops) >= MONGO_BULK_BATCH_SIZE:
-                _flush_bulk(coll, ops)
-                ops.clear()
-        if ops:
-            _flush_bulk(coll, ops)
-    finally:
-        if client is not None:
-            client.close()
-
-
-def _upsert_communes_direct_partition(
-    rows: Iterable[Any],
-    mongo_uri: str,
-    mongo_db_name: str,
-    now_utc: datetime,
-) -> None:
-    client: Optional[MongoClient] = None
-    try:
-        client = MongoClient(mongo_uri, retryWrites=True)
-        coll = client[mongo_db_name][COMMUNES_DIRECT_COLLECTION]
-        ops: List[UpdateOne] = []
-        for row in rows:
-            data = row.asDict(recursive=True)
-            com = data.get("com")
-            if not com:
-                continue
-            payload: CommuneDirectDVFDoc = {
-                "com": str(com),
-                "prix_m2_moyen_maison": float(data["prix_m2_moyen_maison"])
-                if data.get("prix_m2_moyen_maison") is not None
-                else None,
-                "prix_m2_moyen_appartement": float(data["prix_m2_moyen_appartement"])
-                if data.get("prix_m2_moyen_appartement") is not None
-                else None,
-                "nb_ventes_totales": int(data["nb_ventes_totales"])
-                if data.get("nb_ventes_totales") is not None
-                else None,
-                "dvf_last_ingested_at": now_utc,
-                "dvf_source": DVF_SOURCE,
-            }
-            ops.append(
-                UpdateOne(
-                    {"com": payload["com"]},
-                    {
-                        "$set": payload,
-                        "$setOnInsert": {
-                            "com": payload["com"],
-                            "source": DVF_SOURCE,
-                            "created_at": now_utc,
-                        },
-                    },
-                    upsert=True,
-                )
-            )
-            if len(ops) >= MONGO_BULK_BATCH_SIZE:
-                _flush_bulk(coll, ops)
-                ops.clear()
-        if ops:
-            _flush_bulk(coll, ops)
-    finally:
-        if client is not None:
-            client.close()
+def _flush_bulk(coll: Any, ops: List[UpdateOne]) -> None:
+    if ops:
+        coll.bulk_write(ops, ordered=False)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Ingestion DVF PySpark -> MongoDB.")
-    parser.add_argument(
+    p = argparse.ArgumentParser(description="Ingestion DVF (stdlib Python) -> MongoDB.")
+    p.add_argument(
         "--input",
-        required=True,
-        help="Chemin fichier DVF CSV (.txt, .csv, .gz) ou pattern Spark.",
+        default=str(DEFAULT_INPUT_CSV),
+        help=f"Chemin CSV ou .gz (defaut: {DEFAULT_INPUT_CSV}).",
     )
-    parser.add_argument(
+    p.add_argument(
+        "--format",
+        choices=("auto", "full", "cerema"),
+        default="auto",
+        help="Schema CSV (auto = apres lecture de l'entete).",
+    )
+    p.add_argument(
         "--sep",
-        default="|",
-        help="Separateur CSV DVF (par defaut: '|').",
+        default=None,
+        help="Separateur (defaut selon format).",
     )
-    parser.add_argument(
+    p.add_argument(
         "--mongo-uri",
         default=get_mongo_uri(),
-        help="URI MongoDB (par defaut via config partagee).",
+        help="URI MongoDB.",
     )
-    parser.add_argument(
+    p.add_argument(
         "--mongo-db",
         default=get_mongo_db_name(),
-        help="Nom base MongoDB (par defaut via config partagee).",
+        help="Nom de la base MongoDB.",
     )
-    parser.add_argument(
-        "--app-name",
-        default="homepedia-dvf-ingest",
-        help="Nom Spark app.",
-    )
-    parser.add_argument(
+    p.add_argument(
         "--min-prix-m2",
         type=float,
         default=100.0,
-        help="Seuil mini coherence prix/m2 (defaut: 100).",
     )
-    parser.add_argument(
+    p.add_argument(
         "--max-prix-m2",
         type=float,
         default=50000.0,
-        help="Seuil maxi coherence prix/m2 (defaut: 50000).",
     )
-    parser.add_argument(
+    p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Execute lecture+aggregation sans ecriture Mongo.",
     )
-    return parser.parse_args()
+    return p.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    spark = SparkSession.builder.appName(args.app_name).getOrCreate()
-    spark.sparkContext.setLogLevel("WARN")
+    sep, fmt_hint = _resolve_sep_and_format(args.input, args.format, args.sep)
     now_utc = datetime.now(timezone.utc)
 
+    stream, closer = _open_text_input(args.input)
     try:
-        df_raw = (
-            spark.read.option("header", True)
-            .option("sep", args.sep)
-            .option("quote", '"')
-            .option("escape", '"')
-            .option("multiLine", False)
-            .csv(args.input)
+        reader = csv.DictReader(stream, delimiter=sep)
+        fieldnames = reader.fieldnames
+        if args.format == "auto":
+            fmt = _detect_format(list(fieldnames) if fieldnames else [])
+        else:
+            fmt = args.format
+
+        agg: DefaultDict[str, AggBucket] = defaultdict(
+            lambda: {
+                "m_sum": 0.0,
+                "m_n": 0,
+                "a_sum": 0.0,
+                "a_n": 0,
+                "tot": 0,
+            }
         )
-        _assert_required_columns(df_raw)
 
-        df_clean = _build_clean_dvf_df(
-            df_raw=df_raw,
-            min_prix_m2=args.min_prix_m2,
-            max_prix_m2=args.max_prix_m2,
-        ).cache()
-        agg_df = _build_aggregate_df(df_clean)
-        history_df = _build_history_df(df_clean)
+        total_rows = 0
+        clean_rows = 0
+        history_ops: List[UpdateOne] = []
 
-        total_rows = df_raw.count()
-        clean_rows = df_clean.count()
-        agg_rows = agg_df.count()
-        print(f"[dvf] lignes lues         : {total_rows}")
-        print(f"[dvf] ventes nettoyees    : {clean_rows}")
-        print(f"[dvf] communes agregees   : {agg_rows}")
+        client: Optional[MongoClient] = None
+        hist_coll = None
+        direct_coll = None
+        if not args.dry_run:
+            client = MongoClient(args.mongo_uri, retryWrites=True)
+            hist_coll = client[args.mongo_db][REAL_ESTATE_HISTORY_COLLECTION]
+            direct_coll = client[args.mongo_db][COMMUNES_DIRECT_COLLECTION]
 
+        for row in reader:
+            total_rows += 1
+            rec = _process_row(row, fmt, args.min_prix_m2, args.max_prix_m2)
+            if rec is None:
+                continue
+            clean_rows += 1
+            com = rec["com"]
+            b = agg[com]
+            b["tot"] += 1
+            tl = rec["type_local"]
+            pm = rec["prix_m2"]
+            if tl == "Maison":
+                b["m_sum"] += pm
+                b["m_n"] += 1
+            elif tl == "Appartement":
+                b["a_sum"] += pm
+                b["a_n"] += 1
+
+            if not args.dry_run and hist_coll is not None:
+                payload: RealEstateHistoryDoc = {
+                    "transaction_id": rec["transaction_id"],
+                    "source": DVF_SOURCE,
+                    "com": com,
+                    "id_mutation": rec.get("id_mutation"),
+                    "code_postal": rec.get("code_postal"),
+                    "nom_commune": rec.get("nom_commune"),
+                    "longitude": rec.get("longitude"),
+                    "latitude": rec.get("latitude"),
+                    "id_parcelle": rec.get("id_parcelle"),
+                    "date_mutation": rec.get("date_mutation"),
+                    "nature_mutation": rec.get("nature_mutation") or "Vente",
+                    "type_local": rec.get("type_local"),
+                    "valeur_fonciere": rec.get("valeur_fonciere"),
+                    "surface_reelle_bati": rec.get("surface_reelle_bati"),
+                    "prix_m2": rec.get("prix_m2"),
+                    "updated_at": now_utc,
+                }
+                history_ops.append(
+                    UpdateOne(
+                        {"transaction_id": payload["transaction_id"]},
+                        {"$set": payload, "$setOnInsert": {"created_at": now_utc}},
+                        upsert=True,
+                    )
+                )
+                if len(history_ops) >= MONGO_BULK_BATCH_SIZE:
+                    _flush_bulk(hist_coll, history_ops)
+                    history_ops.clear()
+
+        if not args.dry_run and hist_coll is not None and history_ops:
+            _flush_bulk(hist_coll, history_ops)
+
+        if not args.dry_run and direct_coll is not None:
+            direct_ops: List[UpdateOne] = []
+            for com, b in agg.items():
+                pm_maison = (b["m_sum"] / b["m_n"]) if b["m_n"] else None
+                pm_app = (b["a_sum"] / b["a_n"]) if b["a_n"] else None
+                payload_cd: CommuneDirectDVFDoc = {
+                    "com": com,
+                    "prix_m2_moyen_maison": pm_maison,
+                    "prix_m2_moyen_appartement": pm_app,
+                    "nb_ventes_totales": b["tot"],
+                    "dvf_last_ingested_at": now_utc,
+                    "dvf_source": DVF_SOURCE,
+                }
+                direct_ops.append(
+                    UpdateOne(
+                        {"com": com},
+                        {
+                            "$set": payload_cd,
+                            "$setOnInsert": {
+                                "com": com,
+                                "source": DVF_SOURCE,
+                                "created_at": now_utc,
+                            },
+                        },
+                        upsert=True,
+                    )
+                )
+                if len(direct_ops) >= MONGO_BULK_BATCH_SIZE:
+                    _flush_bulk(direct_coll, direct_ops)
+                    direct_ops.clear()
+            if direct_ops:
+                _flush_bulk(direct_coll, direct_ops)
+
+        if client is not None:
+            client.close()
+
+        print(f"[dvf] format={fmt} sep={sep!r}")
+        print(f"[dvf] lignes lues       : {total_rows}")
+        print(f"[dvf] ventes retenues   : {clean_rows}")
+        print(f"[dvf] communes agregees : {len(agg)}")
         if args.dry_run:
-            print("[dvf] dry-run actif: aucune ecriture Mongo.")
-            return
-
-        history_df.foreachPartition(
-            lambda rows: _upsert_history_partition(
-                rows=rows,
-                mongo_uri=args.mongo_uri,
-                mongo_db_name=args.mongo_db,
-                now_utc=now_utc,
-            )
-        )
-        agg_df.foreachPartition(
-            lambda rows: _upsert_communes_direct_partition(
-                rows=rows,
-                mongo_uri=args.mongo_uri,
-                mongo_db_name=args.mongo_db,
-                now_utc=now_utc,
-            )
-        )
-        print("[dvf] ingestion terminee (communes_direct + real_estate_history).")
+            print("[dvf] dry-run : aucune ecriture Mongo.")
+        else:
+            print("[dvf] termine (communes_direct + real_estate_history).")
     finally:
-        spark.stop()
+        closer()
 
 
 if __name__ == "__main__":

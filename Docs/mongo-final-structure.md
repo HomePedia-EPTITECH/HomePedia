@@ -120,6 +120,9 @@
 - Champs principaux :
   - `source` (valeur `dvf`)
   - `com` (pivot INSEE)
+  - `id_mutation`, `id_parcelle` (export « full », optionnels — utiles pour dédoublonner les lots)
+  - `code_postal`, `nom_commune` (export « full », jointures sans passer par `communes_direct`)
+  - `longitude`, `latitude` (export « full », optionnels — cartes Mapbox)
   - `date_mutation` (ISO `YYYY-MM-DD`)
   - `nature_mutation` (ex: `Vente`)
   - `type_local` (`Maison`, `Appartement`, etc.)

@@ -3,4 +3,3 @@ pymongo
 python-dotenv
 requests
 Unidecode
-pyspark
