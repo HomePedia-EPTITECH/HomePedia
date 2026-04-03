@@ -35,7 +35,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from packages.scraping.models import CommuneDirectDVFDoc, RealEstateHistoryDoc  # noqa: E402
+from packages.scraping.models import RealEstateHistoryDoc  # noqa: E402
 from packages.shared.util.config import get_mongo_db_name, get_mongo_uri  # noqa: E402
 
 
@@ -389,8 +389,8 @@ def main() -> None:
             for com, b in agg.items():
                 pm_maison = (b["m_sum"] / b["m_n"]) if b["m_n"] else None
                 pm_app = (b["a_sum"] / b["a_n"]) if b["a_n"] else None
-                payload_cd: CommuneDirectDVFDoc = {
-                    "com": com,
+                # Ne pas mettre `com` dans $set : Mongo interdit le meme chemin dans $set et $setOnInsert.
+                set_fields: Dict[str, Any] = {
                     "prix_m2_moyen_maison": pm_maison,
                     "prix_m2_moyen_appartement": pm_app,
                     "nb_ventes_totales": b["tot"],
@@ -401,7 +401,7 @@ def main() -> None:
                     UpdateOne(
                         {"com": com},
                         {
-                            "$set": payload_cd,
+                            "$set": set_fields,
                             "$setOnInsert": {
                                 "com": com,
                                 "source": DVF_SOURCE,
