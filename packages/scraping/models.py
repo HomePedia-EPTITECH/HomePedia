@@ -95,6 +95,32 @@ class CommuneDirectVIDoc(TypedDict, total=False):
     note_qualite_vie_10: Optional[float]
 
 
+class CommuneDirectDVFDoc(TypedDict, total=False):
+    """Indicateurs DVF agrégés injectés dans communes_direct (pivot com)."""
+
+    com: str
+    prix_m2_moyen_maison: Optional[float]
+    prix_m2_moyen_appartement: Optional[float]
+    nb_ventes_totales: Optional[int]
+    dvf_last_ingested_at: datetime
+    dvf_source: str
+
+
+class RealEstateHistoryDoc(TypedDict, total=False):
+    """Transaction DVF simplifiée stockée dans real_estate_history."""
+
+    transaction_id: str
+    source: str
+    com: str
+    date_mutation: Optional[str]
+    nature_mutation: str
+    type_local: Optional[str]
+    valeur_fonciere: Optional[float]
+    surface_reelle_bati: Optional[float]
+    prix_m2: Optional[float]
+    updated_at: datetime
+
+
 @dataclass(slots=True)
 class CityScrapePayload:
     """Payload intermediaire de collecte pour une commune."""

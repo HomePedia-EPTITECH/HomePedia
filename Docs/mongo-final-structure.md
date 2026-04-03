@@ -112,6 +112,22 @@
   - `sentiment_score` (post-traitement, optionnel)
   - `sentiment_label` (post-traitement, optionnel)
 
+## Collection `real_estate_history`
+
+- Rôle : historiser les transactions DVF simplifiées (multi-runs, dédup par transaction).
+- Clé technique :
+  - `transaction_id` (hash stable, unique)
+- Champs principaux :
+  - `source` (valeur `dvf`)
+  - `com` (pivot INSEE)
+  - `date_mutation` (ISO `YYYY-MM-DD`)
+  - `nature_mutation` (ex: `Vente`)
+  - `type_local` (`Maison`, `Appartement`, etc.)
+  - `valeur_fonciere` (double)
+  - `surface_reelle_bati` (double)
+  - `prix_m2` (double)
+  - `updated_at`
+
 ## Index / migrations (état cible)
 
 - `01_init_communes_harvest.js`
@@ -122,3 +138,4 @@
 - `06_init_communes_direct_vi.js`
 - `07_add_source_indexes_vi_and_reviews_texthash.js`
 - `08_backfill_city_pages_queue_source.js` (normalisation robuste du champ `source` : absent/null/vide + stats)
+- `09_init_real_estate_history_dvf.js`
