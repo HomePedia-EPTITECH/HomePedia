@@ -60,6 +60,24 @@ SITEMAP_URL = "https://www.bien-dans-ma-ville.fr/sitemap.xml"
 CITY_PAGES_QUEUE_COLLECTION = "city_pages_queue"
 COMMUNES_DIRECT_COLLECTION = "communes_direct"
 MONGO_BULK_BATCH_SIZE = 500
+SOURCE = "bdmv"
+
+
+def _empty_strings_to_none(obj: Any) -> Any:
+    """
+    Remplace les chaines vides ou blanches par None, recursivement (dict / list).
+    """
+    if isinstance(obj, dict):
+        for k in list(obj.keys()):
+            obj[k] = _empty_strings_to_none(obj[k])
+        return obj
+    if isinstance(obj, list):
+        for i in range(len(obj)):
+            obj[i] = _empty_strings_to_none(obj[i])
+        return obj
+    if isinstance(obj, str) and not obj.strip():
+        return None
+    return obj
 
 
 class HomepediaHarvester:
@@ -288,9 +306,18 @@ class HomepediaHarvester:
         now_utc = datetime.now(timezone.utc)
         if force_rescrape:  # reset de la queue pour un run complet
             self.queue_store.update_many(
-                {},
+                {
+                    "$or": [
+                        {"source": SOURCE},
+                        {
+                            "source": {"$exists": False},
+                            "url": {"$regex": r"bien-dans-ma-ville\.fr", "$options": "i"},
+                        },
+                    ]
+                },
                 {
                     "$set": {
+                        "source": SOURCE,
                         "is_processed": False,
                         "processed_at": None,
                         "last_error": None,
@@ -322,6 +349,7 @@ class HomepediaHarvester:
             nom_commune_guess = self._extract_nom_commune_from_url(url, com_id)
             update_set: Dict[str, Any] = {
                 "updated_at": now_utc,
+                "source": SOURCE,
                 "com_id": com_id,
                 "nom_commune_guess": nom_commune_guess,
             }
@@ -377,9 +405,22 @@ class HomepediaHarvester:
 
     def _load_queue_entries(self) -> Iterator[Tuple[str, str, str]]:
         """Charge les entrees non traitees de la queue en iterateur (batch_size 500)."""
-        self.total_in_queue = self.queue_store.count_documents({})
-        self.already_done = self.queue_store.count_documents({"is_processed": True})
-        remaining = self.queue_store.count_documents({"is_processed": False})
+        queue_filter_base = {
+            "$or": [
+                {"source": SOURCE},
+                {
+                    "source": {"$exists": False},
+                    "url": {"$regex": r"bien-dans-ma-ville\.fr", "$options": "i"},
+                },
+            ]
+        }
+        self.total_in_queue = self.queue_store.count_documents(queue_filter_base)
+        self.already_done = self.queue_store.count_documents(
+            {**queue_filter_base, "is_processed": True}
+        )
+        remaining = self.queue_store.count_documents(
+            {**queue_filter_base, "is_processed": False}
+        )
         if remaining == 0:
             logger.info("Aucune URL à traiter dans la queue Mongo.")
             return iter(())
@@ -390,7 +431,7 @@ class HomepediaHarvester:
             self.total_in_queue,
         )
         cursor = self.queue_store.find(
-            {"is_processed": False},
+            {**queue_filter_base, "is_processed": False},
             {"url": 1, "com_id": 1, "nom_commune_guess": 1},
         ).sort("url", 1)
         cursor = cursor.batch_size(500)
@@ -1062,14 +1103,14 @@ class HomepediaHarvester:
                 logger.warning("Aucun HTML exploitable pour %s (%s)", name, com)
                 return None
             result.reviews_full = full_reviews
-            commune_doc = self._validate_commune_doc(
-                self._build_commune_document(
-                    result=result,
-                    base_url=base_url,
-                    avis_url=avis_url,
-                    sentiment_source=sentiment_source,
-                )
+            commune_doc = self._build_commune_document(
+                result=result,
+                base_url=base_url,
+                avis_url=avis_url,
+                sentiment_source=sentiment_source,
             )
+            _empty_strings_to_none(commune_doc)
+            commune_doc = self._validate_commune_doc(commune_doc)
             try:
                 self.city_store.update_one(
                     {"com": com},
@@ -1411,6 +1452,7 @@ class HomepediaHarvester:
             {"url": url},
             {
                 "$set": {
+                    "source": SOURCE,
                     "is_processed": True,
                     "processed_at": now_utc,
                     "updated_at": now_utc,
@@ -1424,7 +1466,11 @@ class HomepediaHarvester:
         self.queue_store.update_one(
             {"url": url},
             {
-                "$set": {"last_error": error_msg[:500], "updated_at": now_utc},
+                "$set": {
+                    "source": SOURCE,
+                    "last_error": error_msg[:500],
+                    "updated_at": now_utc,
+                },
                 "$inc": {"attempt_count": 1},
             },
         )
