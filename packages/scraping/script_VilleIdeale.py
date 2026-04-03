@@ -1067,7 +1067,6 @@ class VilleIdealeHarvester:
             except ValueError:
                 pass
 
-        payload = CityScrapePayload(com=com, nom_commune=name)
         notes: VilleIdealeNotesDoc = self._extract_notes(soup)  # type: ignore[assignment]
         reviews_full, review_pages = self._extract_all_reviews(session, resolved_city_url)
 
