@@ -1,8 +1,10 @@
 from jobs.cleaning.cleaning_jobs import (filter_low_reviews, clean_integer_values, clean_float_values, filter_price_outliers)
 
 def run_pipeline(df):
-    df = filter_low_reviews(df)
+    
     df = clean_integer_values(df, [
+        "com",
+        "nb_avis",
         "nb_habitant", 
         "age_moyen", 
         "pop_densite", 
@@ -12,7 +14,6 @@ def run_pipeline(df):
         "cambriolages", 
         "vols_degradations", 
         "stupefiants", 
-        "nb_avis", 
         "estimation_pop_2026", 
         "estimation_pop_2025", 
         "inscrits_election", 
@@ -100,6 +101,7 @@ def run_pipeline(df):
         "part_taux_proprietaires",
         "part_taux_locataires"
     ])
+    df = filter_low_reviews(df)
     
     df = filter_price_outliers(df)
     return df

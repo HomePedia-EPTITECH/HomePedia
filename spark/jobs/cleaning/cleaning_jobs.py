@@ -3,7 +3,7 @@ from typing import Callable
 
 # ne pas prendre en compte les communes avec peu d'avis (moins de 10) pour éviter les biais
 def filter_low_reviews(df: DataFrame) -> DataFrame:
-    return df.filter(F.col("nb_avis") >= 10)
+    return df.filter(F.col("nb_avis") >= 2)
 
 
 # Nettoyer les nombres avec des espaces (ex: "1 000" -> 1000) et les convertir en int
@@ -58,11 +58,22 @@ def _clean_values(df: DataFrame, columns: list, transform: Callable, default) ->
     return df.select(exprs)
 
 def clean_integer_values(df: DataFrame, columns: list) -> DataFrame:
-    return _clean_values(
+    
+    if "nb_avis" in columns:
+        print("=== BEFORE CLEAN nb_avis ===")
+        
+
+    result = _clean_values(
         df, columns,
         transform=lambda c: F.regexp_replace(c, r"[^\d]", ""),
         default=0
     )
+
+    if "nb_avis" in columns:
+        print("=== AFTER CLEAN nb_avis ===")
+        result.select("nb_avis").show(20, False)
+
+    return result
 
 def clean_float_values(df: DataFrame, columns: list) -> DataFrame:
     return _clean_values(
