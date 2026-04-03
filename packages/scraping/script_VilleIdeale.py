@@ -882,7 +882,7 @@ class VilleIdealeHarvester:
                 flags=re.IGNORECASE,
             )
             cleaned = re.sub(
-                r"^les points negatifs\s*:\s*",
+                r"^les points n(?:e|é)gatifs\s*:\s*",
                 "",
                 cleaned,
                 flags=re.IGNORECASE,
