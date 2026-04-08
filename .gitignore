@@ -85,5 +85,6 @@ __pycache__/
 *.so
 .venv/
 venv/
+.pytest_cache/
 *.log
 *.crc
