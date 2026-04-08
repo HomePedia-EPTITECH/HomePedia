@@ -6,13 +6,12 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags
 } from "@nestjs/swagger";
-import { ApiErrorResponse } from "../models/api-error.model";
-import { HealthResponse } from "../models/health.model";
-import { HEALTH_BASE_PATH } from "../routes/health.routes";
-import { HealthService } from "../services/health.service";
+import { ApiErrorResponse } from "../../models/api-error.model";
+import { HealthResponse } from "./models/health.model";
+import { HealthService } from "./health.service";
 
 @ApiTags("health")
-@Controller(HEALTH_BASE_PATH)
+@Controller("health")
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 

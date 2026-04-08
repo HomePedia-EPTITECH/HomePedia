@@ -1,15 +1,14 @@
 import { Module } from "@nestjs/common";
 import { DbModule } from "../../db/db.module";
-import { MongoModule } from "../../db/mongo.module";
+import { ReviewsModule } from "../reviews/reviews.module";
 import { CitiesController } from "./cities.controller";
 import { PostgresCitiesRepository } from "./cities.postgres.repository";
-import { CitiesRepository } from "./cities.repository";
 import { CitiesService } from "./cities.service";
 
 @Module({
-  imports: [MongoModule, DbModule],
+  imports: [DbModule, ReviewsModule],
   controllers: [CitiesController],
-  providers: [CitiesService, CitiesRepository, PostgresCitiesRepository],
-  exports: [CitiesService, CitiesRepository, PostgresCitiesRepository]
+  providers: [CitiesService, PostgresCitiesRepository],
+  exports: [CitiesService, PostgresCitiesRepository]
 })
 export class CitiesModule {}

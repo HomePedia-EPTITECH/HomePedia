@@ -37,23 +37,8 @@ describe("OverviewService", () => {
     });
   });
 
-  it("prefers SQL metrics and highlights while keeping the Mongo reviews summary", async () => {
+  it("uses PostgreSQL metrics and highlights while keeping the Mongo reviews summary", async () => {
     const service = new OverviewService(
-      {
-        getOverviewMetrics: jest.fn().mockResolvedValue({
-          total_cities: 100,
-          avg_population: 22000,
-          avg_security: 3.1,
-          avg_environment: 3.3
-        }),
-        findTopCitiesByScore: jest
-          .fn()
-          .mockResolvedValueOnce([{ com: "75056", nccenr: "Paris", score_securite: 3.1, score_environnement: 4.2 }])
-          .mockResolvedValueOnce([{ com: "35238", nccenr: "Rennes", score_securite: 3.7, score_environnement: 4.4 }])
-      } as never,
-      {
-        countReviewedCities: jest.fn().mockResolvedValue(12)
-      } as never,
       {
         getOverviewMetrics: jest.fn().mockResolvedValue({
           total_cities: 4,
@@ -65,6 +50,9 @@ describe("OverviewService", () => {
           .fn()
           .mockResolvedValueOnce([{ com: "75057", nccenr: "Paris Centre", score_securite: 4.1, score_environnement: 4.0 }])
           .mockResolvedValueOnce([{ com: "69123", nccenr: "Lyon", score_securite: 3.5, score_environnement: 4.3 }])
+      } as never,
+      {
+        countReviewedCities: jest.fn().mockResolvedValue(12)
       } as never
     );
 

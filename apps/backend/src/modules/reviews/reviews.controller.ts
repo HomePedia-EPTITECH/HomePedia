@@ -16,9 +16,9 @@ import { ReviewsService } from "./reviews.service";
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
-  @ApiOperation({ summary: "Get text reviews and metrics snapshot for a city" })
+  @ApiOperation({ summary: "Get raw text reviews for a city from Mongo" })
   @ApiParam({ name: "code", type: String, example: "75056" })
-  @ApiOkResponse({ type: CityReviewsResponse, description: "Raw review buckets and harvest snapshot for one city" })
+  @ApiOkResponse({ type: CityReviewsResponse, description: "Raw review buckets for one city" })
   @ApiNotFoundResponse({ type: ApiErrorResponse })
   @ApiServiceUnavailableResponse({ type: ApiErrorResponse })
   @Get("cities/:code")

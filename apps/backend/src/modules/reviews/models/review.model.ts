@@ -26,26 +26,14 @@ export class CityReviews {
 
   @ApiProperty({ type: ReviewsBuckets })
   reviews!: ReviewsBuckets;
-
-  @ApiProperty({
-    type: "object",
-    additionalProperties: {
-      oneOf: [{ type: "string" }, { type: "number" }, { type: "null" }]
-    },
-    example: {
-      nb_habitant: "2145906",
-      score_securite: "3.8"
-    }
-  })
-  metricsSnapshot!: Record<string, string | number | null>;
 }
 
 export class CityReviewsMeta {
   @ApiProperty({ example: "mongo" })
   source!: "mongo";
 
-  @ApiProperty({ example: "communes_harvest" })
-  collection!: "communes_harvest";
+  @ApiProperty({ example: "reviews_raw" })
+  collection!: "reviews_raw";
 }
 
 export class CityReviewsResponse {

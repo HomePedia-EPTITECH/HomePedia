@@ -22,7 +22,7 @@ import { DepartementsService } from "./departements.service";
 export class DepartementsController {
   constructor(private readonly departementsService: DepartementsService) {}
 
-  @ApiOperation({ summary: "List departements available in the Mongo dataset" })
+  @ApiOperation({ summary: "List departements available in PostgreSQL" })
   @ApiOkResponse({ type: DepartementsResponse, description: "Departement list with computed city counts" })
   @Get()
   findAll() {
@@ -51,14 +51,14 @@ export class DepartementsController {
     name: "note_moyenne_globale_min",
     required: false,
     type: Number,
-    description: "Minimum city rating from communes_direct",
+    description: "Minimum global city score from PostgreSQL",
     example: 3.5
   })
   @ApiQuery({
     name: "nb_avis_min",
     required: false,
     type: Number,
-    description: "Minimum review count from communes_direct",
+    description: "Minimum review count from Mongo reviews_raw",
     example: 100
   })
   @ApiQuery({

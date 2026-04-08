@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
+import { CitySortBy, GetCitiesQueryDto, SortOrder } from "./dto/get-cities-query.dto";
 import {
   CityDetailRow,
   CityRow,
@@ -27,6 +28,10 @@ type DetailSqlRow = Record<string, string | number | null> & {
   departement_name: string | null;
   metropole_name: string | null;
   mayor_name: string | null;
+};
+
+type CountRow = {
+  total: number;
 };
 
 const CITY_DEMOGRAPHY_COLUMNS = [
@@ -156,6 +161,36 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
     super(dbService);
   }
 
+  async findAll(query: GetCitiesQueryDto, scopedCodes?: string[]): Promise<CityRow[]> {
+    if (scopedCodes && scopedCodes.length === 0) {
+      return [];
+    }
+
+    const tables = await this.getAvailableTables();
+    if (!tables.has("commune")) {
+      return [];
+    }
+
+    const sql = this.buildFindAllQuery(tables, query, scopedCodes);
+    const result = await this.dbService.query<CityRow>(sql.text, sql.values);
+    return result.rows;
+  }
+
+  async countAll(query: GetCitiesQueryDto, scopedCodes?: string[]): Promise<number> {
+    if (scopedCodes && scopedCodes.length === 0) {
+      return 0;
+    }
+
+    const tables = await this.getAvailableTables();
+    if (!tables.has("commune")) {
+      return 0;
+    }
+
+    const sql = this.buildCountAllQuery(tables, query, scopedCodes);
+    const result = await this.dbService.query<CountRow>(sql.text, sql.values);
+    return result.rows[0]?.total ?? 0;
+  }
+
   async findByCode(code: string): Promise<CityRow | null> {
     const tables = await this.getAvailableTables();
     if (!tables.has("commune")) {
@@ -248,8 +283,217 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
     return result.rows;
   }
 
-  private buildFindByCodeQuery(tables: Set<string>): string {
-    const selects = [
+  private buildFindAllQuery(
+    tables: Set<string>,
+    query: GetCitiesQueryDto,
+    scopedCodes?: string[]
+  ): { text: string; values: unknown[] } {
+    const plan = this.buildCityListPlan(tables, query, scopedCodes);
+
+    return {
+      text: `
+        SELECT
+          ${this.buildCitySelects(tables).join(",\n          ")}
+        FROM ${this.relation("commune")} c
+        ${plan.joins.join("\n        ")}
+        ${plan.whereClause}
+        ${plan.orderClause}
+        LIMIT $${plan.values.length + 1}
+        OFFSET $${plan.values.length + 2}
+      `,
+      values: [...plan.values, query.limit, (query.page - 1) * query.limit]
+    };
+  }
+
+  private buildCountAllQuery(
+    tables: Set<string>,
+    query: GetCitiesQueryDto,
+    scopedCodes?: string[]
+  ): { text: string; values: unknown[] } {
+    const plan = this.buildCityListPlan(tables, query, scopedCodes);
+
+    return {
+      text: `
+        SELECT COUNT(*)::int AS ${this.quoteIdentifier("total")}
+        FROM ${this.relation("commune")} c
+        ${plan.joins.join("\n        ")}
+        ${plan.whereClause}
+      `,
+      values: plan.values
+    };
+  }
+
+  private buildCityListPlan(
+    tables: Set<string>,
+    query: GetCitiesQueryDto,
+    scopedCodes?: string[]
+  ): { joins: string[]; whereClause: string; orderClause: string; values: unknown[] } {
+    const values: unknown[] = [];
+    const whereParts: string[] = [];
+
+    const joins = [
+      this.buildOptionalLeftJoin(
+        tables,
+        "demographie",
+        "d",
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "scores",
+        "s",
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "immobilier",
+        "imm",
+        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "departement",
+        "dept",
+        `dept.${this.quoteIdentifier("id")} = c.${this.quoteIdentifier("departement_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "region",
+        "reg",
+        `reg.${this.quoteIdentifier("numero_region")} = dept.${this.quoteIdentifier("region_id")}`
+      )
+    ].filter(Boolean);
+
+    if (query.search) {
+      const normalizedSearch = query.search.trim().toLowerCase();
+      if (normalizedSearch) {
+        values.push(`%${normalizedSearch}%`);
+        const parameter = `$${values.length}`;
+        whereParts.push(
+          `(LOWER(c.${this.quoteIdentifier("com")}::text) LIKE ${parameter} OR LOWER(c.${this.quoteIdentifier("nom")}) LIKE ${parameter})`
+        );
+      }
+    }
+
+    if (scopedCodes) {
+      values.push(scopedCodes);
+      whereParts.push(`c.${this.quoteIdentifier("com")}::text = ANY($${values.length})`);
+    }
+
+    if (query.code_dept) {
+      if (!tables.has("departement")) {
+        whereParts.push("1 = 0");
+      } else {
+        values.push(query.code_dept);
+        whereParts.push(`dept.${this.quoteIdentifier("numero_departement")}::text = $${values.length}`);
+      }
+    }
+
+    if (query.nom_region) {
+      if (!tables.has("departement") || !tables.has("region")) {
+        whereParts.push("1 = 0");
+      } else {
+        values.push(query.nom_region.trim().toLowerCase());
+        whereParts.push(`LOWER(reg.${this.quoteIdentifier("name")}) = $${values.length}`);
+      }
+    }
+
+    if (query.note_moyenne_globale_min !== undefined) {
+      if (!tables.has("scores")) {
+        whereParts.push("1 = 0");
+      } else {
+        values.push(query.note_moyenne_globale_min);
+        whereParts.push(`s.${this.quoteIdentifier("score_globale")} >= $${values.length}`);
+      }
+    }
+
+    if (query.prix_m2_maison_max !== undefined) {
+      if (!tables.has("immobilier")) {
+        whereParts.push("1 = 0");
+      } else {
+        values.push(query.prix_m2_maison_max);
+        whereParts.push(`imm.${this.quoteIdentifier("prix_m2_maison")} <= $${values.length}`);
+      }
+    }
+
+    if (query.prix_m2_appartement_max !== undefined) {
+      if (!tables.has("immobilier")) {
+        whereParts.push("1 = 0");
+      } else {
+        values.push(query.prix_m2_appartement_max);
+        whereParts.push(`imm.${this.quoteIdentifier("prix_m2_appartement")} <= $${values.length}`);
+      }
+    }
+
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join("\n          AND ")}` : "";
+
+    return {
+      joins,
+      whereClause,
+      orderClause: this.buildCityListOrderClause(tables, query),
+      values
+    };
+  }
+
+  private buildCityListOrderClause(tables: Set<string>, query: GetCitiesQueryDto): string {
+    const direction = query.order === SortOrder.Desc ? "DESC" : "ASC";
+
+    switch (query.sortBy) {
+      case CitySortBy.Population:
+        if (tables.has("demographie")) {
+          return `
+        ORDER BY
+          CASE WHEN d.${this.quoteIdentifier("population")} IS NULL THEN 1 ELSE 0 END ASC,
+          d.${this.quoteIdentifier("population")} ${direction},
+          c.${this.quoteIdentifier("nom")} ASC,
+          c.${this.quoteIdentifier("com")} ASC`;
+        }
+        break;
+      case CitySortBy.Security:
+        if (tables.has("scores")) {
+          return `
+        ORDER BY
+          CASE WHEN s.${this.quoteIdentifier("score_securite")} IS NULL THEN 1 ELSE 0 END ASC,
+          s.${this.quoteIdentifier("score_securite")} ${direction},
+          c.${this.quoteIdentifier("nom")} ASC,
+          c.${this.quoteIdentifier("com")} ASC`;
+        }
+        break;
+      case CitySortBy.Environment:
+        if (tables.has("scores")) {
+          return `
+        ORDER BY
+          CASE WHEN s.${this.quoteIdentifier("score_environnement")} IS NULL THEN 1 ELSE 0 END ASC,
+          s.${this.quoteIdentifier("score_environnement")} ${direction},
+          c.${this.quoteIdentifier("nom")} ASC,
+          c.${this.quoteIdentifier("com")} ASC`;
+        }
+        break;
+      case CitySortBy.Education:
+        if (tables.has("scores")) {
+          return `
+        ORDER BY
+          CASE WHEN s.${this.quoteIdentifier("score_education")} IS NULL THEN 1 ELSE 0 END ASC,
+          s.${this.quoteIdentifier("score_education")} ${direction},
+          c.${this.quoteIdentifier("nom")} ASC,
+          c.${this.quoteIdentifier("com")} ASC`;
+        }
+        break;
+      case CitySortBy.Health:
+      case CitySortBy.Transport:
+      case CitySortBy.Name:
+      default:
+        break;
+    }
+
+    return `
+        ORDER BY
+          c.${this.quoteIdentifier("nom")} ${direction},
+          c.${this.quoteIdentifier("com")} ASC`;
+  }
+
+  private buildCitySelects(tables: Set<string>): string[] {
+    return [
       `c.${this.quoteIdentifier("com")}::text AS ${this.quoteIdentifier("com")}`,
       `c.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("nccenr")}`,
       ...CITY_DEMOGRAPHY_COLUMNS.map(({ column, alias }) =>
@@ -261,7 +505,9 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
       `NULL AS ${this.quoteIdentifier("score_sante")}`,
       `NULL AS ${this.quoteIdentifier("score_transports")}`
     ];
+  }
 
+  private buildFindByCodeQuery(tables: Set<string>): string {
     const joins = [
       this.buildOptionalLeftJoin(
         tables,
@@ -279,7 +525,7 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
 
     return `
       SELECT
-        ${selects.join(",\n        ")}
+        ${this.buildCitySelects(tables).join(",\n        ")}
       FROM ${this.relation("commune")} c
       ${joins.join("\n      ")}
       WHERE c.${this.quoteIdentifier("com")}::text = $1
@@ -469,19 +715,6 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
     tables: Set<string>,
     column: "score_securite" | "score_environnement"
   ): string {
-    const selects = [
-      `c.${this.quoteIdentifier("com")}::text AS ${this.quoteIdentifier("com")}`,
-      `c.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("nccenr")}`,
-      ...CITY_DEMOGRAPHY_COLUMNS.map(({ column: columnName, alias }) =>
-        this.selectColumnOrNull(tables, "demographie", "d", columnName, alias)
-      ),
-      ...CITY_SCORE_COLUMNS.map((columnName) =>
-        this.selectColumnOrNull(tables, "scores", "s", columnName, columnName)
-      ),
-      `NULL AS ${this.quoteIdentifier("score_sante")}`,
-      `NULL AS ${this.quoteIdentifier("score_transports")}`
-    ];
-
     const joins = [
       this.buildOptionalLeftJoin(
         tables,
@@ -499,7 +732,7 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
 
     return `
       SELECT
-        ${selects.join(",\n        ")}
+        ${this.buildCitySelects(tables).join(",\n        ")}
       FROM ${this.relation("commune")} c
       ${joins.join("\n      ")}
       WHERE s.${this.quoteIdentifier(column)} IS NOT NULL

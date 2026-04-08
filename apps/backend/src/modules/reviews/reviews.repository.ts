@@ -2,31 +2,21 @@ import { Injectable } from "@nestjs/common";
 import { Document } from "mongodb";
 import { MongoService } from "../../db/mongo.service";
 
-type PrimitiveMetric = string | number | null;
-
-type CommuneHarvestDocument = Document & {
-  com: string;
-  links?: {
-    city_page?: string;
-    avis_page?: string;
-  };
-  demography?: Record<string, PrimitiveMetric>;
-  quality_of_life?: Record<string, PrimitiveMetric>;
-  reviews_refs?: {
-    count?: number;
-    last_collected_at?: number | string | Date;
-  };
-  updated_at?: number | string | Date;
-};
-
 type ReviewRawDocument = Document & {
+  com: string;
+  source?: string;
+  url_page?: string;
   text?: string;
   sentiment_label?: string;
   collected_at?: number | string | Date;
 };
 
 export type CityReviewsDocument = {
-  commune: CommuneHarvestDocument;
+  code: string;
+  source: string | null;
+  sourceUrl: string | null;
+  harvestedAt: number | string | Date | null;
+  totalReviews: number;
   reviews: ReviewRawDocument[];
 };
 
@@ -35,52 +25,74 @@ export class ReviewsRepository {
   constructor(private readonly mongoService: MongoService) {}
 
   async findByCityCode(code: string): Promise<CityReviewsDocument | null> {
-    const communes = await this.mongoService.getCollection<CommuneHarvestDocument>(
-      "communes_harvest"
-    );
-    const commune = await communes.findOne(
-      { com: code },
-      {
-        projection: {
-          _id: 0,
-          com: 1,
-          links: 1,
-          demography: 1,
-          quality_of_life: 1,
-          reviews_refs: 1,
-          updated_at: 1
-        }
-      }
-    );
+    const reviewsCollection = await this.mongoService.getCollection<ReviewRawDocument>("reviews_raw");
+    const [reviews, totalReviews] = await Promise.all([
+      reviewsCollection
+        .find(
+          { com: code },
+          {
+            projection: {
+              _id: 0,
+              com: 1,
+              source: 1,
+              url_page: 1,
+              text: 1,
+              sentiment_label: 1,
+              collected_at: 1
+            }
+          }
+        )
+        .sort({ collected_at: -1 })
+        .limit(100)
+        .toArray(),
+      reviewsCollection.countDocuments({ com: code })
+    ]);
 
-    if (!commune) {
+    if (totalReviews === 0) {
       return null;
     }
 
-    const reviewsCollection = await this.mongoService.getCollection<ReviewRawDocument>("reviews_raw");
-    const reviews = await reviewsCollection
-      .find(
-        { com: code },
-        {
-          projection: {
-            _id: 0,
-            text: 1,
-            sentiment_label: 1,
-            collected_at: 1
-          }
-        }
-      )
-      .sort({ collected_at: -1 })
-      .limit(100)
-      .toArray();
+    const latestReview = reviews[0];
 
-    return { commune, reviews };
+    return {
+      code,
+      source: latestReview?.source ?? null,
+      sourceUrl: latestReview?.url_page ?? null,
+      harvestedAt: latestReview?.collected_at ?? null,
+      totalReviews,
+      reviews
+    };
   }
 
   async countReviewedCities(): Promise<number> {
-    const collection = await this.mongoService.getCollection<CommuneHarvestDocument>(
-      "communes_harvest"
-    );
-    return collection.countDocuments({ "reviews_refs.count": { $gt: 0 } });
+    const collection = await this.mongoService.getCollection<ReviewRawDocument>("reviews_raw");
+    const codes = await collection.distinct("com", { com: { $type: "string", $ne: "" } });
+    return codes.length;
+  }
+
+  async findCityCodesWithMinimumReviews(minimumReviews: number): Promise<string[]> {
+    const collection = await this.mongoService.getCollection<ReviewRawDocument>("reviews_raw");
+    const rows = await collection
+      .aggregate<{ _id: string }>([
+        {
+          $match: {
+            com: { $type: "string", $ne: "" }
+          }
+        },
+        {
+          $group: {
+            _id: "$com",
+            totalReviews: { $sum: 1 }
+          }
+        },
+        {
+          $match: {
+            totalReviews: { $gte: minimumReviews }
+          }
+        }
+      ])
+      .toArray();
+
+    return rows.map((row) => row._id);
   }
 }

@@ -1,18 +1,11 @@
 import { NotFoundException } from "@nestjs/common";
 import { CitiesService } from "../cities/cities.service";
 import { PostgresDepartementsRepository } from "./departements.postgres.repository";
-import { DepartementsRepository } from "./departements.repository";
 import { DepartementsService } from "./departements.service";
 
-describe("DepartementsService hybrid reads", () => {
-  it("prefers SQL departements when the SQL repository is populated", async () => {
+describe("DepartementsService", () => {
+  it("reads departements from PostgreSQL", async () => {
     const service = new DepartementsService(
-      {
-        findAll: jest.fn().mockResolvedValue([
-          { code: "75", name: "Paris legacy", cityCount: 99, updatedAt: null }
-        ]),
-        findByCode: jest.fn()
-      } as unknown as DepartementsRepository,
       {
         getCities: jest.fn()
       } as unknown as CitiesService,
@@ -35,22 +28,18 @@ describe("DepartementsService hybrid reads", () => {
     });
   });
 
-  it("falls back to Mongo when SQL cannot resolve the departement", async () => {
+  it("returns a SQL departement by code", async () => {
     const service = new DepartementsService(
-      {
-        findAll: jest.fn(),
-        findByCode: jest.fn().mockResolvedValue({
-          code: "75",
-          name: "Paris",
-          cityCount: 1,
-          updatedAt: null
-        })
-      } as unknown as DepartementsRepository,
       {
         getCities: jest.fn()
       } as unknown as CitiesService,
       {
-        findByCode: jest.fn().mockResolvedValue(null)
+        findByCode: jest.fn().mockResolvedValue({
+          code: "75",
+          name: "Paris",
+          cityCount: 2,
+          updatedAt: null
+        })
       } as unknown as PostgresDepartementsRepository
     );
 
@@ -58,18 +47,51 @@ describe("DepartementsService hybrid reads", () => {
       data: {
         code: "75",
         name: "Paris",
-        cityCount: 1,
+        cityCount: 2,
         updatedAt: null
       }
     });
   });
 
-  it("keeps the 404 behavior when neither source knows the departement", async () => {
+  it("delegates scoped city lookups to CitiesService once the departement exists", async () => {
+    const citiesService = {
+      getCities: jest.fn().mockResolvedValue({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 }
+      })
+    } as unknown as CitiesService;
+
     const service = new DepartementsService(
+      citiesService,
       {
-        findAll: jest.fn(),
-        findByCode: jest.fn().mockResolvedValue(null)
-      } as unknown as DepartementsRepository,
+        findByCode: jest.fn().mockResolvedValue({
+          code: "75",
+          name: "Paris",
+          cityCount: 2,
+          updatedAt: null
+        })
+      } as unknown as PostgresDepartementsRepository
+    );
+
+    await expect(service.findCities("75", { page: 1, limit: 20 } as never)).resolves.toEqual({
+      data: [],
+      meta: {
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0
+      }
+    });
+
+    expect((citiesService.getCities as jest.Mock).mock.calls[0][0]).toMatchObject({
+      page: 1,
+      limit: 20,
+      code_dept: "75"
+    });
+  });
+
+  it("keeps the 404 behavior when PostgreSQL does not know the departement", async () => {
+    const service = new DepartementsService(
       {
         getCities: jest.fn()
       } as unknown as CitiesService,

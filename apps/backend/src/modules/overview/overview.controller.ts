@@ -8,7 +8,7 @@ import { OverviewService } from "./overview.service";
 export class OverviewController {
   constructor(private readonly overviewService: OverviewService) {}
 
-  @ApiOperation({ summary: "Get dashboard totals, averages and highlights computed from communes_direct" })
+  @ApiOperation({ summary: "Get dashboard totals, averages and highlights computed from PostgreSQL" })
   @ApiOkResponse({ type: OverviewResponse, description: "Homepage overview payload" })
   @Get()
   getOverview() {

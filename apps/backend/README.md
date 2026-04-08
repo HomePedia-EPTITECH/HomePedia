@@ -6,20 +6,25 @@ Backend NestJS en lecture seule pour exposer les donnees HomePedia au front.
 
 ```text
 src/
+  common/
+  config/
+  controllers/
   db/
     db.module.ts
     db.service.ts
     mongo.module.ts
     mongo.service.ts
+  filters/
+  models/
   modules/
     cities/
     departements/
     overview/
     reviews/
-  controllers/
-  repositories/
-  routes/
   services/
+  app.module.ts
+  main.ts
+  openapi.ts
 ```
 
 ## Installation
@@ -102,8 +107,8 @@ La suite couvre:
 
 - la validation de configuration runtime
 - le healthcheck
-- des tests HTTP sur `cities`, `reviews`, `overview` et `kpis`
-- des tests d'integration Mongo sur `communes_direct`, `communes_harvest`, `reviews_raw` et `departements`
+- des tests HTTP sur `cities`, `reviews` et `overview`
+- des tests d'integration PostgreSQL sur les modules read-only
 
 ## Swagger
 
@@ -121,11 +126,10 @@ npm run openapi:generate
 - API en lecture seule
 - les bases sont alimentees par les scripts de scraping et ETL
 - le backend expose les donnees sans modifier les donnees metier
-- `cities` et `overview` lisent la collection Mongo `communes_direct`
-- `cities/:code/details` combine `communes_direct`, `communes_harvest` et `reviews_raw`
-- `departements` lit la collection Mongo `departements`
-- `reviews` combine `communes_harvest` et `reviews_raw`
-- `kpis` est calcule a la volee depuis Mongo `communes_direct`
+- PostgreSQL est la source de verite pour `cities`, `departements` et `overview`
+- MongoDB est reserve aux avis bruts dans `reviews_raw`
+- `cities/:code/details` lit la ville sur PostgreSQL puis enrichit la reponse avec les avis Mongo si disponibles
+- le filtre `nb_avis_min` utilise MongoDB pour restreindre la liste des villes, mais les donnees renvoyees restent issues de PostgreSQL
 
 ## Routes
 
@@ -138,8 +142,6 @@ npm run openapi:generate
 - `GET /api/departements/:code/cities`
 - `GET /api/overview`
 - `GET /api/reviews/cities/:code`
-- `GET /api/kpis`
-- `GET /api/kpis/:id`
 
 ### Filtres `GET /api/cities`
 
@@ -186,9 +188,9 @@ Parametres principaux disponibles:
 
 `GET /api/health` verifie l'accessibilite de PostgreSQL et MongoDB.
 
-- `200 OK` si MongoDB est joignable
-- PostgreSQL est remonte dans les checks mais reste optionnel pour les routes hors KPI
-- `503 Service Unavailable` si MongoDB est indisponible
+- `200 OK` si PostgreSQL est joignable
+- MongoDB est remonte dans les checks car il reste necessaire pour les routes d'avis
+- `503 Service Unavailable` si PostgreSQL est indisponible
 
 ## Exemple `GET /api/reviews/cities/75056`
 
@@ -202,15 +204,11 @@ Parametres principaux disponibles:
       "positive": [],
       "negative": [],
       "all": ["Ville calme et agreable", "Transports compliques"]
-    },
-    "metricsSnapshot": {
-      "nb_habitant": "2145906",
-      "score_securite": "3.8"
     }
   },
   "meta": {
     "source": "mongo",
-    "collection": "communes_harvest"
+    "collection": "reviews_raw"
   }
 }
 ```
@@ -223,4 +221,4 @@ Appliquer les migrations existantes depuis la racine du repo:
 python packages/etl/database/run_migrations.py
 ```
 
-Les KPI exposes par l'API sont derives de `communes_direct`. Le script SQL `packages/etl/database/postgres/migrations/02_create_kpis.sql` n'est pas utilise par `/api/kpis`.
+Le backend ne publie plus de route `kpis`. Les chiffres de synthese exposes au front passent par `/api/overview`.

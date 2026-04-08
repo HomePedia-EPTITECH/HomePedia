@@ -1,21 +1,28 @@
-import { Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { GetCitiesQueryDto } from "./dto/get-cities-query.dto";
 import { PostgresCitiesRepository } from "./cities.postgres.repository";
-import { CitiesRepository } from "./cities.repository";
 import { City, CityDetailResponse, CityResponse, CitiesResponse } from "./models/city.model";
 import { CityDetailRow, CityRow, PrimitiveMetric } from "./cities.read-model";
+import { ReviewsRepository } from "../reviews/reviews.repository";
+
+type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
 
 @Injectable()
 export class CitiesService {
   constructor(
-    private readonly repository: CitiesRepository,
-    @Optional() private readonly postgresRepository?: PostgresCitiesRepository
+    private readonly postgresRepository: PostgresCitiesRepository,
+    private readonly reviewsRepository: ReviewsRepository
   ) {}
 
   async getCities(query: GetCitiesQueryDto): Promise<CitiesResponse> {
+    const scopedCodes =
+      query.nb_avis_min !== undefined
+        ? await this.getReviewScopedCityCodes(query.nb_avis_min)
+        : undefined;
+
     const [rows, total] = await Promise.all([
-      this.repository.findAll(query),
-      this.repository.countAll(query)
+      this.postgresRepository.findAll(query, scopedCodes),
+      this.postgresRepository.countAll(query, scopedCodes)
     ]);
 
     return {
@@ -30,10 +37,7 @@ export class CitiesService {
   }
 
   async getCityByCode(code: string): Promise<CityResponse> {
-    const sqlRow = await this.safePostgresCall(() => this.postgresRepository?.findByCode(code));
-    const mongoRow = sqlRow ? null : await this.repository.findByCode(code);
-    const row = this.mergeCityRows(sqlRow, mongoRow);
-
+    const row = await this.postgresRepository.findByCode(code);
     if (!row) {
       throw new NotFoundException(`City ${code} not found`);
     }
@@ -44,15 +48,15 @@ export class CitiesService {
   }
 
   async getCityDetailsByCode(code: string): Promise<CityDetailResponse> {
-    const [sqlDetail, mongoDetail] = await Promise.all([
-      this.safePostgresCall(() => this.postgresRepository?.findDetailByCode(code)),
-      this.safeMongoDetailLookup(code)
-    ]);
-
-    const detail = this.mergeDetails(sqlDetail, mongoDetail);
-    if (!detail) {
+    const sqlDetail = await this.postgresRepository.findDetailByCode(code);
+    if (!sqlDetail) {
       throw new NotFoundException(`City ${code} not found`);
     }
+
+    const detail = this.mergeSqlDetailWithReviews(
+      sqlDetail,
+      await this.safeReviewLookup(code)
+    );
 
     return {
       data: {
@@ -89,85 +93,52 @@ export class CitiesService {
     };
   }
 
-  private mergeDetails(
-    sqlDetail: CityDetailRow | null,
-    mongoDetail: CityDetailRow | null
-  ): CityDetailRow | null {
-    if (!sqlDetail && !mongoDetail) {
-      return null;
-    }
-
-    const city = this.mergeCityRows(sqlDetail?.city ?? null, mongoDetail?.city ?? null);
-    if (!city) {
-      return null;
-    }
-
+  private mergeSqlDetailWithReviews(
+    sqlDetail: CityDetailRow,
+    reviewDocument: ReviewDocument | null
+  ): CityDetailRow {
     return {
-      city,
-      admin: {
-        codeDept: sqlDetail?.admin.codeDept ?? mongoDetail?.admin.codeDept ?? null,
-        postalCode: sqlDetail?.admin.postalCode ?? mongoDetail?.admin.postalCode ?? null,
-        region: sqlDetail?.admin.region ?? mongoDetail?.admin.region ?? null,
-        departement: sqlDetail?.admin.departement ?? mongoDetail?.admin.departement ?? null,
-        metropole: sqlDetail?.admin.metropole ?? mongoDetail?.admin.metropole ?? null,
-        mayor: sqlDetail?.admin.mayor ?? mongoDetail?.admin.mayor ?? null
-      },
+      city: sqlDetail.city,
+      admin: sqlDetail.admin,
       source: {
-        provider: mongoDetail?.source.provider ?? sqlDetail?.source.provider ?? null,
-        cityPage: mongoDetail?.source.cityPage ?? sqlDetail?.source.cityPage ?? null,
-        reviewsPage: mongoDetail?.source.reviewsPage ?? sqlDetail?.source.reviewsPage ?? null,
-        harvestedAt: mongoDetail?.source.harvestedAt ?? sqlDetail?.source.harvestedAt ?? null,
-        updatedAt: mongoDetail?.source.updatedAt ?? sqlDetail?.source.updatedAt ?? null
+        provider: reviewDocument?.source ?? sqlDetail.source.provider ?? null,
+        cityPage: sqlDetail.source.cityPage,
+        reviewsPage: reviewDocument?.sourceUrl ?? sqlDetail.source.reviewsPage ?? null,
+        harvestedAt: reviewDocument?.harvestedAt ?? sqlDetail.source.harvestedAt ?? null,
+        updatedAt: reviewDocument?.harvestedAt ?? sqlDetail.source.updatedAt ?? null
       },
-      blocks: {
-        demography: this.pickBlock(sqlDetail?.blocks.demography, mongoDetail?.blocks.demography),
-        security: this.pickBlock(sqlDetail?.blocks.security, mongoDetail?.blocks.security),
-        qualityOfLife: this.pickBlock(
-          sqlDetail?.blocks.qualityOfLife,
-          mongoDetail?.blocks.qualityOfLife
-        ),
-        services: this.pickBlock(sqlDetail?.blocks.services, mongoDetail?.blocks.services),
-        realEstate: this.pickBlock(sqlDetail?.blocks.realEstate, mongoDetail?.blocks.realEstate)
-      },
+      blocks: sqlDetail.blocks,
       reviews: {
-        count: mongoDetail?.reviews.count ?? sqlDetail?.reviews.count ?? 0,
-        positive: mongoDetail?.reviews.positive ?? sqlDetail?.reviews.positive ?? [],
-        negative: mongoDetail?.reviews.negative ?? sqlDetail?.reviews.negative ?? [],
-        all: mongoDetail?.reviews.all ?? sqlDetail?.reviews.all ?? []
+        count: reviewDocument?.totalReviews ?? 0,
+        positive: this.extractReviewTexts(reviewDocument?.reviews ?? [], "positive"),
+        negative: this.extractReviewTexts(reviewDocument?.reviews ?? [], "negative"),
+        all: this.extractReviewTexts(reviewDocument?.reviews ?? [])
       }
     };
   }
 
-  private mergeCityRows(sqlRow: CityRow | null, mongoRow: CityRow | null): CityRow | null {
-    if (!sqlRow && !mongoRow) {
-      return null;
+  private extractReviewTexts(
+    reviews: Array<{ text?: string; sentiment_label?: string }>,
+    sentiment?: "positive" | "negative"
+  ): string[] {
+    const values: string[] = [];
+
+    for (const review of reviews) {
+      const text = review.text?.trim();
+      if (!text) {
+        continue;
+      }
+
+      if (sentiment && review.sentiment_label !== sentiment) {
+        continue;
+      }
+
+      if (!values.includes(text)) {
+        values.push(text);
+      }
     }
 
-    return {
-      com: sqlRow?.com ?? mongoRow?.com ?? "",
-      nccenr: sqlRow?.nccenr ?? mongoRow?.nccenr ?? "",
-      nb_habitant: sqlRow?.nb_habitant ?? mongoRow?.nb_habitant ?? null,
-      age_moyen: sqlRow?.age_moyen ?? mongoRow?.age_moyen ?? null,
-      pop_active: sqlRow?.pop_active ?? mongoRow?.pop_active ?? null,
-      score_securite: sqlRow?.score_securite ?? mongoRow?.score_securite ?? null,
-      score_environnement: sqlRow?.score_environnement ?? mongoRow?.score_environnement ?? null,
-      score_vie_pratique: sqlRow?.score_vie_pratique ?? mongoRow?.score_vie_pratique ?? null,
-      score_loisirs: sqlRow?.score_loisirs ?? mongoRow?.score_loisirs ?? null,
-      score_sante: sqlRow?.score_sante ?? mongoRow?.score_sante ?? null,
-      score_transports: sqlRow?.score_transports ?? mongoRow?.score_transports ?? null,
-      score_education: sqlRow?.score_education ?? mongoRow?.score_education ?? null
-    };
-  }
-
-  private pickBlock(
-    primary: Record<string, PrimitiveMetric> | undefined,
-    fallback: Record<string, PrimitiveMetric> | undefined
-  ): Record<string, PrimitiveMetric> {
-    if (primary && Object.keys(primary).length > 0) {
-      return primary;
-    }
-
-    return fallback ?? {};
+    return values;
   }
 
   private toCity(row: CityRow): City {
@@ -230,17 +201,17 @@ export class CitiesService {
     return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 
-  private async safePostgresCall<T>(callback: () => Promise<T | null> | undefined): Promise<T | null> {
+  private async getReviewScopedCityCodes(minimumReviews: number): Promise<string[]> {
     try {
-      return (await callback()) ?? null;
+      return await this.reviewsRepository.findCityCodesWithMinimumReviews(minimumReviews);
     } catch {
-      return null;
+      throw new ServiceUnavailableException("Reviews data source is unavailable");
     }
   }
 
-  private async safeMongoDetailLookup(code: string): Promise<CityDetailRow | null> {
+  private async safeReviewLookup(code: string): Promise<ReviewDocument | null> {
     try {
-      return await this.repository.findDetailByCode(code);
+      return await this.reviewsRepository.findByCityCode(code);
     } catch {
       return null;
     }

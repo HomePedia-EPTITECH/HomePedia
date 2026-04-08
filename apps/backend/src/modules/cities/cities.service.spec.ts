@@ -1,10 +1,10 @@
 import { NotFoundException } from "@nestjs/common";
 import { PostgresCitiesRepository } from "./cities.postgres.repository";
-import { CitiesRepository } from "./cities.repository";
 import { CitiesService } from "./cities.service";
 import { CityDetailRow, CityRow } from "./cities.read-model";
+import { ReviewsRepository } from "../reviews/reviews.repository";
 
-describe("CitiesService hybrid reads", () => {
+describe("CitiesService", () => {
   const sqlCity: CityRow = {
     com: "75056",
     nccenr: "Paris",
@@ -20,49 +20,12 @@ describe("CitiesService hybrid reads", () => {
     score_education: 4
   };
 
-  const mongoDetail: CityDetailRow = {
-    city: sqlCity,
-    admin: {
-      codeDept: "75",
-      postalCode: "75000",
-      region: "Ile-de-France",
-      departement: "Paris",
-      metropole: "Metropole du Grand Paris",
-      mayor: "Anne Hidalgo"
-    },
-    source: {
-      provider: "bdmv",
-      cityPage: "https://example.test/cities/paris",
-      reviewsPage: "https://example.test/cities/paris/reviews",
-      harvestedAt: "2026-03-24T12:00:00.000Z",
-      updatedAt: "2026-03-24T13:00:00.000Z"
-    },
-    blocks: {
-      demography: { nb_habitant: "2145906" },
-      security: {},
-      qualityOfLife: { note_moyenne_globale: "3.9" },
-      services: { existing_service_metric: "12" },
-      realEstate: {}
-    },
-    reviews: {
-      count: 2,
-      positive: ["Ville agreable"],
-      negative: ["Cher"],
-      all: ["Ville agreable", "Cher"]
-    }
-  };
-
   it("prefers SQL for GET /api/cities/:code while preserving the public payload shape", async () => {
     const service = new CitiesService(
       {
-        findAll: jest.fn(),
-        countAll: jest.fn(),
-        findByCode: jest.fn().mockResolvedValue(null),
-        findDetailByCode: jest.fn()
-      } as unknown as CitiesRepository,
-      {
         findByCode: jest.fn().mockResolvedValue(sqlCity)
-      } as unknown as PostgresCitiesRepository
+      } as unknown as PostgresCitiesRepository,
+      {} as ReviewsRepository
     );
 
     await expect(service.getCityByCode("75056")).resolves.toEqual({
@@ -87,17 +50,19 @@ describe("CitiesService hybrid reads", () => {
     });
   });
 
-  it("merges SQL structural detail with Mongo source and reviews", async () => {
+  it("enriches SQL detail with Mongo reviews only", async () => {
     const service = new CitiesService(
       {
-        findAll: jest.fn(),
-        countAll: jest.fn(),
-        findByCode: jest.fn(),
-        findDetailByCode: jest.fn().mockResolvedValue(mongoDetail)
-      } as unknown as CitiesRepository,
-      {
         findDetailByCode: jest.fn().mockResolvedValue({
-          ...mongoDetail,
+          city: sqlCity,
+          admin: {
+            codeDept: "75",
+            postalCode: "75000",
+            region: "Ile-de-France",
+            departement: "Paris",
+            metropole: "Metropole du Grand Paris",
+            mayor: "Anne Hidalgo"
+          },
           source: {
             provider: null,
             cityPage: null,
@@ -123,13 +88,28 @@ describe("CitiesService hybrid reads", () => {
             realEstate: { prix_m2_maison: 10450 }
           }
         })
-      } as unknown as PostgresCitiesRepository
+      } as unknown as PostgresCitiesRepository,
+      {
+        findByCityCode: jest.fn().mockResolvedValue({
+          code: "75056",
+          source: "ville-ideale",
+          sourceUrl: "https://example.test/cities/paris/reviews",
+          harvestedAt: "2026-03-24T12:00:00.000Z",
+          totalReviews: 3,
+          reviews: [
+            { text: "Ville agreable", sentiment_label: "positive" },
+            { text: "Cher", sentiment_label: "negative" },
+            { text: "Ville agreable", sentiment_label: "positive" }
+          ]
+        })
+      } as unknown as ReviewsRepository
     );
 
     const response = await service.getCityDetailsByCode("75056");
 
-    expect(response.data.source.provider).toBe("bdmv");
-    expect(response.data.reviews.count).toBe(2);
+    expect(response.data.source.provider).toBe("ville-ideale");
+    expect(response.data.source.reviewsPage).toBe("https://example.test/cities/paris/reviews");
+    expect(response.data.reviews.count).toBe(3);
     expect(response.data.blocks.services.values).toEqual({
       "education.nb_creches": 320,
       "sante.nb_pharmacies": 428,
@@ -139,12 +119,6 @@ describe("CitiesService hybrid reads", () => {
 
   it("returns SQL detail with empty reviews when Mongo detail lookup fails", async () => {
     const service = new CitiesService(
-      {
-        findAll: jest.fn(),
-        countAll: jest.fn(),
-        findByCode: jest.fn(),
-        findDetailByCode: jest.fn().mockRejectedValue(new Error("mongo down"))
-      } as unknown as CitiesRepository,
       {
         findDetailByCode: jest.fn().mockResolvedValue({
           city: sqlCity,
@@ -177,7 +151,10 @@ describe("CitiesService hybrid reads", () => {
             all: []
           }
         })
-      } as unknown as PostgresCitiesRepository
+      } as unknown as PostgresCitiesRepository,
+      {
+        findByCityCode: jest.fn().mockRejectedValue(new Error("mongo down"))
+      } as unknown as ReviewsRepository
     );
 
     const response = await service.getCityDetailsByCode("75056");
@@ -194,17 +171,32 @@ describe("CitiesService hybrid reads", () => {
   it("keeps the 404 behavior when neither SQL nor Mongo can resolve the city", async () => {
     const service = new CitiesService(
       {
-        findAll: jest.fn(),
-        countAll: jest.fn(),
         findByCode: jest.fn().mockResolvedValue(null),
         findDetailByCode: jest.fn().mockResolvedValue(null)
-      } as unknown as CitiesRepository,
-      {
-        findByCode: jest.fn().mockResolvedValue(null),
-        findDetailByCode: jest.fn().mockResolvedValue(null)
-      } as unknown as PostgresCitiesRepository
+      } as unknown as PostgresCitiesRepository,
+      {} as ReviewsRepository
     );
 
     await expect(service.getCityByCode("00000")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("uses Mongo review counts to scope SQL city filters when nb_avis_min is present", async () => {
+    const service = new CitiesService(
+      {
+        findAll: jest.fn().mockResolvedValue([sqlCity]),
+        countAll: jest.fn().mockResolvedValue(1)
+      } as unknown as PostgresCitiesRepository,
+      {
+        findCityCodesWithMinimumReviews: jest.fn().mockResolvedValue(["75056"])
+      } as unknown as ReviewsRepository
+    );
+
+    const response = await service.getCities({
+      page: 1,
+      limit: 20,
+      nb_avis_min: 10
+    } as never);
+
+    expect(response.meta.total).toBe(1);
   });
 });

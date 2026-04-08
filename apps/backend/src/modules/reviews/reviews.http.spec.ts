@@ -44,14 +44,11 @@ describe("ReviewsController HTTP", () => {
           positive: ["Ville agreable"],
           negative: ["Logements chers"],
           all: ["Ville agreable", "Logements chers"]
-        },
-        metricsSnapshot: {
-          score_securite: "3.8"
         }
       },
       meta: {
         source: "mongo",
-        collection: "communes_harvest"
+        collection: "reviews_raw"
       }
     });
 

@@ -43,87 +43,10 @@
         ]
       }
     },
-    "/api/kpis": {
-      "get": {
-        "operationId": "KpiController_findAll",
-        "summary": "List computed KPI entries derived from current Mongo data",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Computed KPI list derived from communes_direct",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Kpi"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "kpis"
-        ]
-      }
-    },
-    "/api/kpis/{id}": {
-      "get": {
-        "operationId": "KpiController_findOne",
-        "summary": "Get a computed KPI by id",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "example": 1,
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Single computed KPI entry",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Kpi"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "kpis"
-        ]
-      }
-    },
     "/api/cities": {
       "get": {
         "operationId": "CitiesController_findAll",
-        "summary": "List cities from communes_direct with search, filters and pagination",
+        "summary": "List cities from PostgreSQL with search, filters and pagination",
         "parameters": [
           {
             "name": "page",
@@ -182,7 +105,7 @@
             "name": "note_moyenne_globale_min",
             "required": false,
             "in": "query",
-            "description": "Minimum city rating from communes_direct",
+            "description": "Minimum global city score from PostgreSQL",
             "schema": {
               "minimum": 0,
               "maximum": 5,
@@ -194,7 +117,7 @@
             "name": "nb_avis_min",
             "required": false,
             "in": "query",
-            "description": "Minimum review count from communes_direct",
+            "description": "Minimum review count from Mongo reviews_raw",
             "schema": {
               "minimum": 0,
               "example": 100,
@@ -227,7 +150,7 @@
             "name": "sortBy",
             "required": false,
             "in": "query",
-            "description": "Sort key. health and transport are kept for API stability and may be null in Mongo.",
+            "description": "Sort key. health and transport are kept for API stability and may be null.",
             "schema": {
               "enum": [
                 "name",
@@ -284,7 +207,7 @@
     "/api/cities/{code}/details": {
       "get": {
         "operationId": "CitiesController_findDetails",
-        "summary": "Get a rich city payload by INSEE code from direct, harvest and review collections",
+        "summary": "Get a rich city payload by INSEE code from PostgreSQL, enriched with Mongo reviews",
         "parameters": [
           {
             "name": "code",
@@ -298,7 +221,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Detailed city payload assembled from Mongo collections",
+            "description": "Detailed city payload assembled from PostgreSQL and reviews data",
             "content": {
               "application/json": {
                 "schema": {
@@ -365,10 +288,62 @@
         ]
       }
     },
+    "/api/reviews/cities/{code}": {
+      "get": {
+        "operationId": "ReviewsController_findByCityCode",
+        "summary": "Get raw text reviews for a city from Mongo",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "example": "75056",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw review buckets for one city",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CityReviewsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
     "/api/departements": {
       "get": {
         "operationId": "DepartementsController_findAll",
-        "summary": "List departements available in the Mongo dataset",
+        "summary": "List departements available in PostgreSQL",
         "parameters": [],
         "responses": {
           "200": {
@@ -458,7 +433,7 @@
             "name": "note_moyenne_globale_min",
             "required": false,
             "in": "query",
-            "description": "Minimum city rating from communes_direct",
+            "description": "Minimum global city score from PostgreSQL",
             "schema": {
               "minimum": 0,
               "maximum": 5,
@@ -470,7 +445,7 @@
             "name": "nb_avis_min",
             "required": false,
             "in": "query",
-            "description": "Minimum review count from communes_direct",
+            "description": "Minimum review count from Mongo reviews_raw",
             "schema": {
               "minimum": 0,
               "example": 100,
@@ -619,62 +594,10 @@
         ]
       }
     },
-    "/api/reviews/cities/{code}": {
-      "get": {
-        "operationId": "ReviewsController_findByCityCode",
-        "summary": "Get text reviews and metrics snapshot for a city",
-        "parameters": [
-          {
-            "name": "code",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "example": "75056",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Raw review buckets and harvest snapshot for one city",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CityReviewsResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponse"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "reviews"
-        ]
-      }
-    },
     "/api/overview": {
       "get": {
         "operationId": "OverviewController_getOverview",
-        "summary": "Get dashboard totals, averages and highlights computed from communes_direct",
+        "summary": "Get dashboard totals, averages and highlights computed from PostgreSQL",
         "parameters": [],
         "responses": {
           "200": {
@@ -811,53 +734,6 @@
           "message",
           "path",
           "timestamp"
-        ]
-      },
-      "Kpi": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "number",
-            "example": 1
-          },
-          "name": {
-            "type": "string",
-            "example": "total_cities"
-          },
-          "value": {
-            "type": "number",
-            "example": 34871
-          },
-          "unit": {
-            "type": "object",
-            "nullable": true,
-            "example": "cities"
-          },
-          "source": {
-            "type": "object",
-            "nullable": true,
-            "example": "mongo:communes_direct"
-          },
-          "capturedAt": {
-            "type": "string",
-            "example": "2026-03-24T12:00:00.000Z"
-          },
-          "createdAt": {
-            "type": "string",
-            "example": "2026-03-24T12:00:00.000Z"
-          },
-          "updatedAt": {
-            "type": "string",
-            "example": "2026-03-24T12:00:00.000Z"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "value",
-          "capturedAt",
-          "createdAt",
-          "updatedAt"
         ]
       },
       "CityScores": {
@@ -1204,58 +1080,6 @@
           "data"
         ]
       },
-      "Departement": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string",
-            "example": "75"
-          },
-          "name": {
-            "type": "object",
-            "nullable": true,
-            "example": "Paris"
-          },
-          "cityCount": {
-            "type": "number",
-            "example": 1
-          },
-          "updatedAt": {
-            "type": "object",
-            "nullable": true,
-            "example": "2026-03-24T12:00:00.000Z"
-          }
-        },
-        "required": [
-          "code",
-          "cityCount"
-        ]
-      },
-      "DepartementsResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Departement"
-            }
-          }
-        },
-        "required": [
-          "data"
-        ]
-      },
-      "DepartementResponse": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "$ref": "#/components/schemas/Departement"
-          }
-        },
-        "required": [
-          "data"
-        ]
-      },
       "ReviewsBuckets": {
         "type": "object",
         "properties": {
@@ -1313,32 +1137,11 @@
           },
           "reviews": {
             "$ref": "#/components/schemas/ReviewsBuckets"
-          },
-          "metricsSnapshot": {
-            "type": "object",
-            "additionalProperties": {
-              "oneOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "example": {
-              "nb_habitant": "2145906",
-              "score_securite": "3.8"
-            }
           }
         },
         "required": [
           "code",
-          "reviews",
-          "metricsSnapshot"
+          "reviews"
         ]
       },
       "CityReviewsMeta": {
@@ -1350,7 +1153,7 @@
           },
           "collection": {
             "type": "string",
-            "example": "communes_harvest"
+            "example": "reviews_raw"
           }
         },
         "required": [
@@ -1371,6 +1174,58 @@
         "required": [
           "data",
           "meta"
+        ]
+      },
+      "Departement": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "75"
+          },
+          "name": {
+            "type": "object",
+            "nullable": true,
+            "example": "Paris"
+          },
+          "cityCount": {
+            "type": "number",
+            "example": 1
+          },
+          "updatedAt": {
+            "type": "object",
+            "nullable": true,
+            "example": "2026-03-24T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "code",
+          "cityCount"
+        ]
+      },
+      "DepartementsResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Departement"
+            }
+          }
+        },
+        "required": [
+          "data"
+        ]
+      },
+      "DepartementResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/Departement"
+          }
+        },
+        "required": [
+          "data"
         ]
       },
       "OverviewTotals": {

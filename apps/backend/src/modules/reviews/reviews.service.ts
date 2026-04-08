@@ -3,7 +3,6 @@ import { ReviewsRepository } from "./reviews.repository";
 import { CityReviewsResponse } from "./models/review.model";
 
 type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
-type PrimitiveMetric = string | number | null;
 
 @Injectable()
 export class ReviewsService {
@@ -23,19 +22,14 @@ export class ReviewsService {
 
     return {
       data: {
-        code: document.commune.com,
-        sourceUrl: document.commune.links?.city_page ?? document.commune.links?.avis_page ?? null,
-        harvestedAt: this.toIsoString(
-          document.commune.reviews_refs?.last_collected_at ??
-            document.commune.updated_at ??
-            document.reviews[0]?.collected_at
-        ),
-        reviews: this.groupReviews(document.reviews),
-        metricsSnapshot: this.buildMetricsSnapshot(document)
+        code: document.code,
+        sourceUrl: document.sourceUrl,
+        harvestedAt: this.toIsoString(document.harvestedAt),
+        reviews: this.groupReviews(document.reviews)
       },
       meta: {
         source: "mongo",
-        collection: "communes_harvest"
+        collection: "reviews_raw"
       }
     };
   }
@@ -69,14 +63,7 @@ export class ReviewsService {
     return { positive, negative, all };
   }
 
-  private buildMetricsSnapshot(document: NonNullable<ReviewDocument>): Record<string, PrimitiveMetric> {
-    return {
-      ...(document.commune.demography ?? {}),
-      ...(document.commune.quality_of_life ?? {})
-    };
-  }
-
-  private toIsoString(value: number | string | Date | undefined): string | null {
+  private toIsoString(value: number | string | Date | null | undefined): string | null {
     if (!value) {
       return null;
     }

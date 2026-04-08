@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { HealthController } from "./health.controller";
-import { HealthResponse } from "../models/health.model";
+import { HealthResponse } from "./models/health.model";
 
 describe("HealthController", () => {
   const healthyResponse: HealthResponse = {
@@ -9,11 +9,11 @@ describe("HealthController", () => {
     timestamp: "2026-03-24T12:00:00.000Z",
     checks: {
       postgres: "up",
-      mongo: "up"
+      mongo: "down"
     }
   };
 
-  it("returns the health payload when dependencies are available", async () => {
+  it("returns the health payload when PostgreSQL is available", async () => {
     const controller = new HealthController({
       check: jest.fn().mockResolvedValue({
         healthy: true,
@@ -24,31 +24,13 @@ describe("HealthController", () => {
     await expect(controller.check()).resolves.toEqual(healthyResponse);
   });
 
-  it("returns the health payload when only postgres is unavailable", async () => {
-    const degradedButHealthyResponse: HealthResponse = {
-      ...healthyResponse,
-      checks: {
-        postgres: "down",
-        mongo: "up"
-      }
-    };
-    const controller = new HealthController({
-      check: jest.fn().mockResolvedValue({
-        healthy: true,
-        response: degradedButHealthyResponse
-      })
-    } as never);
-
-    await expect(controller.check()).resolves.toEqual(degradedButHealthyResponse);
-  });
-
-  it("throws a 503 when a dependency is unavailable", async () => {
+  it("throws a 503 when PostgreSQL is unavailable", async () => {
     const degradedResponse: HealthResponse = {
       ...healthyResponse,
       status: "error",
       checks: {
-        postgres: "up",
-        mongo: "down"
+        postgres: "down",
+        mongo: "up"
       }
     };
     const controller = new HealthController({
@@ -65,9 +47,7 @@ describe("HealthController", () => {
       const exception = error as HttpException;
 
       expect(exception).toBeInstanceOf(HttpException);
-      expect(exception.getStatus()).toBe(
-        HttpStatus.SERVICE_UNAVAILABLE
-      );
+      expect(exception.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
       expect(exception.getResponse()).toEqual({
         message: "Backend dependencies unavailable",
         details: {

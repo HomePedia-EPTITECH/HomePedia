@@ -18,7 +18,7 @@ import { CitiesService } from "./cities.service";
 export class CitiesController {
   constructor(private readonly citiesService: CitiesService) {}
 
-  @ApiOperation({ summary: "List cities from communes_direct with search, filters and pagination" })
+  @ApiOperation({ summary: "List cities from PostgreSQL with search, filters and pagination" })
   @ApiQuery({ name: "page", required: false, type: Number, example: 1 })
   @ApiQuery({ name: "limit", required: false, type: Number, example: 20 })
   @ApiQuery({
@@ -46,14 +46,14 @@ export class CitiesController {
     name: "note_moyenne_globale_min",
     required: false,
     type: Number,
-    description: "Minimum city rating from communes_direct",
+    description: "Minimum global city score from PostgreSQL",
     example: 3.5
   })
   @ApiQuery({
     name: "nb_avis_min",
     required: false,
     type: Number,
-    description: "Minimum review count from communes_direct",
+    description: "Minimum review count from Mongo reviews_raw",
     example: 100
   })
   @ApiQuery({
@@ -74,7 +74,7 @@ export class CitiesController {
     name: "sortBy",
     required: false,
     enum: ["name", "population", "security", "environment", "health", "transport", "education"],
-    description: "Sort key. health and transport are kept for API stability and may be null in Mongo."
+    description: "Sort key. health and transport are kept for API stability and may be null."
   })
   @ApiQuery({
     name: "order",
@@ -89,9 +89,9 @@ export class CitiesController {
     return this.citiesService.getCities(query);
   }
 
-  @ApiOperation({ summary: "Get a rich city payload by INSEE code from direct, harvest and review collections" })
+  @ApiOperation({ summary: "Get a rich city payload by INSEE code from PostgreSQL, enriched with Mongo reviews" })
   @ApiParam({ name: "code", type: String, example: "75056" })
-  @ApiOkResponse({ type: CityDetailResponse, description: "Detailed city payload assembled from Mongo collections" })
+  @ApiOkResponse({ type: CityDetailResponse, description: "Detailed city payload assembled from PostgreSQL and reviews data" })
   @ApiNotFoundResponse({ type: ApiErrorResponse })
   @Get(":code/details")
   findDetails(@Param("code") code: string) {
