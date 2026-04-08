@@ -24,6 +24,7 @@ import threading
 import logging
 import hashlib
 import gzip
+import os
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
@@ -61,6 +62,7 @@ CITY_PAGES_QUEUE_COLLECTION = "city_pages_queue"
 COMMUNES_DIRECT_COLLECTION = "communes_direct"
 MONGO_BULK_BATCH_SIZE = 500
 SOURCE = "bdmv"
+DEFAULT_MAX_WORKERS = 12
 
 
 def _empty_strings_to_none(obj: Any) -> Any:
@@ -1527,7 +1529,11 @@ class HomepediaHarvester:
                 return
 
             self.start_time = time.time()
-            max_workers = 12
+            max_workers = DEFAULT_MAX_WORKERS
+            try:
+                max_workers = max(1, int(os.getenv("SCRAPER_MAX_WORKERS", str(DEFAULT_MAX_WORKERS))))
+            except ValueError:
+                max_workers = DEFAULT_MAX_WORKERS
             logger.info(
                 "Début de la collecte pour %d communes avec ThreadPoolExecutor(max_workers=%d).",
                 pending_count,

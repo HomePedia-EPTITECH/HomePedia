@@ -11,8 +11,13 @@ Si tu as déjà appliqué des migrations à la main (ex. 01 à 14), enregistre-l
   db.schema_migrations.insertMany([
     { _id: "01_init_communes_harvest.js" }, { _id: "02_xxx.js" }, ...
   ]);
+
+Mode AWS:
+  APP_ENV=aws + MONGO_URI
+  -> exécution directe via mongosh (sans docker compose).
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -26,7 +31,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SHARED_DIR = PROJECT_ROOT / "packages" / "shared"
 if str(SHARED_DIR) not in sys.path:
     sys.path.insert(0, str(SHARED_DIR))
-from util.config import get_mongo_params
+from util.config import get_mongo_params, get_mongo_uri
 
 ROOT = PROJECT_ROOT
 DATABASE_DIR = Path(__file__).resolve().parent
@@ -42,6 +47,42 @@ COMPOSE_BASE = [
     "-f",
     str(COMPOSE_FILE),
 ]
+
+
+def should_use_direct_mongosh() -> bool:
+    """
+    Mode AWS: pas de docker compose, on exécute mongosh directement sur MONGO_URI.
+    """
+    return os.getenv("APP_ENV", "").strip().lower() == "aws"
+
+
+def build_migration_command(name: str, params, uri: str) -> list[str]:
+    if should_use_direct_mongosh():
+        # En mode AWS, on exécute le fichier local directement avec mongosh.
+        # Le script JS choisit la DB via process.env.MONGO_DB.
+        return [
+            "mongosh",
+            uri,
+            "--file",
+            str(MIGRATIONS_DIR / name),
+        ]
+
+    # Mode local historique via docker compose + conteneur mongo.
+    return COMPOSE_BASE + [
+        "exec",
+        "-T",
+        "mongo",
+        "mongosh",
+        "-u",
+        params["user"],
+        "-p",
+        params["password"],
+        "--authenticationDatabase",
+        "admin",
+        params["db_name"],
+        "--file",
+        f"/migrations/{name}",
+    ]
 
 
 def get_applied(client, db_name):
@@ -69,7 +110,7 @@ def main():
         return
 
     params = get_mongo_params()
-    uri = f"mongodb://{params['user']}:{params['password']}@{params['host']}:{params['port']}/?authSource=admin"
+    uri = get_mongo_uri()
     try:
         client = MongoClient(uri)
         client.admin.command("ping")
@@ -85,21 +126,7 @@ def main():
             print(f"[Mongo migrations] Déjà appliqué : {name}")
             continue
         print(f"[Mongo migrations] Application : {name}")
-        cmd = COMPOSE_BASE + [
-            "exec",
-            "-T",
-            "mongo",
-            "mongosh",
-            "-u",
-            params["user"],
-            "-p",
-            params["password"],
-            "--authenticationDatabase",
-            "admin",
-            params["db_name"],
-            "--file",
-            f"/migrations/{name}",
-        ]
+        cmd = build_migration_command(name=name, params=params, uri=uri)
         result = subprocess.run(cmd, cwd=ROOT)
         if result.returncode != 0:
             print(f"[Mongo migrations] Erreur lors de {name}")
