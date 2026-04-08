@@ -1,12 +1,13 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { toIsoString } from "../../common/format";
 import { CitiesService } from "../cities/cities.service";
 import { GetCitiesQueryDto } from "../cities/dto/get-cities-query.dto";
-import { CitiesResponse } from "../cities/models/city.model";
+import { CitiesResponse } from "../cities/types";
 import {
   Departement,
   DepartementResponse,
   DepartementsResponse
-} from "./models/departement.model";
+} from "./types";
 import { PostgresDepartementsRepository } from "./departements.postgres.repository";
 
 type DepartementRow = {
@@ -61,24 +62,7 @@ export class DepartementsService {
       code: row.code,
       name: row.name ?? null,
       cityCount: row.cityCount,
-      updatedAt: this.toIsoString(row.updatedAt)
+      updatedAt: toIsoString(row.updatedAt)
     };
-  }
-
-  private toIsoString(value: Date | string | number | null | undefined): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    if (typeof value === "number") {
-      return new Date(value).toISOString();
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 }

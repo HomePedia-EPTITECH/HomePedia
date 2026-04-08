@@ -7,6 +7,7 @@ Backend NestJS en lecture seule pour exposer les donnees HomePedia au front.
 ```text
 src/
   common/
+    format.ts
     postgres-read.repository.ts
     validation.ts
   config/
@@ -21,15 +22,15 @@ src/
   modules/
     cities/
       dto/
-      models/
+      types.ts
     departements/
-      models/
+      types.ts
     health/
-      models/
+      types.ts
     overview/
-      models/
+      types.ts
     reviews/
-      models/
+      types.ts
   app.module.ts
   main.ts
 ```
@@ -130,11 +131,12 @@ La suite couvre:
 ## Architecture
 
 - `modules/*` contient les features HTTP du backend
+- `common/format.ts` centralise les conversions de valeurs et de dates
 - `common/validation.ts` centralise la validation des requetes
 - `common/postgres-read.repository.ts` factorise les helpers SQL read-only
 - `filters/http-exception.filter.ts` unifie le format des erreurs
 - `db/` centralise les acces PostgreSQL et MongoDB
-- les fichiers `models/*.ts` definissent les types de reponse publics
+- les fichiers `types.ts` definissent les types de reponse publics
 - seuls les modules qui en ont besoin exposent un `dto`
 
 ## Routes

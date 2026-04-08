@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { DbService } from "../../db/db.service";
 import { MongoService } from "../../db/mongo.service";
-import { HealthResponse } from "./models/health.model";
+import { HealthResponse } from "./types";
 
 type DependencyStatus = "up" | "down";
 

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import { parseMetricValue, toIsoString } from "../../common/format";
 import { GetCitiesQueryDto } from "./dto/get-cities-query.dto";
 import {
   CityDetailRow,
@@ -6,7 +7,7 @@ import {
   PostgresCitiesRepository,
   PrimitiveMetric
 } from "./cities.postgres.repository";
-import { City, CityDetailResponse, CityResponse, CitiesResponse } from "./models/city.model";
+import { City, CityDetailResponse, CityResponse, CitiesResponse } from "./types";
 import { ReviewsRepository } from "../reviews/reviews.repository";
 
 type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
@@ -77,8 +78,8 @@ export class CitiesService {
           provider: detail.source.provider,
           cityPage: detail.source.cityPage,
           reviewsPage: detail.source.reviewsPage,
-          harvestedAt: this.toIsoString(detail.source.harvestedAt),
-          updatedAt: this.toIsoString(detail.source.updatedAt)
+          harvestedAt: toIsoString(detail.source.harvestedAt),
+          updatedAt: toIsoString(detail.source.updatedAt)
         },
         blocks: {
           demography: { values: detail.blocks.demography },
@@ -150,59 +151,20 @@ export class CitiesService {
       code: row.com,
       name: row.nccenr,
       metrics: {
-        population: this.parseMetricValue(row.nb_habitant),
-        averageAge: this.parseMetricValue(row.age_moyen),
-        activePopulation: this.parseMetricValue(row.pop_active),
+        population: parseMetricValue(row.nb_habitant),
+        averageAge: parseMetricValue(row.age_moyen),
+        activePopulation: parseMetricValue(row.pop_active),
         scores: {
-          security: this.parseMetricValue(row.score_securite),
-          environment: this.parseMetricValue(row.score_environnement),
-          practicalLife: this.parseMetricValue(row.score_vie_pratique),
-          leisure: this.parseMetricValue(row.score_loisirs),
-          health: this.parseMetricValue(row.score_sante),
-          transport: this.parseMetricValue(row.score_transports),
-          education: this.parseMetricValue(row.score_education)
+          security: parseMetricValue(row.score_securite),
+          environment: parseMetricValue(row.score_environnement),
+          practicalLife: parseMetricValue(row.score_vie_pratique),
+          leisure: parseMetricValue(row.score_loisirs),
+          health: parseMetricValue(row.score_sante),
+          transport: parseMetricValue(row.score_transports),
+          education: parseMetricValue(row.score_education)
         }
       }
     };
-  }
-
-  private parseMetricValue(value: string | number | null): number | null {
-    if (value === null) {
-      return null;
-    }
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    const normalized = value
-      .replace(/,/g, ".")
-      .replace(/\s+/g, "")
-      .replace(/[^0-9.-]/g, "");
-
-    if (!normalized || normalized === "." || normalized === "-" || normalized === "-.") {
-      return null;
-    }
-
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  private toIsoString(value: Date | string | number | null | undefined): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    if (typeof value === "number") {
-      return new Date(value).toISOString();
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 
   private async getReviewScopedCityCodes(minimumReviews: number): Promise<string[]> {

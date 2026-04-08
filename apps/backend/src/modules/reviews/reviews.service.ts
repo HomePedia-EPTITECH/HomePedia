@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import { toIsoString } from "../../common/format";
 import { ReviewsRepository } from "./reviews.repository";
-import { CityReviewsResponse } from "./models/review.model";
+import { CityReviewsResponse } from "./types";
 
 type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
 
@@ -24,7 +25,7 @@ export class ReviewsService {
       data: {
         code: document.code,
         sourceUrl: document.sourceUrl,
-        harvestedAt: this.toIsoString(document.harvestedAt),
+        harvestedAt: toIsoString(document.harvestedAt, "seconds"),
         reviews: this.groupReviews(document.reviews)
       },
       meta: {
@@ -61,22 +62,5 @@ export class ReviewsService {
     }
 
     return { positive, negative, all };
-  }
-
-  private toIsoString(value: number | string | Date | null | undefined): string | null {
-    if (!value) {
-      return null;
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    if (typeof value === "number") {
-      return new Date(value * 1000).toISOString();
-    }
-
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
   }
 }

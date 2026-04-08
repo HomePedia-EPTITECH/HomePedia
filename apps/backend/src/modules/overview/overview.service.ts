@@ -1,7 +1,8 @@
 import { Injectable } from "@nestjs/common";
+import { parseMetricValue } from "../../common/format";
 import { PostgresCitiesRepository } from "../cities/cities.postgres.repository";
 import { ReviewsRepository } from "../reviews/reviews.repository";
-import { OverviewResponse } from "./models/overview.model";
+import { OverviewResponse } from "./types";
 
 type CityRow = Awaited<ReturnType<PostgresCitiesRepository["findByCode"]>>;
 
@@ -66,31 +67,9 @@ export class OverviewService {
     return {
       code: city.com,
       name: city.nccenr,
-      securityScore: this.parseMetricValue(securityValue),
-      environmentScore: this.parseMetricValue(environmentValue)
+      securityScore: parseMetricValue(securityValue),
+      environmentScore: parseMetricValue(environmentValue)
     };
-  }
-
-  private parseMetricValue(value: string | number | null): number | null {
-    if (value === null) {
-      return null;
-    }
-
-    if (typeof value === "number") {
-      return Number.isFinite(value) ? value : null;
-    }
-
-    const normalized = value
-      .replace(/,/g, ".")
-      .replace(/\s+/g, "")
-      .replace(/[^0-9.-]/g, "");
-
-    if (!normalized || normalized === "." || normalized === "-" || normalized === "-.") {
-      return null;
-    }
-
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
   }
 
   private round(value: number | null): number | null {

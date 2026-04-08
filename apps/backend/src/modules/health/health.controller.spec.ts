@@ -1,6 +1,6 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { HealthController } from "./health.controller";
-import { HealthResponse } from "./models/health.model";
+import { HealthResponse } from "./types";
 
 describe("HealthController", () => {
   const healthyResponse: HealthResponse = {
