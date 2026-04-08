@@ -1,7 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
-import { DepartementRow } from "./departements.read-model";
+
+type DepartementRow = {
+  code: string;
+  name: string | null;
+  cityCount: number;
+  updatedAt: Date | string | number | null;
+};
 
 @Injectable()
 export class PostgresDepartementsRepository extends PostgresReadRepository {

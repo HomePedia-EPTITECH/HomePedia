@@ -1,7 +1,10 @@
 import { NotFoundException } from "@nestjs/common";
-import { PostgresCitiesRepository } from "./cities.postgres.repository";
+import {
+  CityDetailRow,
+  CityRow,
+  PostgresCitiesRepository
+} from "./cities.postgres.repository";
 import { CitiesService } from "./cities.service";
-import { CityDetailRow, CityRow } from "./cities.read-model";
 import { ReviewsRepository } from "../reviews/reviews.repository";
 
 describe("CitiesService", () => {

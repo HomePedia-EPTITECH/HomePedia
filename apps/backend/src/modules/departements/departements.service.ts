@@ -8,7 +8,13 @@ import {
   DepartementsResponse
 } from "./models/departement.model";
 import { PostgresDepartementsRepository } from "./departements.postgres.repository";
-import { DepartementRow } from "./departements.read-model";
+
+type DepartementRow = {
+  code: string;
+  name: string | null;
+  cityCount: number;
+  updatedAt: Date | string | number | null;
+};
 
 @Injectable()
 export class DepartementsService {

@@ -5,7 +5,6 @@
   "description": "NestJS backend for HomePedia KPIs",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "openapi:generate": "npm run build && node dist/openapi.js",
     "start": "node dist/main.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
     "test": "jest --runInBand",
@@ -15,7 +14,6 @@
     "@nestjs/common": "10.4.15",
     "@nestjs/core": "10.4.15",
     "@nestjs/platform-express": "10.4.15",
-    "@nestjs/swagger": "^7.4.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "dotenv": "^16.6.1",

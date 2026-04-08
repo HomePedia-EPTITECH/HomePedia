@@ -7,24 +7,31 @@ Backend NestJS en lecture seule pour exposer les donnees HomePedia au front.
 ```text
 src/
   common/
+    postgres-read.repository.ts
+    validation.ts
   config/
-  controllers/
+    app.config.ts
   db/
     db.module.ts
     db.service.ts
     mongo.module.ts
     mongo.service.ts
   filters/
-  models/
+    http-exception.filter.ts
   modules/
     cities/
+      dto/
+      models/
     departements/
+      models/
+    health/
+      models/
     overview/
+      models/
     reviews/
-  services/
+      models/
   app.module.ts
   main.ts
-  openapi.ts
 ```
 
 ## Installation
@@ -110,17 +117,6 @@ La suite couvre:
 - des tests HTTP sur `cities`, `reviews` et `overview`
 - des tests d'integration PostgreSQL sur les modules read-only
 
-## Swagger
-
-- `GET /api/docs`
-- `openapi.json` genere a la racine de `apps/backend`
-
-Generer le contrat OpenAPI statique:
-
-```bash
-npm run openapi:generate
-```
-
 ## Mode de fonctionnement
 
 - API en lecture seule
@@ -130,6 +126,16 @@ npm run openapi:generate
 - MongoDB est reserve aux avis bruts dans `reviews_raw`
 - `cities/:code/details` lit la ville sur PostgreSQL puis enrichit la reponse avec les avis Mongo si disponibles
 - le filtre `nb_avis_min` utilise MongoDB pour restreindre la liste des villes, mais les donnees renvoyees restent issues de PostgreSQL
+
+## Architecture
+
+- `modules/*` contient les features HTTP du backend
+- `common/validation.ts` centralise la validation des requetes
+- `common/postgres-read.repository.ts` factorise les helpers SQL read-only
+- `filters/http-exception.filter.ts` unifie le format des erreurs
+- `db/` centralise les acces PostgreSQL et MongoDB
+- les fichiers `models/*.ts` definissent les types de reponse publics
+- seuls les modules qui en ont besoin exposent un `dto`
 
 ## Routes
 

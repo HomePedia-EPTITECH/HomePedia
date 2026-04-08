@@ -5,7 +5,6 @@ import * as dotenv from "dotenv";
 import { AppModule } from "./app.module";
 import { createValidationPipe } from "./common/validation";
 import { createCorsOptions, validateEnvironment } from "./config/app.config";
-import { setupSwagger } from "./config/swagger";
 import { HttpExceptionFilter } from "./filters/http-exception.filter";
 
 function loadEnvironment() {
@@ -28,7 +27,6 @@ async function bootstrap() {
   app.enableCors(createCorsOptions(config.cors));
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
-  setupSwagger(app);
 
   await app.listen(config.port);
 }

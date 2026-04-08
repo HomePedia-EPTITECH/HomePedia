@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { GetCitiesQueryDto } from "./dto/get-cities-query.dto";
-import { PostgresCitiesRepository } from "./cities.postgres.repository";
+import {
+  CityDetailRow,
+  CityRow,
+  PostgresCitiesRepository,
+  PrimitiveMetric
+} from "./cities.postgres.repository";
 import { City, CityDetailResponse, CityResponse, CitiesResponse } from "./models/city.model";
-import { CityDetailRow, CityRow, PrimitiveMetric } from "./cities.read-model";
 import { ReviewsRepository } from "../reviews/reviews.repository";
 
 type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
