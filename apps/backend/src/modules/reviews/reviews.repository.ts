@@ -2,6 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { Document } from "mongodb";
 import { MongoService } from "../../db/mongo.service";
 
+const DEFAULT_CITY_REVIEWS_LIMIT = 100;
+
 type ReviewRawDocument = Document & {
   com: string;
   source?: string;
@@ -43,7 +45,7 @@ export class ReviewsRepository {
           }
         )
         .sort({ collected_at: -1 })
-        .limit(100)
+        .limit(DEFAULT_CITY_REVIEWS_LIMIT)
         .toArray(),
       reviewsCollection.countDocuments({ com: code })
     ]);
