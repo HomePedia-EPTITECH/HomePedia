@@ -104,7 +104,7 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_colleges_publics INT,
       nb_colleges_prives INT,
       nb_lycees_publics INT,
-      nb_lycees_privees INT
+      nb_lycees_prives INT
     );
   `,
   sante: `
@@ -114,7 +114,7 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_pharmacies INT,
       nb_hopitaux INT,
       nb_laboratoires_analyses INT,
-      nb_etablissement_handicapes INT,
+      nb_etablissements_handicapes INT,
       nb_ehpa INT,
       nb_medecins INT,
       nb_dentistes INT,
@@ -147,14 +147,14 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_boucheries INT,
       nb_restaurants INT,
       nb_garages INT,
-      nb_stations_services INT,
+      nb_stations_service INT,
       nb_banques INT,
       nb_bureaux_poste INT,
       nb_coiffeurs INT,
       nb_tabacs INT,
       nb_bars_discotheques INT,
       nb_bibliotheques INT,
-      nb_cinema INT,
+      nb_cinemas INT,
       nb_veterinaires INT
     );
   `
@@ -228,13 +228,13 @@ const BASE_DATA_SQL = `
   INSERT INTO education (
     commune_id, nb_creches, nb_ecoles_maternelles_publiques, nb_ecoles_maternelles_privees,
     nb_ecoles_primaires_publiques, nb_ecoles_primaires_privees, nb_colleges_publics, nb_colleges_prives,
-    nb_lycees_publics, nb_lycees_privees
+    nb_lycees_publics, nb_lycees_prives
   ) VALUES
     (1, 320, 210, 35, 230, 40, 115, 28, 72, 19),
     (3, 140, 88, 14, 96, 12, 44, 8, 27, 7);
 
   INSERT INTO sante (
-    commune_id, nb_pharmacies, nb_hopitaux, nb_laboratoires_analyses, nb_etablissement_handicapes, nb_ehpa,
+    commune_id, nb_pharmacies, nb_hopitaux, nb_laboratoires_analyses, nb_etablissements_handicapes, nb_ehpa,
     nb_medecins, nb_dentistes, nb_chirurgiens, nb_dermatologues, nb_anesthesistes, nb_gastroenterologues,
     nb_gynecologues, nb_cancerologues, nb_neurologues, nb_ophtalmologues, nb_orl, nb_cardiologues, nb_pediatres,
     nb_pneumologues, nb_psychologues, nb_radiologues, nb_rhumatologues, nb_sages_femmes
@@ -243,8 +243,8 @@ const BASE_DATA_SQL = `
 
   INSERT INTO commerces (
     commune_id, nb_hypermarches, nb_supermarches, nb_superettes, nb_boulangeries, nb_boucheries, nb_restaurants,
-    nb_garages, nb_stations_services, nb_banques, nb_bureaux_poste, nb_coiffeurs, nb_tabacs,
-    nb_bars_discotheques, nb_bibliotheques, nb_cinema, nb_veterinaires
+    nb_garages, nb_stations_service, nb_banques, nb_bureaux_poste, nb_coiffeurs, nb_tabacs,
+    nb_bars_discotheques, nb_bibliotheques, nb_cinemas, nb_veterinaires
   ) VALUES
     (1, 8, 142, 210, 1290, 420, 14800, 310, 42, 280, 96, 2150, 380, 1700, 73, 27, 115),
     (3, 6, 96, 130, 480, 160, 5200, 220, 29, 120, 41, 840, 145, 650, 29, 14, 72);

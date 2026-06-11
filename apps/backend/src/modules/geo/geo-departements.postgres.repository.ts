@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
 
-type DepartementRow = {
+export type DepartementRow = {
   code: string;
   name: string | null;
   cityCount: number;
@@ -10,7 +10,7 @@ type DepartementRow = {
 };
 
 @Injectable()
-export class PostgresDepartementsRepository extends PostgresReadRepository {
+export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
   constructor(dbService: DbService) {
     super(dbService);
   }

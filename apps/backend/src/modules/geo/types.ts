@@ -21,23 +21,7 @@ export type City = {
   metrics: CityMetrics;
 };
 
-export type CitiesMeta = {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-};
-
-export type CitiesResponse = {
-  data: City[];
-  meta: CitiesMeta;
-};
-
-export type CityResponse = {
-  data: City;
-};
-
-type CityDetailObjectBlock = {
+export type CityDetailObjectBlock = {
   values: Record<string, string | number | null>;
 };
 
@@ -81,6 +65,17 @@ export type CityDetail = {
   reviews: CityDetailReviews;
 };
 
-export type CityDetailResponse = {
-  data: CityDetail;
+export type Departement = {
+  code: string;
+  name: string | null;
+  cityCount: number;
+  updatedAt: string | null;
+};
+
+export type Region = {
+  code: string;
+  name: string | null;
+  departementCount: number;
+  cityCount: number;
+  updatedAt: string | null;
 };

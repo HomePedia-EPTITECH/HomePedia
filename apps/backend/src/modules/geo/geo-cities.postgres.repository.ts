@@ -157,14 +157,14 @@ const DETAIL_EDUCATION_COLUMNS = [
   "nb_colleges_publics",
   "nb_colleges_prives",
   "nb_lycees_publics",
-  "nb_lycees_privees"
+  "nb_lycees_prives"
 ] as const;
 
 const DETAIL_HEALTH_COLUMNS = [
   "nb_pharmacies",
   "nb_hopitaux",
   "nb_laboratoires_analyses",
-  "nb_etablissement_handicapes",
+  "nb_etablissements_handicapes",
   "nb_ehpa",
   "nb_medecins",
   "nb_dentistes",
@@ -194,19 +194,19 @@ const DETAIL_COMMERCE_COLUMNS = [
   "nb_boucheries",
   "nb_restaurants",
   "nb_garages",
-  "nb_stations_services",
+  "nb_stations_service",
   "nb_banques",
   "nb_bureaux_poste",
   "nb_coiffeurs",
   "nb_tabacs",
   "nb_bars_discotheques",
   "nb_bibliotheques",
-  "nb_cinema",
+  "nb_cinemas",
   "nb_veterinaires"
 ] as const;
 
 @Injectable()
-export class PostgresCitiesRepository extends PostgresReadRepository {
+export class GeoCitiesPostgresRepository extends PostgresReadRepository {
   constructor(dbService: DbService) {
     super(dbService);
   }
@@ -529,8 +529,6 @@ export class PostgresCitiesRepository extends PostgresReadRepository {
           c.${this.quoteIdentifier("com")} ASC`;
         }
         break;
-      case CitySortBy.Health:
-      case CitySortBy.Transport:
       case CitySortBy.Name:
       default:
         break;
