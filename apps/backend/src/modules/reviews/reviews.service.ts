@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { toIsoString } from "../../common/format";
 import { ReviewsRepository } from "./reviews.repository";
-import { CityReviewsResponse } from "./types";
+import { CityReviewsResponseDto } from "./dto/city-reviews-response.dto";
 
 type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
 
@@ -9,7 +9,7 @@ type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
 export class ReviewsService {
   constructor(private readonly reviewsRepository: ReviewsRepository) {}
 
-  async getCityReviews(code: string): Promise<CityReviewsResponse> {
+  async getCityReviews(code: string): Promise<CityReviewsResponseDto> {
     let document: ReviewDocument;
     try {
       document = await this.reviewsRepository.findByCityCode(code);

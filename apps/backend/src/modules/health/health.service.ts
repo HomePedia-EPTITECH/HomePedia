@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { DbService } from "../../db/db.service";
 import { MongoService } from "../../db/mongo.service";
-import { HealthResponse } from "./types";
+import { HealthResponseDto } from "./dto/health-response.dto";
 
 type DependencyStatus = "up" | "down";
 
@@ -12,13 +12,13 @@ export class HealthService {
     private readonly mongoService: MongoService
   ) {}
 
-  async check(): Promise<{ healthy: boolean; response: HealthResponse }> {
+  async check(): Promise<{ healthy: boolean; response: HealthResponseDto }> {
     const [postgres, mongo] = await Promise.all([
       this.getDependencyStatus(() => this.dbService.checkConnection()),
       this.getDependencyStatus(() => this.mongoService.checkConnection())
     ]);
 
-    const response: HealthResponse = {
+    const response: HealthResponseDto = {
       status: postgres === "up" ? "ok" : "error",
       service: "homepedia-backend",
       timestamp: new Date().toISOString(),

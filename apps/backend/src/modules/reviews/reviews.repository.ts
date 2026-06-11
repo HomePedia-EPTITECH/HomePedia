@@ -11,7 +11,7 @@ type ReviewRawDocument = Document & {
   collected_at?: number | string | Date;
 };
 
-export type CityReviewsDocument = {
+export type CityReviewDocument = {
   code: string;
   source: string | null;
   sourceUrl: string | null;
@@ -24,7 +24,7 @@ export type CityReviewsDocument = {
 export class ReviewsRepository {
   constructor(private readonly mongoService: MongoService) {}
 
-  async findByCityCode(code: string): Promise<CityReviewsDocument | null> {
+  async findByCityCode(code: string): Promise<CityReviewDocument | null> {
     const reviewsCollection = await this.mongoService.getCollection<ReviewRawDocument>("reviews_raw");
     const [reviews, totalReviews] = await Promise.all([
       reviewsCollection

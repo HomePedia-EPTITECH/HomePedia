@@ -1,9 +1,9 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import { HealthController } from "./health.controller";
-import { HealthResponse } from "./types";
+import { HealthResponseDto } from "./dto/health-response.dto";
 
 describe("HealthController", () => {
-  const healthyResponse: HealthResponse = {
+  const healthyResponse: HealthResponseDto = {
     status: "ok",
     service: "homepedia-backend",
     timestamp: "2026-03-24T12:00:00.000Z",
@@ -25,7 +25,7 @@ describe("HealthController", () => {
   });
 
   it("throws a 503 when PostgreSQL is unavailable", async () => {
-    const degradedResponse: HealthResponse = {
+    const degradedResponse: HealthResponseDto = {
       ...healthyResponse,
       status: "error",
       checks: {
