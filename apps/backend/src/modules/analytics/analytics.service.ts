@@ -1,28 +1,32 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, ServiceUnavailableException } from "@nestjs/common";
 import { parseMetricValue } from "../../common/format";
-import { PostgresCitiesRepository } from "../cities/cities.postgres.repository";
+import { GeoCitiesPostgresRepository } from "../geo/geo-cities.postgres.repository";
 import { ReviewsRepository } from "../reviews/reviews.repository";
-import { OverviewResponse } from "./types";
+import { OverviewResponseDto } from "./dto/analytics-overview-response.dto";
 
-type CityRow = Awaited<ReturnType<PostgresCitiesRepository["findByCode"]>>;
+type CityRow = Awaited<ReturnType<GeoCitiesPostgresRepository["findByCode"]>>;
 
 @Injectable()
-export class OverviewService {
+export class AnalyticsService {
   constructor(
-    private readonly postgresCitiesRepository: PostgresCitiesRepository,
+    private readonly postgresCitiesRepository: GeoCitiesPostgresRepository,
     private readonly reviewsRepository: ReviewsRepository,
   ) {}
 
-  async getOverview(): Promise<OverviewResponse> {
-    const [metrics, safestCities, greenestCities] = await Promise.all([
-      this.safePostgresCall(() => this.postgresCitiesRepository.getOverviewMetrics()),
-      this.safePostgresCall(() =>
-        this.postgresCitiesRepository.findTopCitiesByScore("score_securite", 3)
-      ),
-      this.safePostgresCall(() =>
+  async getOverview(): Promise<OverviewResponseDto> {
+    let metrics: Awaited<ReturnType<GeoCitiesPostgresRepository["getOverviewMetrics"]>>;
+    let safestCities: Awaited<ReturnType<GeoCitiesPostgresRepository["findTopCitiesByScore"]>>;
+    let greenestCities: Awaited<ReturnType<GeoCitiesPostgresRepository["findTopCitiesByScore"]>>;
+
+    try {
+      [metrics, safestCities, greenestCities] = await Promise.all([
+        this.postgresCitiesRepository.getOverviewMetrics(),
+        this.postgresCitiesRepository.findTopCitiesByScore("score_securite", 3),
         this.postgresCitiesRepository.findTopCitiesByScore("score_environnement", 3)
-      )
-    ]);
+      ]);
+    } catch {
+      throw new ServiceUnavailableException("Overview data source is unavailable");
+    }
 
     const reviewsSummary = await this.getReviewedCitiesSummary();
 
@@ -80,11 +84,4 @@ export class OverviewService {
     return Math.round(value * 100) / 100;
   }
 
-  private async safePostgresCall<T>(callback: () => Promise<T | null> | undefined): Promise<T | null> {
-    try {
-      return (await callback()) ?? null;
-    } catch {
-      return null;
-    }
-  }
 }

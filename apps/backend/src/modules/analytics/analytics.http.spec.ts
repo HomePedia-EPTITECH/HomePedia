@@ -1,10 +1,10 @@
-import { INestApplication } from "@nestjs/common";
+import { INestApplication, ServiceUnavailableException } from "@nestjs/common";
 import request = require("supertest");
 import { createTestApp } from "../../test/create-test-app";
-import { OverviewController } from "./overview.controller";
-import { OverviewService } from "./overview.service";
+import { AnalyticsController } from "./analytics.controller";
+import { AnalyticsService } from "./analytics.service";
 
-describe("OverviewController HTTP", () => {
+describe("AnalyticsController HTTP", () => {
   let app: INestApplication;
 
   const overviewService = {
@@ -12,9 +12,9 @@ describe("OverviewController HTTP", () => {
   };
 
   beforeAll(async () => {
-    const testApp = await createTestApp(OverviewController, [
+    const testApp = await createTestApp(AnalyticsController, [
       {
-        provide: OverviewService,
+        provide: AnalyticsService,
         useValue: overviewService
       }
     ]);
@@ -71,6 +71,32 @@ describe("OverviewController HTTP", () => {
     expect(response.body.data.highlights.safestCities).toHaveLength(1);
   });
 
+  it("returns 200 for GET /api/analytics/overview", async () => {
+    overviewService.getOverview.mockResolvedValue({
+      data: {
+        totals: {
+          cities: 34871,
+          reviewedCities: 10234,
+          reviewsAvailable: true
+        },
+        averages: {
+          population: 52743.18,
+          securityScore: 3.74,
+          environmentScore: 3.92
+        },
+        highlights: {
+          safestCities: [],
+          greenestCities: []
+        }
+      }
+    });
+
+    const response = await request(app.getHttpServer()).get("/api/analytics/overview");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.totals.cities).toBe(34871);
+  });
+
   it("returns the degraded overview payload when reviews are unavailable", async () => {
     overviewService.getOverview.mockResolvedValue({
       data: {
@@ -96,5 +122,22 @@ describe("OverviewController HTTP", () => {
     expect(response.status).toBe(200);
     expect(response.body.data.totals.reviewsAvailable).toBe(false);
     expect(response.body.data.totals.reviewedCities).toBe(0);
+  });
+
+  it("returns 503 when the overview data source is unavailable", async () => {
+    overviewService.getOverview.mockRejectedValue(
+      new ServiceUnavailableException("Overview data source is unavailable")
+    );
+
+    const response = await request(app.getHttpServer()).get("/api/overview");
+
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({
+      statusCode: 503,
+      error: "Service Unavailable",
+      message: "Overview data source is unavailable",
+      path: "/api/overview"
+    });
+    expect(response.body.timestamp).toEqual(expect.any(String));
   });
 });

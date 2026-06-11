@@ -1,8 +1,8 @@
-import { OverviewService } from "./overview.service";
+import { AnalyticsService } from "./analytics.service";
 
-describe("OverviewService", () => {
+describe("AnalyticsService", () => {
   it("returns empty highlights when no city has usable scores", async () => {
-    const service = new OverviewService(
+    const service = new AnalyticsService(
       {
         getOverviewMetrics: jest.fn().mockResolvedValue({
           total_cities: 100,
@@ -38,7 +38,7 @@ describe("OverviewService", () => {
   });
 
   it("uses PostgreSQL metrics and highlights while keeping the Mongo reviews summary", async () => {
-    const service = new OverviewService(
+    const service = new AnalyticsService(
       {
         getOverviewMetrics: jest.fn().mockResolvedValue({
           total_cities: 4,
