@@ -18,6 +18,7 @@ Usage :
 import gzip
 import hashlib
 import logging
+import os
 import random
 import re
 import sys
@@ -67,6 +68,7 @@ MAX_CONCURRENT_HTTP = 1  # anti-ban : 1 requête à la fois (plus sûr)
 MIN_SECONDS_BETWEEN_REQUESTS = 1.25  # anti-ban : délai global minimal entre 2 requêtes
 USE_PLAYWRIGHT_FALLBACK = True  # si le site renvoie un body vide via requests, fallback navigateur
 MAX_CONSECUTIVE_HTTP_BLOCKS = 8  # arrêt sécurité si ban persistant
+DEFAULT_MAX_WORKERS = 12
 
 
 class VilleIdealeHarvester:
@@ -1247,7 +1249,11 @@ class VilleIdealeHarvester:
                 return
 
             self.start_time = time.time()
-            max_workers = 12
+            max_workers = DEFAULT_MAX_WORKERS
+            try:
+                max_workers = max(1, int(os.getenv("SCRAPER_MAX_WORKERS", str(DEFAULT_MAX_WORKERS))))
+            except ValueError:
+                max_workers = DEFAULT_MAX_WORKERS
             logger.info(
                 "Début de la collecte (%s) pour %d villes avec ThreadPoolExecutor(max_workers=%d).",
                 SOURCE,
@@ -1295,4 +1301,3 @@ class VilleIdealeHarvester:
 
 if __name__ == "__main__":
     VilleIdealeHarvester().start()
-

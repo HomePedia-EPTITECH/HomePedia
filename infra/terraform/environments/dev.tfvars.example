@@ -1,0 +1,17 @@
+environment    = "dev"
+aws_region     = "eu-west-3"
+s3_bucket_name = "homepedia-dev-REPLACE_ME"
+image_tag      = "v0.1.0"
+
+postgres_db       = "homepedia"
+postgres_user     = "homepedia"
+postgres_password = "CHANGE_ME"
+
+mongo_uri = "mongodb+srv://USER:PASSWORD@cluster.mongodb.net/?retryWrites=true&w=majority"
+mongo_db  = "homepedia_raw"
+
+dvf_s3_key          = "dvf/full.csv"
+scraper_max_workers = "12"
+
+skip_final_snapshot = true
+deletion_protection = false

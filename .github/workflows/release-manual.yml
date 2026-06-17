@@ -1,0 +1,203 @@
+name: release-manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        required: true
+        options:
+          - dev
+          - prod
+      image_tag:
+        description: Docker image tag to build and publish
+        type: string
+        required: true
+        default: v0.1.0
+      run_terraform:
+        description: Run terraform plan/apply
+        type: boolean
+        required: true
+        default: false
+      ecs_job:
+        description: Optional ECS job to run after release
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - bootstrap
+          - scraping_bdmv
+          - scraping_villeideale
+          - ingest_dvf
+          - spark_job
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: release-manual-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: release_manual
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required environment variables
+        env:
+          AWS_GITHUB_ROLE_ARN: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          [ -n "$AWS_GITHUB_ROLE_ARN" ] || { echo "Missing vars.AWS_GITHUB_ROLE_ARN"; exit 1; }
+          [ -n "$AWS_REGION" ] || { echo "Missing vars.AWS_REGION"; exit 1; }
+          [ -n "$ECR_REPOSITORY" ] || { echo "Missing vars.ECR_REPOSITORY"; exit 1; }
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: homepedia-release-${{ github.run_id }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push jobs image
+        id: build_push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          docker build -f infra/docker/Dockerfile.jobs -t "$IMAGE_URI" .
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Terraform
+        if: ${{ inputs.run_terraform }}
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Generate Terraform tfvars for CI
+        if: ${{ inputs.run_terraform }}
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          S3_BUCKET_NAME: ${{ vars.S3_BUCKET_NAME }}
+          POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+          POSTGRES_USER: ${{ vars.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MONGO_DB: ${{ vars.MONGO_DB }}
+          DVF_S3_KEY: ${{ vars.DVF_S3_KEY }}
+          SCRAPER_MAX_WORKERS: ${{ vars.SCRAPER_MAX_WORKERS }}
+          POSTGRES_INSTANCE_CLASS: ${{ vars.POSTGRES_INSTANCE_CLASS }}
+          SKIP_FINAL_SNAPSHOT: ${{ vars.SKIP_FINAL_SNAPSHOT }}
+          DELETION_PROTECTION: ${{ vars.DELETION_PROTECTION }}
+          LOG_RETENTION_DAYS: ${{ vars.LOG_RETENTION_DAYS }}
+        run: |
+          set -euo pipefail
+          [ -n "$S3_BUCKET_NAME" ] || { echo "Missing vars.S3_BUCKET_NAME"; exit 1; }
+          [ -n "$POSTGRES_PASSWORD" ] || { echo "Missing secrets.POSTGRES_PASSWORD"; exit 1; }
+          [ -n "$MONGO_URI" ] || { echo "Missing secrets.MONGO_URI"; exit 1; }
+
+          POSTGRES_DB="${POSTGRES_DB:-homepedia}"
+          POSTGRES_USER="${POSTGRES_USER:-homepedia}"
+          MONGO_DB="${MONGO_DB:-homepedia_raw}"
+          DVF_S3_KEY="${DVF_S3_KEY:-dvf/full.csv}"
+          SCRAPER_MAX_WORKERS="${SCRAPER_MAX_WORKERS:-12}"
+          POSTGRES_INSTANCE_CLASS="${POSTGRES_INSTANCE_CLASS:-db.t4g.micro}"
+          SKIP_FINAL_SNAPSHOT="${SKIP_FINAL_SNAPSHOT:-true}"
+          DELETION_PROTECTION="${DELETION_PROTECTION:-false}"
+          LOG_RETENTION_DAYS="${LOG_RETENTION_DAYS:-14}"
+
+          cat > infra/terraform/environments/ci.auto.tfvars <<VARS
+          environment             = "${{ inputs.environment }}"
+          aws_region              = "$AWS_REGION"
+          s3_bucket_name          = "$S3_BUCKET_NAME"
+          image_tag               = "${{ inputs.image_tag }}"
+          postgres_db             = "$POSTGRES_DB"
+          postgres_user           = "$POSTGRES_USER"
+          postgres_password       = "$POSTGRES_PASSWORD"
+          mongo_uri               = "$MONGO_URI"
+          mongo_db                = "$MONGO_DB"
+          dvf_s3_key              = "$DVF_S3_KEY"
+          scraper_max_workers     = "$SCRAPER_MAX_WORKERS"
+          postgres_instance_class = "$POSTGRES_INSTANCE_CLASS"
+          skip_final_snapshot     = $SKIP_FINAL_SNAPSHOT
+          deletion_protection     = $DELETION_PROTECTION
+          log_retention_days      = $LOG_RETENTION_DAYS
+          VARS
+
+      - name: Terraform plan
+        if: ${{ inputs.run_terraform }}
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/terraform init
+          terraform -chdir=infra/terraform plan \
+            -var-file=environments/ci.auto.tfvars \
+            -out=tfplan
+
+      - name: Terraform apply
+        if: ${{ inputs.run_terraform }}
+        run: |
+          set -euo pipefail
+          terraform -chdir=infra/terraform apply -auto-approve tfplan
+
+      - name: Select ECS task definition
+        if: ${{ inputs.ecs_job != 'none' }}
+        id: select_taskdef
+        env:
+          ECS_TASKDEF_BOOTSTRAP: ${{ vars.ECS_TASKDEF_BOOTSTRAP }}
+          ECS_TASKDEF_SCRAPING_BDMV: ${{ vars.ECS_TASKDEF_SCRAPING_BDMV }}
+          ECS_TASKDEF_SCRAPING_VILLEIDEALE: ${{ vars.ECS_TASKDEF_SCRAPING_VILLEIDEALE }}
+          ECS_TASKDEF_INGEST_DVF: ${{ vars.ECS_TASKDEF_INGEST_DVF }}
+          ECS_TASKDEF_SPARK_JOB: ${{ vars.ECS_TASKDEF_SPARK_JOB }}
+        run: |
+          set -euo pipefail
+          case "${{ inputs.ecs_job }}" in
+            bootstrap) TASK_DEF="$ECS_TASKDEF_BOOTSTRAP" ;;
+            scraping_bdmv) TASK_DEF="$ECS_TASKDEF_SCRAPING_BDMV" ;;
+            scraping_villeideale) TASK_DEF="$ECS_TASKDEF_SCRAPING_VILLEIDEALE" ;;
+            ingest_dvf) TASK_DEF="$ECS_TASKDEF_INGEST_DVF" ;;
+            spark_job) TASK_DEF="$ECS_TASKDEF_SPARK_JOB" ;;
+            *) echo "Unsupported ecs_job: ${{ inputs.ecs_job }}"; exit 1 ;;
+          esac
+
+          [ -n "$TASK_DEF" ] || { echo "Task definition variable is missing for ${{ inputs.ecs_job }}"; exit 1; }
+          echo "task_definition=$TASK_DEF" >> "$GITHUB_OUTPUT"
+
+      - name: Run ECS task
+        if: ${{ inputs.ecs_job != 'none' }}
+        env:
+          ECS_CLUSTER_NAME: ${{ vars.ECS_CLUSTER_NAME }}
+          ECS_SUBNET_IDS: ${{ vars.ECS_SUBNET_IDS }}
+          ECS_SECURITY_GROUP_ID: ${{ vars.ECS_SECURITY_GROUP_ID }}
+          TASK_DEFINITION: ${{ steps.select_taskdef.outputs.task_definition }}
+        run: |
+          set -euo pipefail
+          [ -n "$ECS_CLUSTER_NAME" ] || { echo "Missing vars.ECS_CLUSTER_NAME"; exit 1; }
+          [ -n "$ECS_SUBNET_IDS" ] || { echo "Missing vars.ECS_SUBNET_IDS"; exit 1; }
+          [ -n "$ECS_SECURITY_GROUP_ID" ] || { echo "Missing vars.ECS_SECURITY_GROUP_ID"; exit 1; }
+
+          SUBNETS_CLEAN=$(echo "$ECS_SUBNET_IDS" | tr -d ' ')
+          NETWORK_CONF="awsvpcConfiguration={subnets=[$SUBNETS_CLEAN],securityGroups=[$ECS_SECURITY_GROUP_ID],assignPublicIp=ENABLED}"
+
+          aws ecs run-task \
+            --cluster "$ECS_CLUSTER_NAME" \
+            --launch-type FARGATE \
+            --task-definition "$TASK_DEFINITION" \
+            --network-configuration "$NETWORK_CONF" \
+            --count 1

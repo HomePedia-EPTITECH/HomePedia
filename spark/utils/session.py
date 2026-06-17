@@ -1,18 +1,23 @@
+import os
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, coalesce, when, cast, trim, regexp_replace
 from pyspark.sql.types import IntegerType
 from pyspark.sql import functions as F
 
 # MongoDB configuration
-MONGO_URI = "mongodb://admin:admin@localhost:27017/?authSource=admin"
-MONGO_DB = "homepedia_raw"
-MONGO_COLLECTION = "communes_direct"
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://admin:admin@localhost:27017/?authSource=admin")
+MONGO_DB = os.getenv("MONGO_DB", "homepedia_raw")
+MONGO_COLLECTION = os.getenv("SPARK_MONGO_COLLECTION", "communes_direct")
 
 def get_spark():
     return (
         SparkSession.builder
         .appName("HomePedia")
-        .config("spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0")
+        .config(
+            "spark.jars.packages",
+            "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0,org.postgresql:postgresql:42.7.3",
+        )
         .config("spark.driver.extraJavaOptions", "-Dlog4j.configuration=log4j.properties")
         .getOrCreate()
     )

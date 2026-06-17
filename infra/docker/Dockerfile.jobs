@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash curl ca-certificates gcc g++ openjdk-17-jre-headless gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# mongosh pour exécuter les migrations Mongo en mode direct depuis ECS
+RUN curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
+    && echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" > /etc/apt/sources.list.d/mongodb-org-7.0.list \
+    && apt-get update && apt-get install -y --no-install-recommends mongodb-mongosh \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt \
+    && pip install pyspark==3.5.1 boto3 awscli psycopg2-binary
+
+COPY . /app
+ENV PYTHONPATH=/app
+
+CMD ["python", "-V"]

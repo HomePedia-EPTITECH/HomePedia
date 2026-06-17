@@ -5,6 +5,7 @@ Fonctions utilitaires d'upsert + SQL par table.
 """
 
 import logging
+import os
 from contextlib import contextmanager
 
 import psycopg2
@@ -13,11 +14,11 @@ from pyspark.sql import DataFrame
 # ─────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────
-PG_HOST     = "localhost"
-PG_PORT     = 5432
-PG_DB       = "homepedia"
-PG_USER     = "admin"
-PG_PASSWORD = "admin"
+PG_HOST = os.getenv("POSTGRES_HOST", "localhost")
+PG_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+PG_DB = os.getenv("POSTGRES_DB", "homepedia")
+PG_USER = os.getenv("POSTGRES_USER", "admin")
+PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "admin")
 
 JDBC_URL = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
 
