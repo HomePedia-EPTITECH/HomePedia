@@ -20,16 +20,13 @@ src/
   filters/
     http-exception.filter.ts
   modules/
-    cities/
-      dto/
+    geo/
       types.ts
-    departements/
-      types.ts
-    health/
-      types.ts
-    overview/
+    analytics/
       types.ts
     reviews/
+      types.ts
+    health/
       types.ts
   app.module.ts
   main.ts
@@ -115,7 +112,7 @@ La suite couvre:
 
 - la validation de configuration runtime
 - le healthcheck
-- des tests HTTP sur `cities`, `reviews` et `overview`
+- des tests HTTP sur `geo`, `reviews` et `analytics`
 - des tests d'integration PostgreSQL sur les modules read-only
 
 ## Mode de fonctionnement
@@ -123,14 +120,17 @@ La suite couvre:
 - API en lecture seule
 - les bases sont alimentees par les scripts de scraping et ETL
 - le backend expose les donnees sans modifier les donnees metier
-- PostgreSQL est la source de verite pour `cities`, `departements` et `overview`
-- MongoDB est reserve aux avis bruts dans `reviews_raw`
-- `cities/:code/details` lit la ville sur PostgreSQL puis enrichit la reponse avec les avis Mongo si disponibles
-- le filtre `nb_avis_min` utilise MongoDB pour restreindre la liste des villes, mais les donnees renvoyees restent issues de PostgreSQL
+- `geo` regroupe les donnees de villes, departements et regions
+- `analytics` expose les syntheses et KPI
+- `reviews` lit les avis MongoDB, avec une synthese legacy et une route paginee pour les avis bruts
+- `health` porte le healthcheck applicatif
 
 ## Architecture
 
-- `modules/*` contient les features HTTP du backend
+- `modules/geo` contient les features HTTP de geographie: villes, departements et regions
+- `modules/analytics` contient les syntheses et KPI
+- `modules/reviews` contient les endpoints Mongo de synthese et de pagination des avis
+- `modules/health` contient le healthcheck
 - `common/format.ts` centralise les conversions de valeurs et de dates
 - `common/validation.ts` centralise la validation des requetes
 - `common/postgres-read.repository.ts` factorise les helpers SQL read-only
@@ -148,9 +148,17 @@ La suite couvre:
 - `GET /api/departements`
 - `GET /api/departements/:code`
 - `GET /api/departements/:code/cities`
-- `GET /api/overview`
-- `GET /api/reviews/cities/:cityCode`
-- `GET /api/reviews/cities/:cityCode/items?limit=100&cursor=...`
+- `GET /api/regions`
+- `GET /api/regions/:code`
+- `GET /api/regions/:code/departements`
+- `GET /api/overview` legacy
+- `GET /api/analytics/overview` recommended
+- `GET /api/reviews/cities/:cityCode` legacy summary `data/meta`
+- `GET /api/reviews/cities/:cityCode/items?limit=100&cursor=...` paginated raw items
+
+`/api/overview` est conservee pour compatibilite legacy. L'endpoint recommande pour les syntheses est `/api/analytics/overview`.
+`/api/reviews/cities/:cityCode` est la route legacy de synthese `data/meta`.
+`/api/reviews/cities/:cityCode/items` est la route paginee pour les avis bruts.
 
 ### Filtres `GET /api/cities`
 
@@ -168,26 +176,31 @@ Parametres principaux disponibles:
 - `page`
 - `limit`
 
-`GET /api/departements/:code/cities` reutilise les memes filtres que `GET /api/cities`, avec `code_dept` impose par le parametre d'URL.
-
-## Exemple `GET /api/cities/75056/details`
+## Exemple `GET /api/analytics/overview`
 
 ```json
 {
   "data": {
-    "city": {
-      "code": "75056",
-      "name": "Paris"
+    "totals": {
+      "cities": 34871,
+      "reviewedCities": 10234,
+      "reviewsAvailable": true
     },
-    "admin": {
-      "codeDept": "75",
-      "postalCode": "75000",
-      "region": "Ile-de-France"
+    "averages": {
+      "population": 52743.18,
+      "securityScore": 3.74,
+      "environmentScore": 3.92
     },
-    "reviews": {
-      "count": 120,
-      "positive": ["Ville tres dynamique"],
-      "negative": ["Trafic dense"]
+    "highlights": {
+      "safestCities": [
+        {
+          "code": "75056",
+          "name": "Paris",
+          "securityScore": 3.8,
+          "environmentScore": 4.1
+        }
+      ],
+      "greenestCities": []
     }
   }
 }
@@ -201,7 +214,9 @@ Parametres principaux disponibles:
 - MongoDB est remonte dans les checks car il reste necessaire pour les routes d'avis
 - `503 Service Unavailable` si PostgreSQL est indisponible
 
-## Exemple `GET /api/reviews/cities/75056`
+## `GET /api/reviews/cities/:cityCode`
+
+Endpoint de synthese legacy des avis pour une ville. Il renvoie les donnees `data/meta` et sert de compatibilite avec l'ancien format.
 
 ```json
 {
@@ -222,7 +237,12 @@ Parametres principaux disponibles:
 }
 ```
 
-## Exemple `GET /api/reviews/cities/75056/items`
+## `GET /api/reviews/cities/:cityCode/items`
+
+Endpoint pagine des avis bruts en provenance de MongoDB.
+
+- `limit` est optionnel, par defaut `100`, avec un maximum de `100`
+- `cursor` est optionnel et doit etre un `ObjectId` Mongo
 
 ```json
 {
@@ -255,4 +275,4 @@ Appliquer les migrations existantes depuis la racine du repo:
 python packages/etl/database/run_migrations.py
 ```
 
-Le backend ne publie plus de route `kpis`. Les chiffres de synthese exposes au front passent par `/api/overview`.
+Le backend ne publie plus de route `kpis`. Les chiffres de synthese exposes au front passent par `/api/analytics/overview`.
