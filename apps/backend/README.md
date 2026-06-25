@@ -149,7 +149,8 @@ La suite couvre:
 - `GET /api/departements/:code`
 - `GET /api/departements/:code/cities`
 - `GET /api/overview`
-- `GET /api/reviews/cities/:code`
+- `GET /api/reviews/cities/:cityCode`
+- `GET /api/reviews/cities/:cityCode/items?limit=100&cursor=...`
 
 ### Filtres `GET /api/cities`
 
@@ -217,6 +218,31 @@ Parametres principaux disponibles:
   "meta": {
     "source": "mongo",
     "collection": "reviews_raw"
+  }
+}
+```
+
+## Exemple `GET /api/reviews/cities/75056/items`
+
+```json
+{
+  "cityCode": "75056",
+  "sourceUrl": "https://www.bien-dans-ma-ville.fr/paris-75056/",
+  "harvestedAt": "2026-03-24T12:00:00.000Z",
+  "reviews": [
+    {
+      "id": "66b3b4f0d4c4f8a9a1234561",
+      "text": "Ville calme et agreable",
+      "sentimentLabel": "positive",
+      "source": "bdmv",
+      "urlPage": "https://www.bien-dans-ma-ville.fr/paris-75056/avis.html",
+      "collectedAt": "2026-03-24T12:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "limit": 100,
+    "hasMore": true,
+    "nextCursor": "66b3b4f0d4c4f8a9a1234561"
   }
 }
 ```
