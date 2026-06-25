@@ -75,6 +75,75 @@ describe("ReviewsRepository", () => {
     expect(countDocuments).toHaveBeenCalledWith({ com: "75056" });
   });
 
+  it("pages raw city reviews with exactly limit results and no next page", async () => {
+    const pageLimit = jest.fn().mockReturnThis();
+    const pageToArray = jest.fn().mockResolvedValue([
+      createItemReview("66b3b4f0d4c4f8a9a1234561"),
+      createItemReview("66b3b4f0d4c4f8a9a1234562")
+    ]);
+    const pageSort = jest.fn().mockReturnValue({
+      limit: pageLimit
+    });
+
+    const latestLimit = jest.fn().mockReturnThis();
+    const latestToArray = jest.fn().mockResolvedValue([
+      createItemReview("66b3b4f0d4c4f8a9a1234563")
+    ]);
+    const latestSort = jest.fn().mockReturnValue({
+      limit: latestLimit
+    });
+
+    const find = jest
+      .fn()
+      .mockReturnValueOnce({
+        sort: pageSort
+      })
+      .mockReturnValueOnce({
+        sort: latestSort
+      });
+    const collection = {
+      find
+    };
+    pageLimit.mockReturnValue({
+      toArray: pageToArray
+    });
+    latestLimit.mockReturnValue({
+      toArray: latestToArray
+    });
+
+    const mongoService = {
+      getCollection: jest.fn().mockResolvedValue(collection)
+    };
+    const repository = new ReviewsRepository(mongoService as never);
+
+    const result = await repository.findByCityCodeItems("75056", { limit: 2 });
+
+    expect(result).not.toBeNull();
+    const exactPageResult = result!;
+
+    expect(exactPageResult).toMatchObject({
+      code: "75056",
+      source: "bdmv",
+      sourceUrl: "https://example.test/reviews",
+      harvestedAt: "2026-03-24T12:00:00.000Z",
+      pagination: {
+        limit: 2,
+        hasMore: false,
+        nextCursor: null
+      }
+    });
+    expect(exactPageResult.reviews).toHaveLength(2);
+    expect(exactPageResult.reviews).toEqual([
+      expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234561") }),
+      expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234562") })
+    ]);
+
+    expect(pageLimit).toHaveBeenCalledWith(3);
+    expect(latestLimit).toHaveBeenCalledWith(1);
+    expect(pageToArray).toHaveBeenCalledTimes(1);
+    expect(latestToArray).toHaveBeenCalledTimes(1);
+  });
+
   it("pages raw city reviews with limit + 1 and returns pagination metadata", async () => {
     const pageLimit = jest.fn().mockReturnThis();
     const pageToArray = jest.fn().mockResolvedValue([
@@ -117,21 +186,27 @@ describe("ReviewsRepository", () => {
     };
     const repository = new ReviewsRepository(mongoService as never);
 
-    await expect(repository.findByCityCodeItems("75056", { limit: 2 })).resolves.toMatchObject({
+    const result = await repository.findByCityCodeItems("75056", { limit: 2 });
+
+    expect(result).not.toBeNull();
+    const paginatedResult = result!;
+
+    expect(paginatedResult).toMatchObject({
       code: "75056",
       source: "bdmv",
       sourceUrl: "https://example.test/reviews",
       harvestedAt: "2026-03-24T12:00:00.000Z",
-      reviews: [
-        expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234561") }),
-        expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234562") })
-      ],
       pagination: {
         limit: 2,
         hasMore: true,
         nextCursor: "66b3b4f0d4c4f8a9a1234562"
       }
     });
+    expect(paginatedResult.reviews).toHaveLength(2);
+    expect(paginatedResult.reviews).toEqual([
+      expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234561") }),
+      expect.objectContaining({ _id: new ObjectId("66b3b4f0d4c4f8a9a1234562") })
+    ]);
 
     expect(find).toHaveBeenNthCalledWith(
       1,

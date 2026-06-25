@@ -12,8 +12,7 @@ type ReviewSummaryDocument = Awaited<ReturnType<ReviewsRepository["findByCityCod
 type ReviewItemsDocument = NonNullable<Awaited<ReturnType<ReviewsRepository["findByCityCodeItems"]>>>;
 type ReviewItemDocument = ReviewItemsDocument["reviews"][number];
 
-const DEFAULT_CITY_REVIEWS_LIMIT = 100;
-const MAX_CITY_REVIEWS_LIMIT = 100;
+const DEFAULT_CITY_REVIEWS_ITEMS_LIMIT = 100;
 
 @Injectable()
 export class ReviewsService {
@@ -49,15 +48,10 @@ export class ReviewsService {
     code: string,
     query: GetCityReviewsItemsQueryDto = new GetCityReviewsItemsQueryDto()
   ): Promise<CityReviewItemsResponseDto> {
+    const limit = query.limit ?? DEFAULT_CITY_REVIEWS_ITEMS_LIMIT;
     let document: ReviewItemsDocument | null;
     try {
-      document = await this.reviewsRepository.findByCityCodeItems(code, {
-        limit: Math.min(
-          Math.max(Math.trunc(query.limit ?? DEFAULT_CITY_REVIEWS_LIMIT), 1),
-          MAX_CITY_REVIEWS_LIMIT
-        ),
-        cursor: query.cursor
-      });
+      document = await this.reviewsRepository.findByCityCodeItems(code, { limit, cursor: query.cursor });
     } catch (error) {
       if (error instanceof BadRequestException) {
         throw error;

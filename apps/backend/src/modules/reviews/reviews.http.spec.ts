@@ -56,9 +56,11 @@ describe("ReviewsController HTTP", () => {
     const response = await request(app.getHttpServer()).get("/api/reviews/cities/75056");
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
       data: {
         code: "75056",
+        sourceUrl: "https://www.bien-dans-ma-ville.fr/paris-75056/",
+        harvestedAt: "2026-03-24T12:00:00.000Z",
         reviews: {
           positive: ["Ville agreable"],
           negative: ["Logements chers"],
@@ -73,7 +75,42 @@ describe("ReviewsController HTTP", () => {
     expect(reviewsService.getCityReviews).toHaveBeenCalledWith("75056");
   });
 
-  it("returns 200 for GET /api/reviews/cities/:cityCode/items with pagination", async () => {
+  it("returns 200 for GET /api/reviews/cities/:cityCode/items with the default limit", async () => {
+    reviewsService.getCityReviewItems.mockResolvedValue({
+      cityCode: "75056",
+      sourceUrl: "https://www.bien-dans-ma-ville.fr/paris-75056/",
+      harvestedAt: "2026-03-24T12:00:00.000Z",
+      reviews: [],
+      pagination: {
+        limit: 100,
+        hasMore: false,
+        nextCursor: null
+      }
+    });
+
+    const response = await request(app.getHttpServer()).get("/api/reviews/cities/75056/items");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toStrictEqual({
+      cityCode: "75056",
+      sourceUrl: "https://www.bien-dans-ma-ville.fr/paris-75056/",
+      harvestedAt: "2026-03-24T12:00:00.000Z",
+      reviews: [],
+      pagination: {
+        limit: 100,
+        hasMore: false,
+        nextCursor: null
+      }
+    });
+    expect(reviewsService.getCityReviewItems).toHaveBeenCalledWith(
+      "75056",
+      expect.objectContaining({
+        limit: 100
+      })
+    );
+  });
+
+  it("returns 200 for GET /api/reviews/cities/:cityCode/items with an explicit limit", async () => {
     reviewsService.getCityReviewItems.mockResolvedValue({
       cityCode: "75056",
       sourceUrl: "https://www.bien-dans-ma-ville.fr/paris-75056/",
@@ -100,8 +137,10 @@ describe("ReviewsController HTTP", () => {
       .query({ limit: 10, cursor: "66b3b4f0d4c4f8a9a1234561" });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
+    expect(response.body).toStrictEqual({
       cityCode: "75056",
+      sourceUrl: "https://www.bien-dans-ma-ville.fr/paris-75056/",
+      harvestedAt: "2026-03-24T12:00:00.000Z",
       reviews: [
         {
           id: "66b3b4f0d4c4f8a9a1234561",

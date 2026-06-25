@@ -137,10 +137,7 @@ export class ReviewsRepository {
       return null;
     }
 
-    const pageReviews = reviews.slice(0, limit);
-    const hasMore = reviews.length > limit;
-    const nextCursor =
-      hasMore && pageReviews.length > 0 ? String(pageReviews[pageReviews.length - 1]._id) : null;
+    const { pageReviews, pagination } = this.buildPagination(reviews, limit);
     const latestReview = latestReviews[0];
 
     return {
@@ -149,11 +146,7 @@ export class ReviewsRepository {
       sourceUrl: latestReview?.url_page ?? null,
       harvestedAt: latestReview?.collected_at ?? null,
       reviews: pageReviews,
-      pagination: {
-        limit,
-        hasMore,
-        nextCursor
-      }
+      pagination
     };
   }
 
@@ -204,6 +197,23 @@ export class ReviewsRepository {
     return {
       com: code,
       _id: { $gt: objectId }
+    };
+  }
+
+  private buildPagination(reviews: ReviewItemDocument[], limit: number): {
+    pageReviews: ReviewItemDocument[];
+    pagination: CityReviewPagination;
+  } {
+    const pageReviews = reviews.slice(0, limit);
+    const hasMore = reviews.length > limit;
+
+    return {
+      pageReviews,
+      pagination: {
+        limit,
+        hasMore,
+        nextCursor: hasMore && pageReviews.length > 0 ? String(pageReviews[pageReviews.length - 1]._id) : null
+      }
     };
   }
 }
