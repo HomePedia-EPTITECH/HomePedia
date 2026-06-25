@@ -1,16 +1,26 @@
-import { Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from "@nestjs/common";
 import { toIsoString } from "../../common/format";
 import { ReviewsRepository } from "./reviews.repository";
 import { CityReviewsResponseDto } from "./dto/city-reviews-response.dto";
+import {
+  CityReviewItemDto,
+  CityReviewItemsResponseDto
+} from "./dto/city-review-items-response.dto";
+import { GetCityReviewsItemsQueryDto } from "./dto/get-city-reviews-items-query.dto";
 
-type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
+type ReviewSummaryDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
+type ReviewItemsDocument = NonNullable<Awaited<ReturnType<ReviewsRepository["findByCityCodeItems"]>>>;
+type ReviewItemDocument = ReviewItemsDocument["reviews"][number];
+
+const DEFAULT_CITY_REVIEWS_LIMIT = 100;
+const MAX_CITY_REVIEWS_LIMIT = 100;
 
 @Injectable()
 export class ReviewsService {
   constructor(private readonly reviewsRepository: ReviewsRepository) {}
 
   async getCityReviews(code: string): Promise<CityReviewsResponseDto> {
-    let document: ReviewDocument;
+    let document: ReviewSummaryDocument;
     try {
       document = await this.reviewsRepository.findByCityCode(code);
     } catch {
@@ -33,6 +43,60 @@ export class ReviewsService {
         collection: "reviews_raw"
       }
     };
+  }
+
+  async getCityReviewItems(
+    code: string,
+    query: GetCityReviewsItemsQueryDto = new GetCityReviewsItemsQueryDto()
+  ): Promise<CityReviewItemsResponseDto> {
+    let document: ReviewItemsDocument | null;
+    try {
+      document = await this.reviewsRepository.findByCityCodeItems(code, {
+        limit: Math.min(
+          Math.max(Math.trunc(query.limit ?? DEFAULT_CITY_REVIEWS_LIMIT), 1),
+          MAX_CITY_REVIEWS_LIMIT
+        ),
+        cursor: query.cursor
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new ServiceUnavailableException("Reviews data source is unavailable");
+    }
+
+    if (!document) {
+      throw new NotFoundException(`Reviews for city ${code} not found`);
+    }
+
+    return {
+      cityCode: document.code,
+      sourceUrl: document.sourceUrl,
+      harvestedAt: toIsoString(document.harvestedAt, "seconds"),
+      reviews: this.mapReviewItems(document.reviews),
+      pagination: document.pagination
+    };
+  }
+
+  private mapReviewItems(reviews: ReviewItemDocument[]): CityReviewItemDto[] {
+    return reviews.flatMap((review) => {
+      const text = review.text?.trim();
+      if (!text) {
+        return [];
+      }
+
+      return [
+        {
+          id: String(review._id),
+          text,
+          sentimentLabel: review.sentiment_label ?? null,
+          source: review.source ?? null,
+          urlPage: review.url_page ?? null,
+          collectedAt: toIsoString(review.collected_at, "seconds")
+        }
+      ];
+    });
   }
 
   private groupReviews(
