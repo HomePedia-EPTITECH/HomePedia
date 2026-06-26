@@ -21,13 +21,39 @@ src/
     http-exception.filter.ts
   modules/
     geo/
+      dto/
+        city-response.dto.ts
+        departement-response.dto.ts
+        get-cities-query.dto.ts
+        region-response.dto.ts
+      geo-cities.postgres.repository.ts
+      geo-departements.postgres.repository.ts
+      geo-regions.postgres.repository.ts
+      geo.controller.ts
+      geo.module.ts
+      geo.service.ts
       types.ts
     analytics/
-      types.ts
+      dto/
+        analytics-overview-response.dto.ts
+      analytics.controller.ts
+      analytics.module.ts
+      analytics.service.ts
     reviews/
-      types.ts
+      dto/
+        city-review-items-response.dto.ts
+        city-reviews-response.dto.ts
+        get-city-reviews-items-query.dto.ts
+      reviews.controller.ts
+      reviews.module.ts
+      reviews.repository.ts
+      reviews.service.ts
     health/
-      types.ts
+      dto/
+        health-response.dto.ts
+      health.controller.ts
+      health.module.ts
+      health.service.ts
   app.module.ts
   main.ts
 ```
@@ -136,8 +162,9 @@ La suite couvre:
 - `common/postgres-read.repository.ts` factorise les helpers SQL read-only
 - `filters/http-exception.filter.ts` unifie le format des erreurs
 - `db/` centralise les acces PostgreSQL et MongoDB
-- les fichiers `types.ts` definissent les types de reponse publics
-- seuls les modules qui en ont besoin exposent un `dto`
+- les fichiers `types.ts` definissent les types metier internes
+- les DTO HTTP publics vivent dans les dossiers `dto/` des modules concernes
+- les modules exposent des `dto` lorsque leur contrat HTTP public le justifie
 
 ## Routes
 
