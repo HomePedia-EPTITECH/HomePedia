@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { Document, ObjectId } from "mongodb";
 import { MongoService } from "../../db/mongo.service";
+import { InvalidReviewCursorError } from "./errors/invalid-review-cursor.error";
 
 const DEFAULT_CITY_REVIEWS_LIMIT = 100;
 const MAX_CITY_REVIEWS_LIMIT = 100;
@@ -191,7 +192,7 @@ export class ReviewsRepository {
     try {
       objectId = new ObjectId(cursor);
     } catch {
-      throw new BadRequestException("Invalid cursor");
+      throw new InvalidReviewCursorError();
     }
 
     return {

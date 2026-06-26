@@ -7,6 +7,7 @@ import {
   CityReviewItemsResponseDto
 } from "./dto/city-review-items-response.dto";
 import { GetCityReviewsItemsQueryDto } from "./dto/get-city-reviews-items-query.dto";
+import { InvalidReviewCursorError } from "./errors/invalid-review-cursor.error";
 
 type ReviewSummaryDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
 type ReviewItemsDocument = NonNullable<Awaited<ReturnType<ReviewsRepository["findByCityCodeItems"]>>>;
@@ -53,8 +54,8 @@ export class ReviewsService {
     try {
       document = await this.reviewsRepository.findByCityCodeItems(code, { limit, cursor: query.cursor });
     } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
+      if (error instanceof InvalidReviewCursorError) {
+        throw new BadRequestException(error.message);
       }
 
       throw new ServiceUnavailableException("Reviews data source is unavailable");

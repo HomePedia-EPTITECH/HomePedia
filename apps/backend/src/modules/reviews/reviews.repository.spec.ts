@@ -1,5 +1,5 @@
-import { BadRequestException } from "@nestjs/common";
 import { ObjectId } from "mongodb";
+import { InvalidReviewCursorError } from "./errors/invalid-review-cursor.error";
 import { ReviewsRepository } from "./reviews.repository";
 
 function createLegacyReview(overrides: Record<string, unknown> = {}) {
@@ -356,6 +356,6 @@ describe("ReviewsRepository", () => {
 
     await expect(
       repository.findByCityCodeItems("75056", { limit: 2, cursor: "not-a-mongo-id" })
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toBeInstanceOf(InvalidReviewCursorError);
   });
 });
