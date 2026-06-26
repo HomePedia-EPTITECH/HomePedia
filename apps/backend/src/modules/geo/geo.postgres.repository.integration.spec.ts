@@ -209,6 +209,7 @@ describe("GeoPostgresRepositories", () => {
       harness.exec(createPostgresV1Schema());
       harness.exec(createPostgresV1Seed());
 
+      const querySpy = jest.spyOn(harness.dbService, "query");
       const rows = await repository.findRegions();
 
       expect(rows).toEqual(
@@ -233,6 +234,8 @@ describe("GeoPostgresRepositories", () => {
           })
         ])
       );
+      expect(querySpy).toHaveBeenCalledTimes(3);
+      querySpy.mockRestore();
     });
 
     it("returns regions even when departements and communes are absent", async () => {

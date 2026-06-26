@@ -17,6 +17,12 @@ type RegionBaseRow = {
   updatedAt: Date | string | number | null;
 };
 
+type RegionCountsRow = {
+  code: string;
+  departementCount: number;
+  cityCount: number;
+};
+
 @Injectable()
 export class GeoRegionsPostgresRepository extends PostgresReadRepository {
   constructor(dbService: DbService) {
@@ -29,14 +35,16 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       return null;
     }
 
-    const result = await this.dbService.query<RegionBaseRow>(this.buildRegionQuery(tables));
-    return Promise.all(
-      result.rows.map(async (row) => ({
-        ...row,
-        departementCount: await this.countDepartementsByRegionCode(row.code),
-        cityCount: await this.countCitiesByRegionCode(row.code)
-      }))
-    );
+    const [result, counts] = await Promise.all([
+      this.dbService.query<RegionBaseRow>(this.buildRegionQuery()),
+      this.findRegionCounts(tables)
+    ]);
+
+    return result.rows.map((row) => ({
+      ...row,
+      departementCount: counts.get(row.code)?.departementCount ?? 0,
+      cityCount: counts.get(row.code)?.cityCount ?? 0
+    }));
   }
 
   async findRegionByCode(code: string): Promise<RegionRow | null> {
@@ -46,7 +54,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
     }
 
     const result = await this.dbService.query<RegionBaseRow>(
-      this.buildRegionQuery(tables, true),
+      this.buildRegionQuery(true),
       [code]
     );
 
@@ -55,10 +63,12 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       return null;
     }
 
+    const counts = await this.findRegionCounts(tables, code);
+
     return {
       ...row,
-      departementCount: await this.countDepartementsByRegionCode(row.code),
-      cityCount: await this.countCitiesByRegionCode(row.code)
+      departementCount: counts.get(row.code)?.departementCount ?? 0,
+      cityCount: counts.get(row.code)?.cityCount ?? 0
     };
   }
 
@@ -80,7 +90,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
     return result.rows;
   }
 
-  private buildRegionQuery(tables: Set<string>, scoped = false): string {
+  private buildRegionQuery(scoped = false): string {
     return `
       SELECT
         r.${this.quoteIdentifier("numero_region")}::text AS ${this.quoteIdentifier("code")},
@@ -90,6 +100,70 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       ${scoped ? `WHERE r.${this.quoteIdentifier("numero_region")}::text = $1` : ""}
       ORDER BY r.${this.quoteIdentifier("numero_region")}::text ASC
     `;
+  }
+
+  private buildRegionCountsQuery(tables: Set<string>, scopedCode?: string): string | null {
+    if (!tables.has("departement")) {
+      return null;
+    }
+
+    const scopedFilter = scopedCode ? `WHERE d.${this.quoteIdentifier("region_id")} = $1::int` : "";
+    const cityCounts = tables.has("commune")
+      ? `
+        , city_counts AS (
+          SELECT
+            d.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("code")},
+            COUNT(c.${this.quoteIdentifier("id")})::int AS ${this.quoteIdentifier("cityCount")}
+          FROM ${this.relation("departement")} d
+          INNER JOIN ${this.relation("commune")} c
+            ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("id")}
+          ${scopedFilter}
+          GROUP BY d.${this.quoteIdentifier("region_id")}
+        )
+      `
+      : "";
+
+    return `
+      WITH departement_counts AS (
+        SELECT
+          d.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("code")},
+          COUNT(*)::int AS ${this.quoteIdentifier("departementCount")}
+        FROM ${this.relation("departement")} d
+        ${scopedFilter}
+        GROUP BY d.${this.quoteIdentifier("region_id")}
+      )
+      ${cityCounts}
+      SELECT
+        dc.${this.quoteIdentifier("code")} AS ${this.quoteIdentifier("code")},
+        dc.${this.quoteIdentifier("departementCount")} AS ${this.quoteIdentifier("departementCount")},
+        ${tables.has("commune")
+          ? `COALESCE(cc.${this.quoteIdentifier("cityCount")}, 0)::int`
+          : "0::int"
+        } AS ${this.quoteIdentifier("cityCount")}
+      FROM departement_counts dc
+      ${tables.has("commune")
+        ? `LEFT JOIN city_counts cc
+            ON cc.${this.quoteIdentifier("code")} = dc.${this.quoteIdentifier("code")}`
+        : ""
+      }
+    `;
+  }
+
+  private async findRegionCounts(
+    tables: Set<string>,
+    scopedCode?: string
+  ): Promise<Map<string, RegionCountsRow>> {
+    const sql = this.buildRegionCountsQuery(tables, scopedCode);
+    if (!sql) {
+      return new Map();
+    }
+
+    const result = await this.dbService.query<RegionCountsRow>(
+      sql,
+      scopedCode ? [scopedCode] : []
+    );
+
+    return new Map(result.rows.map((row) => [row.code, row]));
   }
 
   private buildDepartementsByRegionQuery(tables: Set<string>): string {
@@ -116,43 +190,5 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       GROUP BY d.${this.quoteIdentifier("id")}, d.${this.quoteIdentifier("numero_departement")}, d.${this.quoteIdentifier("nom")}
       ORDER BY d.${this.quoteIdentifier("numero_departement")}::text ASC
     `;
-  }
-
-  private async countDepartementsByRegionCode(code: string): Promise<number> {
-    const tables = await this.getAvailableTables();
-    if (!tables.has("departement")) {
-      return 0;
-    }
-
-    const result = await this.dbService.query<{ total: number }>(
-      `
-        SELECT COUNT(*)::int AS ${this.quoteIdentifier("total")}
-        FROM ${this.relation("departement")}
-        WHERE ${this.quoteIdentifier("region_id")} = $1::int
-      `,
-      [code]
-    );
-
-    return result.rows[0]?.total ?? 0;
-  }
-
-  private async countCitiesByRegionCode(code: string): Promise<number> {
-    const tables = await this.getAvailableTables();
-    if (!tables.has("departement") || !tables.has("commune")) {
-      return 0;
-    }
-
-    const result = await this.dbService.query<{ total: number }>(
-      `
-        SELECT COUNT(*)::int AS ${this.quoteIdentifier("total")}
-        FROM ${this.relation("commune")} c
-        INNER JOIN ${this.relation("departement")} d
-          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("id")}
-        WHERE d.${this.quoteIdentifier("region_id")} = $1::int
-      `,
-      [code]
-    );
-
-    return result.rows[0]?.total ?? 0;
   }
 }
