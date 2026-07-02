@@ -34,6 +34,17 @@ def get_mongo_params() -> Dict[str, str]:
     }
 
 
+def get_postgres_params() -> Dict[str, str]:
+    """Paramètres PostgreSQL (user, password, host, port, db_name)."""
+    return {
+        "user": os.getenv("POSTGRES_USER", "admin"),
+        "password": os.getenv("POSTGRES_PASSWORD", ""),
+        "host": os.getenv("POSTGRES_HOST", "localhost"),
+        "port": int(os.getenv("POSTGRES_PORT", "5432")),
+        "db_name": os.getenv("POSTGRES_DB", "homepedia"),
+    }
+
+
 def get_mongo_uri() -> str:
     """URI de connexion MongoDB (pour MongoClient(get_mongo_uri())). Utilise MONGO_URI si défini, sinon construit à partir des variables d'environnement."""
     uri = os.getenv("MONGO_URI")

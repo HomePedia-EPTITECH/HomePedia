@@ -86,3 +86,8 @@ __pycache__/
 apps/**/node_modules/
 apps/**/dist/
 apps/**/.env
+*.so
+.venv/
+venv/
+*.log
+*.crc

@@ -1,5 +1,5 @@
 """
-Point d'entrée unique : exécution des migrations MongoDB.
+Point d'entrée unique : exécution des migrations MongoDB et PostgreSQL.
 """
 
 import subprocess
@@ -8,8 +8,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-# Seules les migrations et l'initialisation de la file des pages ville sont exécutées automatiquement.
-# Les scripts de chargement de données (CSV/JSON) sont désormais optionnels
+# Les migrations MongoDB et PostgreSQL sont exécutées automatiquement.
+# Les scripts de chargement de données (CSV/JSON) sont optionnels
 # et lancés manuellement si besoin.
 SCRIPTS = [
     "run_migrations.py",
@@ -38,3 +38,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

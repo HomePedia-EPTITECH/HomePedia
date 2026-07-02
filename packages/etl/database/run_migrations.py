@@ -1,5 +1,5 @@
 """
-Lance uniquement les migrations MongoDB.
+Lance les migrations MongoDB et PostgreSQL.
 
 À lancer après « docker compose up », depuis la racine du projet :
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = [
+    "run_migrations_postgres.py",
     "run_migrations_mongo.py",
 ]
 
@@ -30,3 +31,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
