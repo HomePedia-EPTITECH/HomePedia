@@ -131,6 +131,35 @@
   - `prix_m2` (double)
   - `updated_at`
 
+## Collection `salaires_pcs_history`
+
+- Rôle : historiser le salaire net EQTP mensuel moyen par commune/catégorie socio-professionnelle/sexe/millésime (Insee, Base Tous Salariés).
+- Clé technique (unique composite) :
+  - `com`, `pcs_code`, `sex`, `time_period`
+- Champs principaux :
+  - `source` (valeur `insee_bts_pcs`)
+  - `com` (pivot INSEE)
+  - `pcs_code` (`1T3`=Cadres, `4`=Professions intermédiaires, `5`=Employés, `6`=Ouvriers, `_T`=Total)
+  - `pcs_label`
+  - `sex` (`F`, `M`, `_T`)
+  - `time_period` (année)
+  - `salaire_net_eqtp_mensuel_moyen` (double, `None` si secret statistique)
+  - `conf_status` (`F`=libre, `C`=confidentiel)
+  - `updated_at`
+- Limite source : pas de diffusion Insee sous 2000 habitants ; à ce niveau géographique fin, certaines catégories à faible effectif peuvent avoir des moyennes extrêmes (outliers).
+
+## `communes_direct` — indicateurs salaires (pivot `com`)
+
+- Injectés dans `communes_direct` par `ingest_salaires_pcs.py`, sexe total (`_T`) uniquement, millésime le plus récent :
+  - `salaire_net_mensuel_moyen_cadre`
+  - `salaire_net_mensuel_moyen_prof_intermediaire`
+  - `salaire_net_mensuel_moyen_employe`
+  - `salaire_net_mensuel_moyen_ouvrier`
+  - `salaire_net_mensuel_moyen_total`
+  - `salaire_millesime`
+  - `salaire_last_ingested_at`
+  - `salaire_source`
+
 ## Index / migrations (état cible)
 
 - `01_init_communes_harvest.js`
@@ -142,3 +171,4 @@
 - `07_add_source_indexes_vi_and_reviews_texthash.js`
 - `08_backfill_city_pages_queue_source.js` (normalisation robuste du champ `source` : absent/null/vide + stats)
 - `09_init_real_estate_history_dvf.js`
+- `10_init_salaires_pcs.js`

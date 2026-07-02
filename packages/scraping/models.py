@@ -127,6 +127,34 @@ class RealEstateHistoryDoc(TypedDict, total=False):
     updated_at: datetime
 
 
+class SalairePcsHistoryDoc(TypedDict, total=False):
+    """Salaire net EQTP mensuel moyen par commune/PCS/sexe (Insee BTS) : collection salaires_pcs_history."""
+
+    com: str
+    source: str
+    pcs_code: str
+    pcs_label: str
+    sex: str
+    time_period: int
+    salaire_net_eqtp_mensuel_moyen: Optional[float]
+    conf_status: str
+    updated_at: datetime
+
+
+class CommuneDirectSalaireDoc(TypedDict, total=False):
+    """Indicateurs de salaire (Insee BTS, categories socio-pro) injectes dans communes_direct (pivot com)."""
+
+    com: str
+    salaire_net_mensuel_moyen_cadre: Optional[float]
+    salaire_net_mensuel_moyen_prof_intermediaire: Optional[float]
+    salaire_net_mensuel_moyen_employe: Optional[float]
+    salaire_net_mensuel_moyen_ouvrier: Optional[float]
+    salaire_net_mensuel_moyen_total: Optional[float]
+    salaire_millesime: Optional[int]
+    salaire_last_ingested_at: datetime
+    salaire_source: str
+
+
 @dataclass(slots=True)
 class CityScrapePayload:
     """Payload intermediaire de collecte pour une commune."""
