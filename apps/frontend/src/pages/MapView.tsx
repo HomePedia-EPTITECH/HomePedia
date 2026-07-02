@@ -8,6 +8,7 @@ import Map, {
 } from "react-map-gl/mapbox"
 import {
   Box,
+  ChevronDown,
   List,
   MapPinOff,
   Moon,
@@ -17,13 +18,21 @@ import {
   Sun,
 } from "lucide-react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
-import { COMMUNES, formatEuro, scoreColorHex, type Commune } from "@/data"
+import {
+  COMMUNES,
+  CRITERIA,
+  formatEuro,
+  scoreColorHex,
+  type Commune,
+} from "@/data"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { GeoFilterBar } from "@/components/shared/GeoFilterBar"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
 import { MapSearch, type GeoResult, type PlaceType } from "@/components/layout/MapSearch"
+import { cn } from "@/lib/utils"
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 // Style Standard par défaut (3D + terrain + light presets). Surchargable via .env.
@@ -79,11 +88,12 @@ const ZOOM_BY_TYPE: Record<PlaceType, number> = {
 export function MapPage() {
   const navigate = useNavigate()
   const mapRef = useRef<MapRef>(null)
-  const { scoreOf, filters } = usePreferences()
+  const { scoreOf, filters, selectedCriteria } = usePreferences()
   const { region, departement, taille } = filters
 
   const [scoreMin, setScoreMin] = useState(0)
   const [active, setActive] = useState<Commune | null>(null)
+  const [criteriaOpen, setCriteriaOpen] = useState(true)
   const [lightPreset, setLightPreset] = useState<LightPreset>("dusk")
   const [is3D, setIs3D] = useState(false)
   // Zone géographique de recherche (emprise figée) + drapeau "carte déplacée".
@@ -244,8 +254,8 @@ export function MapPage() {
         </>
       )}
 
-      {/* Sidebar filtres (sous les boutons de contrôle) */}
-      <div className="absolute left-4 top-[4.25rem] z-10 w-72 max-w-[calc(100%-2rem)] rounded-xl border bg-card/95 p-5 shadow-lg backdrop-blur">
+      {/* Sidebar filtres (sous les boutons de contrôle) — scroll interne si trop haute */}
+      <div className="absolute left-4 top-[4.25rem] z-10 flex max-h-[calc(100dvh-9.5rem)] w-72 max-w-[calc(100%-2rem)] flex-col overflow-y-auto rounded-xl border bg-card/95 p-5 shadow-lg backdrop-blur">
         <div className="mb-4 flex items-center gap-2">
           <SlidersHorizontal className="size-4 text-primary" />
           <h2 className="text-sm font-semibold">Filtres</h2>
@@ -263,6 +273,53 @@ export function MapPage() {
         <div className="flex flex-col gap-5">
           {/* Filtres géographiques partagés avec le Classement */}
           <GeoFilterBar layout="stack" />
+
+          {/* Rappel repliable des critères qui définissent la compatibilité */}
+          <div className="flex flex-col gap-2 rounded-lg border bg-secondary/20 p-3">
+            <button
+              onClick={() => setCriteriaOpen((o) => !o)}
+              className="flex items-center justify-between"
+            >
+              <span className="text-sm font-medium">Compatibilité</span>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {selectedCriteria.length} critère
+                {selectedCriteria.length > 1 ? "s" : ""}
+                <ChevronDown
+                  className={cn(
+                    "size-4 transition-transform",
+                    criteriaOpen && "rotate-180",
+                  )}
+                />
+              </span>
+            </button>
+            {criteriaOpen &&
+              (selectedCriteria.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedCriteria.map((key) => {
+                    const Icon = CRITERION_ICONS[key]
+                    return (
+                      <span
+                        key={key}
+                        className="inline-flex items-center gap-1 rounded-md border bg-card px-1.5 py-0.5 text-xs"
+                      >
+                        <Icon className="size-3 text-primary" />
+                        {CRITERIA[key].label}
+                      </span>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Aucun critère —{" "}
+                  <Link
+                    to="/resultats"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    en choisir
+                  </Link>
+                </p>
+              ))}
+          </div>
 
           <div className="flex flex-col gap-2">
             <div className="flex justify-between text-sm">
