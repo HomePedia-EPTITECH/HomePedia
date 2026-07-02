@@ -19,7 +19,6 @@ import {
   formatNumber,
   formatPercent,
   getCommuneById,
-  personalScore,
   searchCommunes,
   type Commune,
 } from "@/data"
@@ -61,7 +60,7 @@ const RADAR_DIMS: { key: keyof Commune["notes"]; label: string }[] = [
 ]
 
 export function ComparePage() {
-  const { compareIds, toggleCompare, weights } = usePreferences()
+  const { compareIds, toggleCompare, scoreOf } = usePreferences()
 
   const cities = useMemo(
     () =>
@@ -100,7 +99,7 @@ export function ComparePage() {
               key={city.id}
               commune={city}
               color={SERIES_COLORS[i]}
-              score={personalScore(city, weights)}
+              score={scoreOf(city)}
               onRemove={() => toggleCompare(city.id)}
             />
           ) : (
@@ -154,10 +153,10 @@ export function ComparePage() {
                 </thead>
                 <tbody>
                   <tr className="border-b bg-secondary/20">
-                    <td className="p-3 font-medium">Score personnalisé</td>
+                    <td className="p-3 font-medium">Compatibilité</td>
                     {cities.map((c) => {
-                      const scores = cities.map((x) => personalScore(x, weights))
-                      const s = personalScore(c, weights)
+                      const scores = cities.map((x) => scoreOf(x))
+                      const s = scoreOf(c)
                       const isBest = s === Math.max(...scores)
                       return (
                         <td key={c.id} className="p-3 text-right">

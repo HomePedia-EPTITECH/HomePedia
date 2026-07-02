@@ -34,7 +34,6 @@ import {
   formatNumber,
   formatPercent,
   getCommuneById,
-  personalScore,
   type Commune,
 } from "@/data"
 import { usePreferences } from "@/app/preferences"
@@ -54,12 +53,12 @@ import { NotFoundPage } from "./NotFound"
 export function CityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { weights, toggleCompare, isComparing } = usePreferences()
+  const { scoreOf, toggleCompare, isComparing } = usePreferences()
   const commune = id ? getCommuneById(id) : undefined
 
   if (!commune) return <NotFoundPage />
 
-  const score = personalScore(commune, weights)
+  const score = scoreOf(commune)
   const comparing = isComparing(commune.id)
 
   return (
