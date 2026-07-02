@@ -404,7 +404,6 @@ def main() -> None:
                             "$set": set_fields,
                             "$setOnInsert": {
                                 "com": com,
-                                "source": DVF_SOURCE,
                                 "created_at": now_utc,
                             },
                         },
