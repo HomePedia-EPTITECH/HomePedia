@@ -1,25 +1,34 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
   List,
   Map as MapIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Check,
 } from "lucide-react"
 import {
   COMMUNES,
+  CRITERIA,
   TAILLE_LABELS,
   formatEuro,
   purchasingPower,
   type Commune,
+  type CriterionKey,
+  type PurchasingPower,
 } from "@/data"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
-import { CriteriaPanel } from "@/components/shared/CriteriaPanel"
+import { CriteriaPanel, CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { GeoFilterBar } from "@/components/shared/GeoFilterBar"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   Table,
   TableBody,
@@ -32,27 +41,87 @@ import {
 const ALL = ALL_FILTER
 const PAGE_SIZE = 30
 
+type SortKey = "nom" | "score" | CriterionKey
+
+interface Row {
+  commune: Commune
+  score: number
+  breakdown: Record<CriterionKey, number>
+  pp: PurchasingPower
+}
+
+/** Valeur de tri d'une ligne selon la colonne active. */
+function sortValue(row: Row, key: SortKey): number | string {
+  if (key === "nom") return row.commune.nom
+  if (key === "score") return row.score
+  if (key === "pouvoirAchat") return row.pp.surfaceLouable
+  return row.breakdown[key]
+}
+
 export function ResultsPage() {
   const navigate = useNavigate()
-  const { scoreOf, breakdownOf, salary, filters, compareIds, toggleCompare } =
-    usePreferences()
+  const {
+    scoreOf,
+    breakdownOf,
+    salary,
+    filters,
+    selectedCriteria,
+    compareIds,
+    toggleCompare,
+  } = usePreferences()
   const { region, departement, taille } = filters
 
+  // Panneau de critères repliable (le tableau prend alors toute la largeur).
+  const [filtersOpen, setFiltersOpen] = useState(true)
+
+  // Tri du tableau : "score", "nom" ou une clé de critère.
+  const [sortKey, setSortKey] = useState<SortKey>("score")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortKey(key)
+      setSortDir(key === "nom" ? "asc" : "desc")
+    }
+  }
+
   const rows = useMemo(() => {
-    return COMMUNES.filter((c) => {
+    const list: Row[] = COMMUNES.filter((c) => {
       if (region !== ALL && c.region !== region) return false
       if (departement !== ALL && c.departement !== departement) return false
       if (taille !== ALL && c.taille !== taille) return false
       return true
+    }).map((c) => ({
+      commune: c,
+      score: scoreOf(c),
+      breakdown: breakdownOf(c),
+      pp: purchasingPower(c, salary),
+    }))
+
+    const dir = sortDir === "asc" ? 1 : -1
+    list.sort((a, b) => {
+      const va = sortValue(a, sortKey)
+      const vb = sortValue(b, sortKey)
+      const cmp =
+        typeof va === "string" && typeof vb === "string"
+          ? va.localeCompare(vb, "fr")
+          : (va as number) - (vb as number)
+      // Départage stable par score décroissant.
+      return cmp !== 0 ? cmp * dir : b.score - a.score
     })
-      .map((c) => ({
-        commune: c,
-        score: scoreOf(c),
-        breakdown: breakdownOf(c),
-        pp: purchasingPower(c, salary),
-      }))
-      .sort((a, b) => b.score - a.score)
-  }, [region, departement, taille, scoreOf, breakdownOf, salary])
+    return list
+  }, [
+    region,
+    departement,
+    taille,
+    scoreOf,
+    breakdownOf,
+    salary,
+    sortKey,
+    sortDir,
+  ])
 
   // Pagination : indispensable dès qu'on passe de 32 à 300 (et bien plus demain).
   const [page, setPage] = useState(1)
@@ -63,14 +132,14 @@ export function ResultsPage() {
     currentPage * PAGE_SIZE,
   )
 
-  // Retour en page 1 quand le classement change (filtres, critères, salaire).
+  // Retour en page 1 quand le classement change (filtres, critères, salaire, tri).
   useEffect(() => {
     setPage(1)
-  }, [region, departement, taille, scoreOf, salary])
+  }, [region, departement, taille, scoreOf, salary, sortKey, sortDir])
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-8 lg:px-6">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto flex max-w-[1400px] flex-col px-4 py-6 lg:h-[calc(100dvh-4rem)] lg:overflow-hidden lg:px-6">
+      <header className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Villes recommandées
@@ -92,33 +161,85 @@ export function ResultsPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
-        {/* Sidebar pondérations */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-xl border bg-card p-5">
-            <CriteriaPanel />
+      <div
+        className={cn(
+          "grid gap-6 lg:min-h-0 lg:flex-1",
+          filtersOpen ? "lg:grid-cols-[300px_1fr]" : "lg:grid-cols-1",
+        )}
+      >
+        {/* Panneau critères repliable — scroll indépendant */}
+        {filtersOpen && (
+          <aside className="lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+            <div className="relative rounded-xl border bg-card p-5">
+              <button
+                onClick={() => setFiltersOpen(false)}
+                title="Réduire les filtres"
+                className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <PanelLeftClose className="size-4" />
+              </button>
+              <CriteriaPanel />
+            </div>
+          </aside>
+        )}
+
+        <div className="flex min-w-0 flex-col lg:min-h-0">
+          {/* Barre : rouvrir les filtres (si repliés) + filtres géo partagés */}
+          <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3">
+            {!filtersOpen && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFiltersOpen(true)}
+              >
+                <PanelLeftOpen className="size-4" /> Filtres
+              </Button>
+            )}
+            <GeoFilterBar />
           </div>
-        </aside>
 
-        <div className="min-w-0">
-          {/* Filtres partagés avec la Carte */}
-          <GeoFilterBar className="mb-4" />
-
-          {/* Tableau */}
-          <div className="overflow-hidden rounded-xl border bg-card">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-12 text-center">#</TableHead>
-                  <TableHead>Ville</TableHead>
-                  <TableHead className="text-center">Compatibilité</TableHead>
-                  <TableHead className="text-right">Prix m² appart.</TableHead>
-                  <TableHead className="text-right">m² louables</TableHead>
-                  <TableHead className="text-center">Sécurité</TableHead>
-                  <TableHead className="text-center">Qualité vie</TableHead>
-                  <TableHead className="w-28 text-right">Comparer</TableHead>
-                </TableRow>
-              </TableHeader>
+          {/* Tableau — scroll indépendant, en-tête collant, colonnes = critères actifs */}
+          <Table
+            containerClassName="rounded-xl border bg-card lg:min-h-0 lg:flex-1"
+            className="[&_td]:border-r [&_td]:border-border/40 [&_td:last-child]:border-r-0 [&_th]:border-r [&_th]:border-border/40 [&_th:last-child]:border-r-0"
+          >
+            <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted">
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-12 text-center">#</TableHead>
+                <SortHead
+                  label="Ville"
+                  columnKey="nom"
+                  className="min-w-[11rem]"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                <SortHead
+                  label="Compatibilité"
+                  columnKey="score"
+                  className="w-32 text-center"
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={toggleSort}
+                />
+                {selectedCriteria.map((key) => {
+                  const Icon = CRITERION_ICONS[key]
+                  return (
+                    <SortHead
+                      key={key}
+                      label={CRITERIA[key].label}
+                      columnKey={key}
+                      className="min-w-[8rem] text-center font-medium"
+                      leadingIcon={<Icon className="size-3.5 text-primary" />}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      onSort={toggleSort}
+                    />
+                  )
+                })}
+                <TableHead className="w-28 text-right">Comparer</TableHead>
+              </TableRow>
+            </TableHeader>
               <TableBody>
                 {pagedRows.map(({ commune, score, breakdown, pp }, i) => (
                   <ResultRow
@@ -126,9 +247,9 @@ export function ResultsPage() {
                     rank={(currentPage - 1) * PAGE_SIZE + i + 1}
                     commune={commune}
                     score={score}
-                    surfaceLouable={pp.surfaceLouable}
-                    securite={breakdown.securite}
-                    qualiteVie={breakdown.qualiteVie}
+                    breakdown={breakdown}
+                    pp={pp}
+                    activeKeys={selectedCriteria}
                     comparing={compareIds.includes(commune.id)}
                     onOpen={() => navigate(`/ville/${commune.id}`)}
                     onToggleCompare={() => toggleCompare(commune.id)}
@@ -137,7 +258,7 @@ export function ResultsPage() {
                 {rows.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={4 + selectedCriteria.length}
                       className="py-12 text-center text-muted-foreground"
                     >
                       Aucune ville ne correspond à ces filtres.
@@ -146,11 +267,10 @@ export function ResultsPage() {
                 )}
               </TableBody>
             </Table>
-          </div>
 
           {/* Pagination */}
           {rows.length > PAGE_SIZE && (
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-4 flex shrink-0 items-center justify-between">
               <p className="text-sm text-muted-foreground">
                 {(currentPage - 1) * PAGE_SIZE + 1}–
                 {Math.min(currentPage * PAGE_SIZE, rows.length)} sur{" "}
@@ -189,9 +309,9 @@ interface ResultRowProps {
   rank: number
   commune: Commune
   score: number
-  surfaceLouable: number
-  securite: number
-  qualiteVie: number
+  breakdown: Record<CriterionKey, number>
+  pp: PurchasingPower
+  activeKeys: CriterionKey[]
   comparing: boolean
   onOpen: () => void
   onToggleCompare: () => void
@@ -201,15 +321,15 @@ function ResultRow({
   rank,
   commune,
   score,
-  surfaceLouable,
-  securite,
-  qualiteVie,
+  breakdown,
+  pp,
+  activeKeys,
   comparing,
   onOpen,
   onToggleCompare,
 }: ResultRowProps) {
   return (
-    <TableRow className="cursor-pointer" onClick={onOpen}>
+    <TableRow className="cursor-pointer [&>td]:py-3" onClick={onOpen}>
       <TableCell className="text-center text-sm font-semibold text-muted-foreground tabular-nums">
         {rank}
       </TableCell>
@@ -226,18 +346,17 @@ function ResultRow({
           <ScoreBadge score={score} size="sm" />
         </div>
       </TableCell>
-      <TableCell className="text-right tabular-nums">
-        {formatEuro(commune.prixM2Appartement)}
-      </TableCell>
-      <TableCell className="text-right tabular-nums font-medium text-primary">
-        {surfaceLouable} m²
-      </TableCell>
-      <TableCell>
-        <MiniBar value={securite} />
-      </TableCell>
-      <TableCell>
-        <MiniBar value={qualiteVie} />
-      </TableCell>
+      {activeKeys.map((key) => (
+        <TableCell key={key} className="text-center">
+          {key === "pouvoirAchat" ? (
+            <span className="font-medium tabular-nums text-primary">
+              {pp.surfaceLouable} m²
+            </span>
+          ) : (
+            <MiniBar value={breakdown[key]} />
+          )}
+        </TableCell>
+      ))}
       <TableCell className="text-right">
         <Button
           variant={comparing ? "default" : "outline"}
@@ -262,19 +381,61 @@ function ResultRow({
   )
 }
 
+interface SortHeadProps {
+  label: string
+  columnKey: SortKey
+  className?: string
+  leadingIcon?: ReactNode
+  sortKey: SortKey
+  sortDir: "asc" | "desc"
+  onSort: (k: SortKey) => void
+}
+
+/** En-tête de colonne cliquable, avec indicateur de tri. */
+function SortHead({
+  label,
+  columnKey,
+  className,
+  leadingIcon,
+  sortKey,
+  sortDir,
+  onSort,
+}: SortHeadProps) {
+  const active = sortKey === columnKey
+  const Indicator = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown
+  return (
+    <TableHead
+      onClick={() => onSort(columnKey)}
+      className={cn(
+        "cursor-pointer select-none transition-colors hover:text-foreground",
+        active && "text-foreground",
+        className,
+      )}
+    >
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        {leadingIcon}
+        {label}
+        <Indicator
+          className={cn("size-3", active ? "text-primary" : "opacity-40")}
+        />
+      </span>
+    </TableHead>
+  )
+}
+
 function MiniBar({ value }: { value: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-16 overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary"
+    <span className="inline-flex items-center gap-2 align-middle">
+      <span className="h-1.5 w-14 overflow-hidden rounded-full bg-muted">
+        <span
+          className="block h-full rounded-full bg-primary"
           style={{ width: `${value}%` }}
         />
-      </div>
-      <span className="w-7 text-right text-xs tabular-nums text-muted-foreground">
+      </span>
+      <span className="w-6 text-right text-xs tabular-nums text-muted-foreground">
         {value}
       </span>
-    </div>
+    </span>
   )
 }
 
