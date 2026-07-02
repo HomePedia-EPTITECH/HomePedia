@@ -3,12 +3,24 @@ import type { Commune, TailleCommune } from "./types"
 
 export * from "./types"
 export { COMMUNES, MOYENNES_NATIONALES } from "./communes"
+export { scoreColor, scoreColorHex } from "./scoring"
 export {
+  CRITERIA,
+  CRITERION_KEYS,
+  LEVEL_WEIGHT,
+  LEVEL_LABELS,
+  DEFAULT_IMPORTANCE,
+  criterionScore,
   personalScore,
   scoreBreakdown,
-  scoreColor,
-  scoreColorHex,
-} from "./scoring"
+  type CriterionKey,
+  type CriterionDef,
+  type SubMetricDef,
+  type ImportanceLevel,
+  type Importance,
+  type SubFocus,
+} from "./criteria"
+export { purchasingPower, type PurchasingPower } from "./purchasingPower"
 
 /**
  * Façade "API" mock. Le jour où le back NestJS existe, on remplace

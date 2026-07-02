@@ -96,40 +96,5 @@ export interface Commune {
   services: ServicesCommune
 }
 
-/** Critères pondérables du score personnalisé (0–100 % chacun). */
-export interface Weights {
-  prix: number
-  securite: number
-  qualiteVie: number
-  ecoles: number
-  sante: number
-  revenus: number
-}
-
-/** Sous-scores normalisés d'une commune (0–100, "plus c'est haut, mieux c'est"). */
-export interface ScoreBreakdown {
-  prix: number
-  securite: number
-  qualiteVie: number
-  ecoles: number
-  sante: number
-  revenus: number
-}
-
-export const WEIGHT_LABELS: Record<keyof Weights, string> = {
-  prix: "Prix immobilier m²",
-  securite: "Sécurité",
-  qualiteVie: "Qualité de vie",
-  ecoles: "Écoles",
-  sante: "Services de santé",
-  revenus: "Revenus médians",
-}
-
-export const DEFAULT_WEIGHTS: Weights = {
-  prix: 70,
-  securite: 60,
-  qualiteVie: 55,
-  ecoles: 40,
-  sante: 40,
-  revenus: 45,
-}
+// Le modèle de critères / scoring (importance, sous-critères) vit dans
+// `criteria.ts`. Ce fichier ne décrit plus que la donnée "commune".
