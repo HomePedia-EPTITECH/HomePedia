@@ -1,0 +1,40 @@
+{
+  "name": "homepedia-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS backend for HomePedia KPIs",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "test": "jest --runInBand",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "10.4.15",
+    "@nestjs/core": "10.4.15",
+    "@nestjs/platform-express": "10.4.15",
+    "@nestjs/swagger": "^7.4.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.2",
+    "dotenv": "^16.6.1",
+    "mongodb": "^6.21.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "10.4.15",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.15.30",
+    "@types/pg": "^8.15.5",
+    "@types/supertest": "^6.0.3",
+    "jest": "^30.0.5",
+    "mongodb-memory-server": "^11.0.1",
+    "pg-mem": "^3.0.14",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.8.3"
+  }
+}

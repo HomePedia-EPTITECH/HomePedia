@@ -23,6 +23,9 @@ dbTarget.reviews_raw.createIndex(
 // Lecture par commune (timeline locale)
 dbTarget.reviews_raw.createIndex({ com: 1, collected_at: -1 });
 
+// Pagination cursorisée par commune et _id
+dbTarget.reviews_raw.createIndex({ com: 1, _id: 1 }, { name: "idx_reviews_raw_com_id" });
+
 // Filtres par source + commune
 dbTarget.reviews_raw.createIndex({ source: 1, com: 1, collected_at: -1 });
 
@@ -34,4 +37,3 @@ dbTarget.reviews_raw.createIndex(
   { text: "text" },
   { default_language: "french", name: "idx_reviews_text_fr" }
 );
-

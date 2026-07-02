@@ -155,6 +155,11 @@ class HomepediaHarvester:
         safe_create_index(self.reviews_store, [("com", 1), ("collected_at", -1)])
         safe_create_index(
             self.reviews_store,
+            [("com", 1), ("_id", 1)],
+            name="idx_reviews_raw_com_id",
+        )
+        safe_create_index(
+            self.reviews_store,
             [("source", 1), ("com", 1), ("external_comment_id", 1)],
             unique=True,
             name="idx_reviews_raw_unique_external_id",
