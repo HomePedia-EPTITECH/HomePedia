@@ -18,8 +18,10 @@ import {
   type SubFocus,
 } from "@/data"
 
-/** Salaire net mensuel par défaut (€), utilisé tant que rien n'est saisi. */
-export const DEFAULT_SALARY = 2200
+/** Tranche de salaire net mensuel du foyer (€) par défaut. */
+export const DEFAULT_SALARY_RANGE: [number, number] = [1800, 2800]
+/** Nombre d'actifs dans le foyer par défaut. */
+export const DEFAULT_HOUSEHOLD = 1
 
 /** Valeur sentinelle "aucun filtre" (Radix Select interdit la valeur ""). */
 export const ALL_FILTER = "__all__"
@@ -38,9 +40,14 @@ const DEFAULT_GEO_FILTERS: GeoFilters = {
 }
 
 interface PreferencesState {
-  /** Salaire net mensuel de l'utilisateur (€). */
+  /** Tranche de salaire net mensuel du foyer (€), [min, max]. */
+  salaryRange: [number, number]
+  setSalaryRange: (range: [number, number]) => void
+  /** Nombre d'actifs dans le foyer (1, 2, …). */
+  household: number
+  setHousehold: (n: number) => void
+  /** Salaire effectif retenu pour les calculs (milieu de la tranche). */
   salary: number
-  setSalary: (value: number) => void
 
   /** Niveau d'importance de chaque grand critère (0 = non retenu). */
   importance: Importance
@@ -53,7 +60,10 @@ interface PreferencesState {
   addCriterion: (key: CriterionKey) => void
   removeCriterion: (key: CriterionKey) => void
   toggleSub: (key: CriterionKey, subKey: string) => void
+  /** Réinitialise les critères sur la sélection de référence (l'Accueil). */
   resetCriteria: () => void
+  /** Fige la sélection de référence (appelée depuis l'Accueil). */
+  setBaseline: (importance: Importance) => void
 
   /** Filtres géographiques (région / département / taille), partagés Classement ↔ Carte. */
   filters: GeoFilters
@@ -79,9 +89,13 @@ const MAX_COMPARE = 3
 const ADD_LEVEL: ImportanceLevel = 2
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [salary, setSalary] = useState<number>(DEFAULT_SALARY)
+  const [salaryRange, setSalaryRange] =
+    useState<[number, number]>(DEFAULT_SALARY_RANGE)
+  const [household, setHousehold] = useState<number>(DEFAULT_HOUSEHOLD)
   const [importance, setImportanceState] =
     useState<Importance>(DEFAULT_IMPORTANCE)
+  // Sélection de référence (celle de l'Accueil) que "Réinitialiser" restaure.
+  const [baseline, setBaseline] = useState<Importance>(DEFAULT_IMPORTANCE)
   const [subFocus, setSubFocus] = useState<SubFocus>({})
   const [filters, setFilters] = useState<GeoFilters>(DEFAULT_GEO_FILTERS)
   const [compareIds, setCompareIds] = useState<string[]>([])
@@ -131,9 +145,13 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PreferencesState>(() => {
     const selectedCriteria = CRITERION_KEYS.filter((k) => importance[k] > 0)
+    const salary = Math.round((salaryRange[0] + salaryRange[1]) / 2)
     return {
+      salaryRange,
+      setSalaryRange,
+      household,
+      setHousehold,
       salary,
-      setSalary,
       importance,
       subFocus,
       selectedCriteria,
@@ -142,9 +160,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       removeCriterion,
       toggleSub,
       resetCriteria: () => {
-        setImportanceState(DEFAULT_IMPORTANCE)
+        setImportanceState(baseline)
         setSubFocus({})
       },
+      setBaseline,
       filters,
       setFilter,
       resetFilters: () => setFilters(DEFAULT_GEO_FILTERS),
@@ -156,8 +175,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       isComparing: (id: string) => compareIds.includes(id),
     }
   }, [
-    salary,
+    salaryRange,
+    household,
     importance,
+    baseline,
     subFocus,
     filters,
     setFilter,

@@ -21,6 +21,9 @@ export type CriterionKey =
   | "ecoles"
   | "sante"
   | "emploi"
+  | "commerces"
+  | "transports"
+  | "cultureLoisirs"
 
 export const CRITERION_KEYS: CriterionKey[] = [
   "pouvoirAchat",
@@ -29,6 +32,9 @@ export const CRITERION_KEYS: CriterionKey[] = [
   "ecoles",
   "sante",
   "emploi",
+  "commerces",
+  "transports",
+  "cultureLoisirs",
 ]
 
 /** 0 = non retenu · 1 = un plus · 2 = important · 3 = essentiel. */
@@ -50,13 +56,17 @@ export const LEVEL_LABELS: Record<Exclude<ImportanceLevel, 0>, string> = {
 export type Importance = Record<CriterionKey, ImportanceLevel>
 export type SubFocus = Partial<Record<CriterionKey, string[]>>
 
+// Critères cochés par défaut sur l'Accueil (accès direct au Classement inclus).
 export const DEFAULT_IMPORTANCE: Importance = {
   pouvoirAchat: 2,
   securite: 2,
-  qualiteVie: 1,
+  qualiteVie: 0,
   ecoles: 0,
   sante: 0,
-  emploi: 1,
+  emploi: 0,
+  commerces: 0,
+  transports: 0,
+  cultureLoisirs: 0,
 }
 
 // ---- Normalisation sur l'ensemble du dataset ----
@@ -113,6 +123,20 @@ const R = {
   ),
   hopitaux: rangeOf(
     COMMUNES.map((c) => perMille(c.services.hopitaux, c.population)),
+  ),
+  supermarches: rangeOf(
+    COMMUNES.map((c) =>
+      perMille(c.services.hypermarches + c.services.supermarches, c.population),
+    ),
+  ),
+  restaurants: rangeOf(
+    COMMUNES.map((c) => perMille(c.services.restaurants, c.population)),
+  ),
+  boulangeries: rangeOf(
+    COMMUNES.map((c) => perMille(c.services.boulangeries, c.population)),
+  ),
+  banques: rangeOf(
+    COMMUNES.map((c) => perMille(c.services.banques, c.population)),
   ),
 }
 
@@ -202,6 +226,34 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     subs: [
       { key: "revenus", label: "Revenus médians", score: (c) => norm(c.revenuMoyen, R.revenu) },
       { key: "emploi", label: "Faible chômage", score: (c) => norm(c.tauxChomage, R.chomage, true) },
+    ],
+  },
+  commerces: {
+    key: "commerces",
+    label: "Commerces",
+    hint: "Vie pratique & achats du quotidien",
+    subs: [
+      { key: "supermarches", label: "Grandes surfaces", score: (c) => norm(perMille(c.services.hypermarches + c.services.supermarches, c.population), R.supermarches) },
+      { key: "boulangeries", label: "Boulangeries", score: (c) => norm(perMille(c.services.boulangeries, c.population), R.boulangeries) },
+      { key: "restaurants", label: "Restaurants", score: (c) => norm(perMille(c.services.restaurants, c.population), R.restaurants) },
+      { key: "banques", label: "Banques", score: (c) => norm(perMille(c.services.banques, c.population), R.banques) },
+    ],
+  },
+  transports: {
+    key: "transports",
+    label: "Transports",
+    hint: "Mobilité & desserte",
+    subs: [
+      { key: "transports", label: "Desserte transports", score: (c) => Math.round(c.notes.transports * 10) },
+    ],
+  },
+  cultureLoisirs: {
+    key: "cultureLoisirs",
+    label: "Culture & loisirs",
+    hint: "Sorties, sports et vie culturelle",
+    subs: [
+      { key: "culture", label: "Culture", score: (c) => Math.round(c.notes.culture * 10) },
+      { key: "sportsLoisirs", label: "Sports & loisirs", score: (c) => Math.round(c.notes.sportsLoisirs * 10) },
     ],
   },
 }

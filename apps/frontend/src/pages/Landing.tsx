@@ -1,6 +1,6 @@
-import { useState } from "react"
+import { useEffect } from "react"
 import { useNavigate } from "react-router-dom"
-import { ArrowRight, Sparkles, Wallet } from "lucide-react"
+import { ArrowRight, Sparkles, User } from "lucide-react"
 import { usePreferences } from "@/app/preferences"
 import {
   COMMUNES,
@@ -13,40 +13,34 @@ import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
-import { UniversalSearch } from "@/components/layout/UniversalSearch"
 import { cn } from "@/lib/utils"
 
-const SALARY_TRANCHES = [
-  { label: "< 1 800 €", value: 1600, hint: "Salaire modeste" },
-  { label: "1 800 – 2 800 €", value: 2300, hint: "Autour du médian" },
-  { label: "> 2 800 €", value: 3500, hint: "Salaire confortable" },
-]
+const HOUSEHOLD_OPTIONS = [1, 2, 3, 4]
 
 export function LandingPage() {
   const navigate = useNavigate()
-  const { salary, setSalary, setImportance } = usePreferences()
+  const {
+    salaryRange,
+    setSalaryRange,
+    household,
+    setHousehold,
+    importance,
+    selectedCriteria,
+    addCriterion,
+    removeCriterion,
+    setBaseline,
+  } = usePreferences()
 
-  const [salaire, setSalaire] = useState(salary)
-  const [tranche, setTranche] = useState(1)
-  const [selected, setSelected] = useState<Set<CriterionKey>>(
-    new Set(["pouvoirAchat", "securite"]),
-  )
+  // La sélection d'Accueil devient la référence que "Réinitialiser" restaurera.
+  useEffect(() => {
+    setBaseline(importance)
+  }, [importance, setBaseline])
 
+  // Tout écrit directement dans le store → les choix sont conservés quelle que
+  // soit la navigation (bouton CTA ou lien navbar).
   function toggleCriterion(key: CriterionKey) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  function submit() {
-    setSalary(salaire)
-    // Critères cochés = "Important" (niveau 2), les autres écartés.
-    // Le dosage fin et les sous-critères se règlent ensuite sur le Classement.
-    CRITERION_KEYS.forEach((k) => setImportance(k, selected.has(k) ? 2 : 0))
-    navigate("/resultats")
+    if (importance[key] > 0) removeCriterion(key)
+    else addCriterion(key)
   }
 
   return (
@@ -71,78 +65,65 @@ export function LandingPage() {
           <span className="text-primary">prochaine ville</span>
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-balance text-lg text-muted-foreground">
-          Comparez prix au m², sécurité, écoles et qualité de vie. Un score
-          personnalisé selon vos priorités, recalculé en temps réel.
+          Dites-nous votre salaire et ce qui compte pour vous : HomePedia classe
+          les villes de France selon votre pouvoir d'achat et vos critères —
+          immobilier, sécurité, écoles, santé, cadre de vie.
         </p>
-
-        <div className="mx-auto mt-8 max-w-md">
-          <UniversalSearch placeholder="Essayez « Lyon », « Bretagne »…" />
-        </div>
       </div>
 
       {/* Quiz */}
       <div className="mx-auto max-w-3xl px-4 pb-24">
         <Card className="border-border/70">
           <CardContent className="flex flex-col gap-8 pt-2">
-            {/* Étape 1 — Salaire */}
+            {/* Étape 1 — Salaire du foyer */}
             <section className="flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <StepBadge n={1} />
-                <div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <StepBadge n={1} />
                   <h2 className="font-semibold">Votre salaire net mensuel</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Sert à calculer votre pouvoir d'achat dans chaque ville
-                  </p>
+                </div>
+
+                {/* Composition du foyer (nb d'actifs) */}
+                <div className="flex items-center gap-1 rounded-lg border bg-secondary/40 p-1">
+                  {HOUSEHOLD_OPTIONS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setHousehold(n)}
+                      aria-label={`${n} actif${n > 1 ? "s" : ""} dans le foyer`}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md px-2.5 py-1.5 text-sm font-medium tabular-nums transition-colors",
+                        household === n
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <User className="size-3.5" />
+                      {n}
+                      {n === HOUSEHOLD_OPTIONS[HOUSEHOLD_OPTIONS.length - 1] &&
+                        "+"}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                {SALARY_TRANCHES.map((t, i) => (
-                  <button
-                    key={t.label}
-                    type="button"
-                    onClick={() => {
-                      setTranche(i)
-                      setSalaire(t.value)
-                    }}
-                    className={cn(
-                      "flex flex-col items-center gap-1 rounded-lg border p-4 text-center transition-colors",
-                      tranche === i
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-muted-foreground/40",
-                    )}
-                  >
-                    <Wallet
-                      className={cn(
-                        "size-5",
-                        tranche === i
-                          ? "text-primary"
-                          : "text-muted-foreground",
-                      )}
-                    />
-                    <span className="text-sm font-medium">{t.label}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {t.hint}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex flex-col gap-2 pt-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">
-                    Salaire net ajustable
+              <div className="flex flex-col gap-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="rounded-md bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">
+                    {formatEuro(salaryRange[0])}
                   </span>
-                  <span className="font-semibold tabular-nums">
-                    {formatEuro(salaire)} / mois
+                  <span className="text-xs text-muted-foreground">par mois</span>
+                  <span className="rounded-md bg-secondary px-2.5 py-1 text-sm font-semibold tabular-nums">
+                    {formatEuro(salaryRange[1])}
                   </span>
                 </div>
                 <Slider
-                  value={[salaire]}
+                  value={salaryRange}
                   min={1000}
-                  max={6000}
+                  max={8000}
                   step={100}
-                  onValueChange={([v]) => setSalaire(v)}
+                  minStepsBetweenThumbs={1}
+                  onValueChange={(v) => setSalaryRange([v[0], v[1]])}
                 />
               </div>
             </section>
@@ -163,7 +144,7 @@ export function LandingPage() {
                 {CRITERION_KEYS.map((key) => {
                   const def = CRITERIA[key]
                   const Icon = CRITERION_ICONS[key]
-                  const active = selected.has(key)
+                  const active = importance[key] > 0
                   return (
                     <button
                       key={key}
@@ -196,8 +177,8 @@ export function LandingPage() {
             <Button
               size="lg"
               className="w-full"
-              onClick={submit}
-              disabled={selected.size === 0}
+              onClick={() => navigate("/resultats")}
+              disabled={selectedCriteria.length === 0}
             >
               Trouver mes villes
               <ArrowRight className="size-4" />
