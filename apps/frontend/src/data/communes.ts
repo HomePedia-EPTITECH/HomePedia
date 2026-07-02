@@ -258,7 +258,195 @@ function buildCommune(seed: Seed): Commune {
   }
 }
 
-export const COMMUNES: Commune[] = SEEDS.map(buildCommune)
+/* ------------------------------------------------------------------ *
+ * Génération procédurale pour atteindre ~300 villes de test.
+ *
+ * Les 32 villes ci-dessus sont réelles ; le reste est généré de façon
+ * DÉTERMINISTE (même sortie à chaque chargement) en s'ancrant sur les
+ * départements réels, avec des valeurs corrélées à la taille de la commune.
+ *
+ * Le jour où l'équipe data livre le vrai dataset national, il suffit de
+ * remplacer `COMMUNES` par les données réelles : le reste de l'app (scoring,
+ * pagination, carte) est déjà dimensionné pour des dizaines de milliers de
+ * communes.
+ * ------------------------------------------------------------------ */
+
+const TARGET_COUNT = 300
+
+interface DepAnchor {
+  dep: string
+  region: string
+  cpPrefix: string
+  lon: number
+  lat: number
+  prixBase: number
+  revenuBase: number
+}
+
+const DEP_ANCHORS: DepAnchor[] = (() => {
+  const map = new Map<string, DepAnchor>()
+  for (const s of SEEDS) {
+    if (!map.has(s.dep)) {
+      map.set(s.dep, {
+        dep: s.dep,
+        region: s.region,
+        cpPrefix: s.cp.slice(0, 2),
+        lon: s.lon,
+        lat: s.lat,
+        prixBase: s.prixM2Appartement,
+        revenuBase: s.revenuMoyen,
+      })
+    }
+  }
+  return Array.from(map.values())
+})()
+
+const NAME_ROOTS = [
+  "Montreuil", "Villeneuve", "Beaumont", "Châteauneuf", "Roquefort", "Fontaine",
+  "Aubigny", "Marville", "Neuville", "Vaux", "Clairval", "Rochefort", "Verneuil",
+  "Longpré", "Boisset", "Belleville", "Puyloubier", "Sainval", "Montfort",
+  "Valbonne", "Chavigny", "Lestrem", "Cormeilles", "Availles", "Meyrargues",
+  "Sorbières", "Chanteloup", "Bourgneuf", "Précy", "Éclaron",
+]
+const SAINTS = [
+  "Saint-Martin", "Saint-Georges", "Sainte-Marie", "Saint-Julien",
+  "Saint-Pierre", "Saint-Rémy", "Saint-Aubin", "Saint-Loup", "Saint-Priest",
+  "Sainte-Colombe", "Saint-Amand", "Saint-Cyr",
+]
+const NAME_SUFFIXES = [
+  "-sur-Loire", "-en-Vexin", "-le-Château", "-les-Bains", "-sur-Mer",
+  "-la-Forêt", "-sur-Seine", "-le-Vieux", "-en-Bray", "-du-Lac", "-les-Vignes",
+]
+
+function pick<T>(arr: T[], r: number): T {
+  return arr[Math.min(arr.length - 1, Math.floor(r * arr.length))]
+}
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v))
+}
+
+function generateSeeds(count: number): Seed[] {
+  const used = new Set(SEEDS.map((s) => s.nom))
+  const out: Seed[] = []
+  let i = 0
+  // Borne de sécurité pour éviter toute boucle infinie sur collisions de noms.
+  while (out.length < count && i < count * 40) {
+    const r = mulberry32(hashSeed(`gen-${i}`))
+    i++
+    const anchor = pick(DEP_ANCHORS, r())
+
+    let nom = r() < 0.35 ? pick(SAINTS, r()) : pick(NAME_ROOTS, r())
+    if (r() < 0.5) nom += pick(NAME_SUFFIXES, r())
+    if (used.has(nom)) continue
+    used.add(nom)
+
+    const t = r()
+    const taille: TailleCommune =
+      t < 0.58 ? "village" : t < 0.92 ? "ville" : "metropole"
+
+    const population =
+      taille === "village"
+        ? Math.round(150 + r() * 2600)
+        : taille === "ville"
+          ? Math.round(3000 + r() * 55000)
+          : Math.round(80000 + r() * 220000)
+
+    const densite =
+      taille === "village"
+        ? Math.round(20 + r() * 180)
+        : taille === "ville"
+          ? Math.round(300 + r() * 3500)
+          : Math.round(3000 + r() * 8000)
+
+    const superficie = clamp(
+      Math.round((population / Math.max(15, densite)) * (0.6 + r() * 0.8)),
+      4,
+      320,
+    )
+
+    const taillePremium =
+      taille === "village" ? 0.75 : taille === "ville" ? 0.95 : 1.25
+    const prixM2Appartement =
+      Math.round(
+        clamp(anchor.prixBase * taillePremium * (0.7 + r() * 0.6), 700, 11000) /
+          10,
+      ) * 10
+    const prixM2Maison =
+      Math.round(clamp(prixM2Appartement * (0.9 + r() * 0.4), 700, 11000) / 10) *
+      10
+    const revenuMoyen =
+      Math.round(clamp(anchor.revenuBase * (0.85 + r() * 0.35), 18000, 42000) /
+        100) * 100
+    const tauxChomage =
+      Math.round(
+        clamp(7 + r() * 8 - (revenuMoyen - 26000) / 2000, 5.5, 16) * 10,
+      ) / 10
+
+    const sizeFactor =
+      taille === "village" ? 0.5 : taille === "ville" ? 0.9 : 1.4
+    const agr = Math.round(clamp((6 + r() * 8) * sizeFactor, 1, 18) * 10) / 10
+    const camb = Math.round(clamp((4 + r() * 5) * sizeFactor, 0.5, 12) * 10) / 10
+    const vols = Math.round(clamp((18 + r() * 18) * sizeFactor, 8, 45) * 10) / 10
+    const stup = Math.round(clamp((3 + r() * 5) * sizeFactor, 0.5, 10) * 10) / 10
+
+    const baseNote = clamp(
+      6.8 + (revenuMoyen - 26000) / 6000 - tauxChomage / 20,
+      5,
+      9,
+    )
+    const note = (spread = 1.2) =>
+      Math.round(clamp(baseNote + (r() - 0.5) * spread, 3.5, 9.5) * 10) / 10
+    const notes: Seed["notes"] = [
+      note(1.4), note(), note(), note(1.6), note(), note(), note(), note(), note(),
+    ]
+    const noteGlobale =
+      Math.round(clamp(3.4 + (baseNote - 6.8) * 0.4 + (r() - 0.5) * 0.4, 3, 4.8) *
+        10) / 10
+    const nbAvis = Math.round(clamp((population / 180) * (0.5 + r()), 40, 4000))
+
+    const lon = clamp(anchor.lon + (r() - 0.5) * 2.2, -4.7, 8.1)
+    const lat = clamp(anchor.lat + (r() - 0.5) * 1.6, 42.6, 50.9)
+    const cp = anchor.cpPrefix + String(Math.floor(r() * 899) + 100)
+
+    out.push({
+      id: `g${String(i).padStart(4, "0")}`,
+      nom,
+      cp,
+      dep: anchor.dep,
+      region: anchor.region,
+      metropole: taille === "metropole" ? `Agglo. de ${nom}` : undefined,
+      taille,
+      lon,
+      lat,
+      population,
+      densite,
+      superficie,
+      ageMoyen: Math.round(clamp(38 + (r() - 0.5) * 10, 32, 48)),
+      revenuMoyen,
+      tauxChomage,
+      prixM2Maison,
+      prixM2Appartement,
+      partProprietaires: Math.round(
+        clamp(taille === "metropole" ? 30 + r() * 15 : 40 + r() * 25, 25, 72),
+      ),
+      agr,
+      camb,
+      vols,
+      stup,
+      notes,
+      noteGlobale,
+      nbAvis,
+    })
+  }
+  return out
+}
+
+const ALL_SEEDS: Seed[] = [
+  ...SEEDS,
+  ...generateSeeds(TARGET_COUNT - SEEDS.length),
+]
+
+export const COMMUNES: Commune[] = ALL_SEEDS.map(buildCommune)
 
 /** Moyennes nationales (mock) pour la comparaison sur la fiche ville. */
 export const MOYENNES_NATIONALES = {
