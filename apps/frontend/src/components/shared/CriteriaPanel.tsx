@@ -5,10 +5,13 @@ import {
   GraduationCap,
   Heart,
   Plus,
+  Popcorn,
   RotateCcw,
   Shield,
+  ShoppingBag,
   SlidersHorizontal,
   Stethoscope,
+  TramFront,
   Wallet,
   X,
 } from "lucide-react"
@@ -31,6 +34,9 @@ export const CRITERION_ICONS: Record<CriterionKey, LucideIcon> = {
   ecoles: GraduationCap,
   sante: Stethoscope,
   emploi: Briefcase,
+  commerces: ShoppingBag,
+  transports: TramFront,
+  cultureLoisirs: Popcorn,
 }
 
 const LEVELS: Exclude<ImportanceLevel, 0>[] = [1, 2, 3]

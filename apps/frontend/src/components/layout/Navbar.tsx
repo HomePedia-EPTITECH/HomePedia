@@ -1,7 +1,6 @@
 import { NavLink } from "react-router-dom"
 import { GitCompareArrows, LayoutGrid, Map, Trophy } from "lucide-react"
 import { Logo } from "@/components/shared/Logo"
-import { UniversalSearch } from "./UniversalSearch"
 import { usePreferences } from "@/app/preferences"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -21,7 +20,7 @@ export function Navbar() {
       <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-4 px-4 lg:px-6">
         <Logo />
 
-        <nav className="ml-2 hidden items-center gap-1 md:flex">
+        <nav className="ml-2 flex items-center gap-1">
           {LINKS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -44,10 +43,6 @@ export function Navbar() {
             </NavLink>
           ))}
         </nav>
-
-        <div className="ml-auto w-full max-w-xs">
-          <UniversalSearch />
-        </div>
       </div>
     </header>
   )
