@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils"
 
 const LINKS = [
   { to: "/", label: "Accueil", icon: LayoutGrid, end: true },
-  { to: "/carte", label: "Carte", icon: Map, end: false },
   { to: "/resultats", label: "Classements", icon: Trophy, end: false },
+  { to: "/carte", label: "Carte", icon: Map, end: false },
   { to: "/comparer", label: "Comparer", icon: GitCompareArrows, end: false },
 ]
 
