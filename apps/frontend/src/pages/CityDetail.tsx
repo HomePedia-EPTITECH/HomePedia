@@ -23,18 +23,23 @@ import {
   Heart,
   Home,
   Plus,
+  Popcorn,
   ShoppingBag,
   Shield,
+  TramFront,
   TrendingUp,
   Users,
 } from "lucide-react"
 import {
+  CRITERIA,
   MOYENNES_NATIONALES,
   formatEuro,
   formatNumber,
   formatPercent,
   getCommuneById,
+  subScore,
   type Commune,
+  type CriterionKey,
 } from "@/data"
 import { usePreferences } from "@/app/preferences"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
@@ -53,7 +58,9 @@ import { NotFoundPage } from "./NotFound"
 export function CityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { scoreOf, toggleCompare, isComparing } = usePreferences()
+  const { scoreOf, toggleCompare, isComparing, selectedCriteria } =
+    usePreferences()
+  const has = (k: CriterionKey) => selectedCriteria.includes(k)
   const commune = id ? getCommuneById(id) : undefined
 
   if (!commune) return <NotFoundPage />
@@ -157,14 +164,20 @@ export function CityDetailPage() {
         />
       </div>
 
+      {/* Sections affichées selon les critères filtrés (démographie & avis en contexte) */}
       <div className="grid gap-6 lg:grid-cols-2">
-        <ImmobilierSection commune={commune} />
-        <QualiteVieSection commune={commune} />
+        {has("pouvoirAchat") && <ImmobilierSection commune={commune} />}
+        {has("qualiteVie") && <QualiteVieSection commune={commune} />}
+        {has("securite") && <SecuriteSection commune={commune} />}
+        {has("emploi") && <EmploiSection commune={commune} />}
+        {has("transports") && <TransportsSection commune={commune} />}
+        {has("cultureLoisirs") && <CultureLoisirsSection commune={commune} />}
         <DemographieSection commune={commune} />
-        <SecuriteSection commune={commune} />
       </div>
 
-      <ServicesSection commune={commune} />
+      {(has("sante") || has("ecoles") || has("commerces")) && (
+        <ServicesSection commune={commune} />
+      )}
       <AvisSection commune={commune} />
     </div>
   )
@@ -204,7 +217,7 @@ function ImmobilierSection({ commune }: { commune: Commune }) {
   const growth = Math.round(((last - first) / first) * 100)
 
   return (
-    <SectionCard title="Prix immobilier" icon={Building2}>
+    <SectionCard title="Pouvoir d'achat" icon={Building2}>
       <div className="mb-4 grid grid-cols-2 gap-3">
         <MiniStat
           label="% Propriétaires"
@@ -372,6 +385,144 @@ function SecuriteSection({ commune }: { commune: Commune }) {
             </div>
           )
         })}
+      </div>
+    </SectionCard>
+  )
+}
+
+/** Données radar/bar des sous-critères d'une catégorie pour une ville. */
+function categorySubData(commune: Commune, key: CriterionKey) {
+  return CRITERIA[key].subs.map((s) => ({
+    dim: s.label,
+    score: subScore(commune, key, s.key),
+  }))
+}
+
+function EmploiSection({ commune }: { commune: Commune }) {
+  const data = categorySubData(commune, "emploi")
+  const chomageBetter = commune.tauxChomage <= MOYENNES_NATIONALES.tauxChomage
+  return (
+    <SectionCard title="Emploi & revenus" icon={Briefcase}>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <MiniStat
+          label="Revenu moyen"
+          value={`${formatEuro(commune.revenuMoyen)}/an`}
+        />
+        <div className="rounded-lg border bg-secondary/30 p-2.5">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold tabular-nums">
+              {formatPercent(commune.tauxChomage)}
+            </p>
+            <Badge variant={chomageBetter ? "success" : "warning"}>
+              {chomageBetter ? "↓" : "↑"} vs nat.
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">Taux de chômage</p>
+        </div>
+      </div>
+      <span className="mb-2 block text-sm font-medium">Marché de l'emploi</span>
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart
+            layout="vertical"
+            data={data}
+            margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="var(--border)"
+              horizontal={false}
+            />
+            <XAxis type="number" domain={[0, 100]} hide />
+            <YAxis
+              type="category"
+              dataKey="dim"
+              width={128}
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <RTooltip
+              content={<ChartTooltip suffix=" /100" />}
+              cursor={{ fill: "var(--muted)", opacity: 0.4 }}
+            />
+            <Bar dataKey="score" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </SectionCard>
+  )
+}
+
+function TransportsSection({ commune }: { commune: Commune }) {
+  const data = categorySubData(commune, "transports")
+  return (
+    <SectionCard title="Transports" icon={TramFront}>
+      <div className="mb-3 flex items-center gap-3">
+        <span className="text-3xl font-bold tabular-nums">
+          {commune.notes.transports.toFixed(1)}
+        </span>
+        <span className="text-sm text-muted-foreground">
+          / 10 · desserte globale
+        </span>
+      </div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={data} outerRadius="72%">
+            <PolarGrid stroke="var(--border)" />
+            <PolarAngleAxis
+              dataKey="dim"
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+            />
+            <Radar
+              dataKey="score"
+              stroke="var(--chart-6)"
+              fill="var(--chart-6)"
+              fillOpacity={0.35}
+            />
+            <RTooltip content={<ChartTooltip suffix=" /100" />} />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+    </SectionCard>
+  )
+}
+
+function CultureLoisirsSection({ commune }: { commune: Commune }) {
+  const data = categorySubData(commune, "cultureLoisirs")
+  return (
+    <SectionCard title="Culture & loisirs" icon={Popcorn}>
+      <div className="mb-3 flex items-center gap-4">
+        <div>
+          <span className="text-3xl font-bold tabular-nums">
+            {commune.notes.culture.toFixed(1)}
+          </span>
+          <span className="ml-1 text-sm text-muted-foreground">/ 10 culture</span>
+        </div>
+        <div>
+          <span className="text-3xl font-bold tabular-nums">
+            {commune.notes.sportsLoisirs.toFixed(1)}
+          </span>
+          <span className="ml-1 text-sm text-muted-foreground">/ 10 loisirs</span>
+        </div>
+      </div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <RadarChart data={data} outerRadius="72%">
+            <PolarGrid stroke="var(--border)" />
+            <PolarAngleAxis
+              dataKey="dim"
+              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+            />
+            <Radar
+              dataKey="score"
+              stroke="var(--chart-4)"
+              fill="var(--chart-4)"
+              fillOpacity={0.35}
+            />
+            <RTooltip content={<ChartTooltip suffix=" /100" />} />
+          </RadarChart>
+        </ResponsiveContainer>
       </div>
     </SectionCard>
   )
