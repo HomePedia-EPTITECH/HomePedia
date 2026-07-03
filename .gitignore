@@ -86,6 +86,10 @@ __pycache__/
 apps/**/node_modules/
 apps/**/dist/
 apps/**/.env
+
+# Vite cache
+.vite/
+**/.vite/
 *.so
 .venv/
 venv/
