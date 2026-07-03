@@ -41,13 +41,13 @@ export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
 
   private buildQuery(tables: Set<string>, scoped = false): string {
     const cityCountSelect = tables.has("commune")
-      ? `COUNT(c.${this.quoteIdentifier("id")})::int`
+      ? `COUNT(c.${this.quoteIdentifier("commune_id")})::int`
       : "0::int";
 
     const cityJoin = tables.has("commune")
       ? `
         LEFT JOIN ${this.relation("commune")} c
-          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("id")}
+          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
       `
       : "";
 

@@ -48,21 +48,21 @@ describe("GeoPostgresRepositories", () => {
         createPostgresV1Schema(["region", "departement", "commune", "demographie", "scores"])
       );
       harness.exec(`
-      INSERT INTO region (numero_region, name) VALUES (53, 'Bretagne');
-      INSERT INTO departement (id, numero_departement, nom, region_id) VALUES (3, '35', 'Ille-et-Vilaine', 53);
-      INSERT INTO commune (id, com, nom, code_postal, departement_id, metropole_id, maire)
-      VALUES (4, '35238', 'Rennes', '35000', 3, NULL, 'Nathalie Appere');
+      INSERT INTO region (numero_region, nom) VALUES (53, 'Bretagne');
+      INSERT INTO departement (numero_departement, nom, region_id) VALUES ('35', 'Ille-et-Vilaine', 53);
+      INSERT INTO commune (commune_id, nom, code_postal, departement_id, metropole_id, maire)
+      VALUES ('35238', 'Rennes', '35000', '35', NULL, 'Nathalie Appere');
       INSERT INTO demographie (
         commune_id, population, age_moyen, pop_active, taux_chomage, densite, revenu_moyen, superficie,
         part_0_14_ans, part_15_29_ans, part_30_44_ans, part_45_59_ans, part_60_74_ans, part_75_89_ans,
         part_90_plus, part_cadres, part_retraites, part_employes, part_ouvriers, part_sans_diplome,
         part_bac5_plus, part_couple_avec_enfants, part_personnes_seules
       ) VALUES
-        (4, 225081, 39, 62, 6.2, 4500, 30000, 50, 16, 24, 21, 16, 14, 7, 2, 20, 19, 16, 11, 10, 27, 20, 27);
+        ('35238', 225081, 39, 62, 6.2, 4500, 30000, 50, 16, 24, 21, 16, 14, 7, 2, 20, 19, 16, 11, 10, 27, 20, 27);
       INSERT INTO scores (
         commune_id, score_securite, score_education, score_loisirs, score_environnement, score_vie_pratique, score_globale
       ) VALUES
-        (4, 3.6, 3.8, 4.1, 4.5, 4.2, 4.0);
+        ('35238', 3.6, 3.8, 4.1, 4.5, 4.2, 4.0);
     `);
 
       const detail = await repository.findDetailByCode("35238");
@@ -179,8 +179,8 @@ describe("GeoPostgresRepositories", () => {
     it("still returns departements when the commune table is absent", async () => {
       harness.exec(createPostgresV1Schema(["region", "departement"]));
       harness.exec(`
-      INSERT INTO region (numero_region, name) VALUES (11, 'Ile-de-France');
-      INSERT INTO departement (id, numero_departement, nom, region_id) VALUES (1, '75', 'Paris', 11);
+      INSERT INTO region (numero_region, nom) VALUES (11, 'Ile-de-France');
+      INSERT INTO departement (numero_departement, nom, region_id) VALUES ('75', 'Paris', 11);
     `);
 
       await expect(repository.findByCode("75")).resolves.toEqual({
@@ -241,7 +241,7 @@ describe("GeoPostgresRepositories", () => {
     it("returns regions even when departements and communes are absent", async () => {
       harness.exec(createPostgresV1Schema(["region"]));
       harness.exec(`
-      INSERT INTO region (numero_region, name) VALUES (11, 'Ile-de-France');
+      INSERT INTO region (numero_region, nom) VALUES (11, 'Ile-de-France');
     `);
 
       await expect(repository.findRegionByCode("11")).resolves.toEqual({
