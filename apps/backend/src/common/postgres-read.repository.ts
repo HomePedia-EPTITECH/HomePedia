@@ -62,6 +62,24 @@ export abstract class PostgresReadRepository {
     }
   }
 
+  protected async getAvailableColumns(tableName: string): Promise<Set<string>> {
+    try {
+      const result = await this.dbService.query<{ column_name: string }>(
+        `
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = $1
+            AND table_name = $2
+        `,
+        [this.schemaName, tableName]
+      );
+
+      return new Set(result.rows.map((row) => row.column_name));
+    } catch {
+      return new Set();
+    }
+  }
+
   protected quoteIdentifier(value: string): string {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
       throw new Error(`Invalid PostgreSQL identifier: ${value}`);
