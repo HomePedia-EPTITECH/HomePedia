@@ -94,7 +94,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
     return `
       SELECT
         r.${this.quoteIdentifier("numero_region")}::text AS ${this.quoteIdentifier("code")},
-        r.${this.quoteIdentifier("name")} AS ${this.quoteIdentifier("name")},
+        r.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("name")},
         NULL AS ${this.quoteIdentifier("updatedAt")}
       FROM ${this.relation("region")} r
       ${scoped ? `WHERE r.${this.quoteIdentifier("numero_region")}::text = $1` : ""}
@@ -113,10 +113,10 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
         , city_counts AS (
           SELECT
             d.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("code")},
-            COUNT(c.${this.quoteIdentifier("id")})::int AS ${this.quoteIdentifier("cityCount")}
+            COUNT(c.${this.quoteIdentifier("commune_id")})::int AS ${this.quoteIdentifier("cityCount")}
           FROM ${this.relation("departement")} d
           INNER JOIN ${this.relation("commune")} c
-            ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("id")}
+            ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
           ${scopedFilter}
           GROUP BY d.${this.quoteIdentifier("region_id")}
         )
@@ -170,12 +170,12 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
     const cityJoin = tables.has("commune")
       ? `
         LEFT JOIN ${this.relation("commune")} c
-          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("id")}
+          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
       `
       : "";
 
     const cityCount = tables.has("commune")
-      ? `COUNT(c.${this.quoteIdentifier("id")})::int`
+      ? `COUNT(c.${this.quoteIdentifier("commune_id")})::int`
       : "0::int";
 
     return `
@@ -187,7 +187,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       FROM ${this.relation("departement")} d
       ${cityJoin}
       WHERE d.${this.quoteIdentifier("region_id")} = $1::int
-      GROUP BY d.${this.quoteIdentifier("id")}, d.${this.quoteIdentifier("numero_departement")}, d.${this.quoteIdentifier("nom")}
+      GROUP BY d.${this.quoteIdentifier("numero_departement")}, d.${this.quoteIdentifier("nom")}
       ORDER BY d.${this.quoteIdentifier("numero_departement")}::text ASC
     `;
   }

@@ -8,11 +8,20 @@ export type CityScores = {
   education: number | null;
 };
 
+export type CitySalary = {
+  cadre: number | null;
+  profIntermediaire: number | null;
+  employe: number | null;
+  ouvrier: number | null;
+  total: number | null;
+};
+
 export type CityMetrics = {
   population: number | null;
   averageAge: number | null;
   activePopulation: number | null;
   scores: CityScores;
+  salary: CitySalary;
 };
 
 export type City = {
@@ -55,6 +64,7 @@ export type CityDetailBlocks = {
   qualityOfLife: CityDetailObjectBlock;
   services: CityDetailObjectBlock;
   realEstate: CityDetailObjectBlock;
+  salary: CityDetailObjectBlock;
 };
 
 export type CityDetail = {

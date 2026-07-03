@@ -1,12 +1,25 @@
 from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 from pyspark.sql.functions import col, regexp_replace, trim, when
 from pyspark.sql.types import IntegerType
-from pyspark.sql import functions as F
 
-# MongoDB configuration
 MONGO_URI = "mongodb://admin:admin@localhost:27017/?authSource=admin"
 MONGO_DB = "homepedia_raw"
 MONGO_COLLECTION = "communes_direct"
+
+_DROP_COLS = {
+    "_id",
+    "avis_page",
+    "city_page",
+    "source",
+    "created_at",
+    "updated_at",
+    "reviews_refs_count",
+    "reviews_refs_last_collected_at",
+    "salaire_last_ingested_at",
+    "salaire_millesime",
+    "salaire_source",
+}
 
 
 def get_spark():
@@ -23,54 +36,16 @@ def get_spark():
 
 
 def safe_cast_int(col_name):
-    """
-    Cast une colonne en INTEGER de manière sécurisée :
-    - "" et null → null
-    - "123" → 123
-    - "2 434" → 2434
-    - 123.45 → 123
-    """
-    cleaned = regexp_replace(
-        trim(col(col_name)).cast("string"), "\\s+", ""
-    )  # Remove all spaces
+    cleaned = regexp_replace(trim(col(col_name)).cast("string"), "\\s+", "")
     return (
-        when((cleaned == "") | (cleaned.isNull()), None)
+        when((cleaned == "") | cleaned.isNull(), None)
         .otherwise(cleaned.cast(IntegerType()))
         .alias(col_name)
     )
 
 
 def load_mongodb_collection(spark):
-    """
-    Load data from MongoDB collection and return as flattened Spark DataFrame
-    """
     try:
-        #     df = spark.read.format("mongodb") \
-        #         .option("spark.mongodb.read.connection.uri", MONGO_URI) \
-        #         .option("spark.mongodb.read.database", MONGO_DB) \
-        #         .option("spark.mongodb.read.collection", MONGO_COLLECTION) \
-        #         .option("spark.mongodb.read.inferSchema.sampleSize", "100000") \
-        #         .option("pipeline", """
-        # [
-        #     {
-        #         "$addFields": {
-        #             "metrics": {
-        #                 "$arrayToObject": {
-        #                     "$map": {
-        #                         "input": { "$objectToArray": "$metrics" },
-        #                         "as": "m",
-        #                         "in": {
-        #                             "k": "$$m.k",
-        #                             "v": { "$toString": "$$m.v" }
-        #                         }
-        #                     }
-        #                 }
-        #             }
-        #         }
-        #     }
-        # ]
-        # """) \
-        #         .load()
         df = (
             spark.read.format("mongodb")
             .option("spark.mongodb.read.connection.uri", MONGO_URI)
@@ -79,78 +54,68 @@ def load_mongodb_collection(spark):
             .option(
                 "pipeline",
                 """
-    [{
-        "$addFields": {
-            "metrics": {
-                "$arrayToObject": {
-                    "$map": {
-                        "input": { "$objectToArray": "$metrics" },
-                        "as": "m",
-                        "in": {
-                            "k": "$$m.k",
-                            "v": {
-                                "$cond": {
-                                    "if": { "$eq": ["$$m.v", ""] },
-                                    "then": null,
-                                    "else": { "$toString": "$$m.v" }
+                [{
+                    "$addFields": {
+                        "metrics": {
+                            "$arrayToObject": {
+                                "$map": {
+                                    "input": { "$objectToArray": "$metrics" },
+                                    "as": "m",
+                                    "in": {
+                                        "k": "$$m.k",
+                                        "v": {
+                                            "$cond": {
+                                                "if": { "$eq": ["$$m.v", ""] },
+                                                "then": null,
+                                                "else": { "$toString": "$$m.v" }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            }
-        }
-    }]
-    """,
+                }]
+                """,
             )
             .load()
         )
 
-        # df = safe_string(df, "metrics.nb_avis")
+        to_drop = [column for column in df.columns if column in _DROP_COLS]
+        if to_drop:
+            df = df.drop(*to_drop)
 
-        # Supprimer l'_id MongoDB
-        if "_id" in df.columns:
-            df = df.drop("_id")
+        metrics_cols = []
+        if "metrics" in df.columns:
+            metrics_cols = [safe_metric_col(column) for column in df.select("metrics.*").columns]
 
-        # === Aplatir les structs ===
-        # metrics_cols = [col("metrics."+c).alias(c if c != "com" else "com_reviews") for c in df.select("metrics.*").columns]
+        real_estate_cols = []
+        if "real_estate" in df.columns:
+            real_estate_cols = [
+                col(f"real_estate.{column}").alias(column)
+                for column in df.select("real_estate.*").columns
+            ]
 
-        metrics_cols = [safe_metric_col(c) for c in df.select("metrics.*").columns]
-        real_estate_cols = [
-            col("real_estate." + c).alias(c) for c in df.select("real_estate.*").columns
-        ]
-
-        # Colonnes racines
         root_cols = [
-            c
-            for c in df.columns
-            if c not in ["metrics", "real_estate", "reviews_summary"]
+            column
+            for column in df.columns
+            if column not in {"metrics", "real_estate", "reviews_summary"}
         ]
 
-        # DataFrame aplati
         df_flat = df.select(root_cols + metrics_cols + real_estate_cols)
+        df_flat = df_flat.drop("com_reviews", "presentation")
 
-        # df_flat = safe_string(df_flat, "nb_avis")
-        print(df_flat.columns)
-
-        # === Supprimer les doublons ===
-        df_flat = df_flat.drop(
-            "com_reviews", "presentation"
-        )  # ou mettre plusieurs colonnes si nécessaire
-
-        # === Forcer la conversion des colonnes nb_* en INTEGER ===
         for col_name in df_flat.columns:
             if col_name.startswith("nb_"):
                 try:
                     df_flat = df_flat.withColumn(col_name, safe_cast_int(col_name))
                 except Exception:
-                    print(f"⚠ Warning: Could not safely cast {col_name} to INT")
+                    print(f"Warning: could not safely cast {col_name} to INT")
 
         print(
             f"✓ Spark DataFrame created with {df_flat.count()} rows and {len(df_flat.columns)} columns"
         )
         return df_flat
-
     except Exception as e:
         print(f"✗ Error connecting to MongoDB: {e}")
         raise
@@ -165,10 +130,10 @@ def safe_string(df, col_name):
     )
 
 
-def safe_metric_col(c):
-    alias = c if c != "com" else "com_reviews"
+def safe_metric_col(metric_name):
+    alias = metric_name if metric_name != "com" else "com_reviews"
     return (
-        F.when(F.col(f"metrics.{c}").cast("string") == "", None)
-        .otherwise(F.col(f"metrics.{c}").cast("string"))
+        F.when(F.col(f"metrics.{metric_name}").cast("string") == "", None)
+        .otherwise(F.col(f"metrics.{metric_name}").cast("string"))
         .alias(alias)
     )

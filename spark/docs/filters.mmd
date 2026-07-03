@@ -1,0 +1,15 @@
+flowchart TD
+    A["DataFrame nettoyé\n(types corrects)"]
+
+    A --> B{{"nb_avis >= 2 ?"}}
+    B -->|"Non → écarté"| X1["❌ Commune avec\npeu d'avis\n(biais statistique)"]
+    B -->|"Oui"| C
+
+    C{{"prix_m2 non null\net dans l'intervalle\n500 < prix < 30 000 ?"}}
+    C -->|"Non → écarté"| X2["❌ Prix aberrant\nou données manquantes\n(outlier immobilier)"]
+    C -->|"Oui"| D["✅ Commune valide\npour l'upsert"]
+
+    style X1 fill:#cc3300,color:#fff
+    style X2 fill:#cc3300,color:#fff
+    style D fill:#4DB33D,color:#fff
+    style A fill:#E25A1C,color:#fff
