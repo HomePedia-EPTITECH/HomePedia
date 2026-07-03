@@ -1,6 +1,5 @@
 import { Module } from "@nestjs/common";
 import { DbModule } from "../../db/db.module";
-import { ReviewsModule } from "../reviews/reviews.module";
 import {
   GeoCitiesPostgresRepository
 } from "./geo-cities.postgres.repository";
@@ -13,7 +12,7 @@ import {
 import { GeoService } from "./geo.service";
 
 @Module({
-  imports: [DbModule, ReviewsModule],
+  imports: [DbModule],
   providers: [
     GeoService,
     GeoCitiesPostgresRepository,
