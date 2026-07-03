@@ -76,17 +76,6 @@ export type CommuneRecord = {
 
   services: CommuneServices;
   salary: CommuneSalary;
-  source: string | null;
-  cityPage: string | null;
-  avisPage: string | null;
-  updatedAt: string | null;
-};
-
-export type CommuneAvisRecord = {
-  auteur: string;
-  note: number | null;
-  sentiment: "positif" | "negatif";
-  texte: string;
 };
 
 export type CommunePriceHistoryRecord = {
@@ -100,7 +89,6 @@ export type CommuneAgeDistributionRecord = {
 };
 
 export type CommuneDetailRecord = CommuneRecord & {
-  avis: CommuneAvisRecord[];
   prixHistorique: CommunePriceHistoryRecord[];
   ageDistribution: CommuneAgeDistributionRecord[];
 };

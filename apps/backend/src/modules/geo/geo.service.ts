@@ -4,7 +4,6 @@ import {
   ServiceUnavailableException
 } from "@nestjs/common";
 import { parseMetricValue, toIsoString } from "../../common/format";
-import { ReviewsRepository } from "../reviews/reviews.repository";
 import { GetCitiesQueryDto } from "./dto/get-cities-query.dto";
 import {
   CitiesResponseDto,
@@ -31,29 +30,21 @@ import {
 } from "./geo-departements.postgres.repository";
 import { GeoRegionsPostgresRepository, RegionRow } from "./geo-regions.postgres.repository";
 
-type ReviewDocument = Awaited<ReturnType<ReviewsRepository["findByCityCode"]>>;
-
 @Injectable()
 export class GeoService {
   constructor(
     private readonly citiesRepository: GeoCitiesPostgresRepository,
     private readonly departementsRepository: GeoDepartementsPostgresRepository,
-    private readonly regionsRepository: GeoRegionsPostgresRepository,
-    private readonly reviewsRepository: ReviewsRepository
+    private readonly regionsRepository: GeoRegionsPostgresRepository
   ) {}
 
   async getCities(query: GetCitiesQueryDto): Promise<CitiesResponseDto> {
-    const scopedCodes =
-      query.nb_avis_min !== undefined
-        ? await this.getReviewScopedCityCodes(query.nb_avis_min)
-        : undefined;
-
     let rows: CityRow[];
     let total: number;
     try {
       [rows, total] = await Promise.all([
-        this.citiesRepository.findAll(query, scopedCodes),
-        this.citiesRepository.countAll(query, scopedCodes)
+        this.citiesRepository.findAll(query),
+        this.citiesRepository.countAll(query)
       ]);
     } catch {
       throw new ServiceUnavailableException("Cities data source is unavailable");
@@ -97,43 +88,33 @@ export class GeoService {
       throw new NotFoundException(`City ${code} not found`);
     }
 
-    const detail = this.mergeSqlDetailWithReviews(
-      sqlDetail,
-      await this.safeReviewLookup(code)
-    );
-
     return {
       data: {
-        city: this.toCity(detail.city),
+        city: this.toCity(sqlDetail.city),
         admin: {
-          codeDept: detail.admin.codeDept,
-          postalCode: detail.admin.postalCode,
-          region: detail.admin.region,
-          departement: detail.admin.departement,
-          metropole: detail.admin.metropole,
-          mayor: detail.admin.mayor
+          codeDept: sqlDetail.admin.codeDept,
+          postalCode: sqlDetail.admin.postalCode,
+          region: sqlDetail.admin.region,
+          departement: sqlDetail.admin.departement,
+          metropole: sqlDetail.admin.metropole,
+          mayor: sqlDetail.admin.mayor
         },
         source: {
-          provider: detail.source.provider,
-          cityPage: detail.source.cityPage,
-          reviewsPage: detail.source.reviewsPage,
-          harvestedAt: toIsoString(detail.source.harvestedAt),
-          updatedAt: toIsoString(detail.source.updatedAt)
+          provider: sqlDetail.source.provider,
+          cityPage: sqlDetail.source.cityPage,
+          reviewsPage: sqlDetail.source.reviewsPage,
+          harvestedAt: toIsoString(sqlDetail.source.harvestedAt),
+          updatedAt: toIsoString(sqlDetail.source.updatedAt)
         },
         blocks: {
-          demography: { values: detail.blocks.demography },
-          security: { values: detail.blocks.security },
-          qualityOfLife: { values: detail.blocks.qualityOfLife },
-          services: { values: detail.blocks.services },
-          realEstate: { values: detail.blocks.realEstate },
-          salary: { values: detail.blocks.salary }
+          demography: { values: sqlDetail.blocks.demography },
+          security: { values: sqlDetail.blocks.security },
+          qualityOfLife: { values: sqlDetail.blocks.qualityOfLife },
+          services: { values: sqlDetail.blocks.services },
+          realEstate: { values: sqlDetail.blocks.realEstate },
+          salary: { values: sqlDetail.blocks.salary }
         },
-        reviews: {
-          count: detail.reviews.count,
-          positive: detail.reviews.positive,
-          negative: detail.reviews.negative,
-          all: detail.reviews.all
-        }
+        reviews: sqlDetail.reviews
       }
     };
   }
@@ -238,54 +219,6 @@ export class GeoService {
     };
   }
 
-  private mergeSqlDetailWithReviews(
-    sqlDetail: CityDetailRow,
-    reviewDocument: ReviewDocument | null
-  ): CityDetailRow {
-    return {
-      city: sqlDetail.city,
-      admin: sqlDetail.admin,
-      source: {
-        provider: reviewDocument?.source ?? sqlDetail.source.provider ?? null,
-        cityPage: sqlDetail.source.cityPage,
-        reviewsPage: reviewDocument?.sourceUrl ?? sqlDetail.source.reviewsPage ?? null,
-        harvestedAt: reviewDocument?.harvestedAt ?? sqlDetail.source.harvestedAt ?? null,
-        updatedAt: reviewDocument?.harvestedAt ?? sqlDetail.source.updatedAt ?? null
-      },
-      blocks: sqlDetail.blocks,
-      reviews: {
-        count: reviewDocument?.totalReviews ?? 0,
-        positive: this.extractReviewTexts(reviewDocument?.reviews ?? [], "positive"),
-        negative: this.extractReviewTexts(reviewDocument?.reviews ?? [], "negative"),
-        all: this.extractReviewTexts(reviewDocument?.reviews ?? [])
-      }
-    };
-  }
-
-  private extractReviewTexts(
-    reviews: Array<{ text?: string; sentiment_label?: string }>,
-    sentiment?: "positive" | "negative"
-  ): string[] {
-    const values: string[] = [];
-
-    for (const review of reviews) {
-      const text = review.text?.trim();
-      if (!text) {
-        continue;
-      }
-
-      if (sentiment && review.sentiment_label !== sentiment) {
-        continue;
-      }
-
-      if (!values.includes(text)) {
-        values.push(text);
-      }
-    }
-
-    return values;
-  }
-
   private toCity(row: CityRow): City {
     return {
       code: row.com,
@@ -333,19 +266,4 @@ export class GeoService {
     };
   }
 
-  private async getReviewScopedCityCodes(minimumReviews: number): Promise<string[]> {
-    try {
-      return await this.reviewsRepository.findCityCodesWithMinimumReviews(minimumReviews);
-    } catch {
-      throw new ServiceUnavailableException("Reviews data source is unavailable");
-    }
-  }
-
-  private async safeReviewLookup(code: string): Promise<ReviewDocument | null> {
-    try {
-      return await this.reviewsRepository.findByCityCode(code);
-    } catch {
-      return null;
-    }
-  }
 }

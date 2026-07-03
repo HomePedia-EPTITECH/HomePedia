@@ -1,10 +1,8 @@
 import { Injectable } from "@nestjs/common";
-import { Document } from "mongodb";
-import { MongoService } from "../../db/mongo.service";
+import { PostgresReadRepository } from "../../common/postgres-read.repository";
+import { DbService } from "../../db/db.service";
 import {
   CommuneAgeDistributionRecord,
-  CommuneAvisRecord,
-  CommuneDetailRecord,
   CommuneNotes,
   CommunePriceHistoryRecord,
   CommuneRecord,
@@ -13,47 +11,90 @@ import {
   CommuneSize
 } from "./communes.types";
 
-type RawCommuneDocument = Document & Record<string, unknown>;
+type CommuneSqlRow = {
+  com: string;
+  nom: string;
+  codePostal: string | null;
+  codeDept: string | null;
+  regionCode: string | null;
+  departement: string | null;
+  region: string | null;
+  metropole: string | null;
+  population: number | null;
+  densite: number | null;
+  superficie: number | null;
+  ageMoyen: number | null;
+  revenuMoyen: number | null;
+  tauxChomage: number | null;
+  prixM2Maison: number | null;
+  prixM2Appartement: number | null;
+  partProprietaires: number | null;
+  partLocataires: number | null;
+  partResidencesPrincipales: number | null;
+  partResidencesSecondaires: number | null;
+  partResidencesVacantes: number | null;
+  agressions: number | null;
+  cambriolages: number | null;
+  volsDegradations: number | null;
+  stupefiants: number | null;
+  scoreSecurite: number | null;
+  scoreEducation: number | null;
+  scoreLoisirs: number | null;
+  scoreEnvironnement: number | null;
+  scoreViePratique: number | null;
+  scoreGlobale: number | null;
+  nbAvis: number | null;
+  nbMedecins: number | null;
+  nbPharmacies: number | null;
+  nbHopitaux: number | null;
+  nbSpecialistes: number | null;
+  nbCreches: number | null;
+  nbEcolesMaternellesPubliques: number | null;
+  nbEcolesMaternellesPrivees: number | null;
+  nbEcolesPrimairesPubliques: number | null;
+  nbEcolesPrimairesPrivees: number | null;
+  nbCollegesPublics: number | null;
+  nbCollegesPrives: number | null;
+  nbLyceesPublics: number | null;
+  nbLyceesPrives: number | null;
+  nbHypermarches: number | null;
+  nbSupermarches: number | null;
+  nbRestaurants: number | null;
+  nbBanques: number | null;
+  nbBoulangeries: number | null;
+  salaireCadre: number | null;
+  salaireProfIntermediaire: number | null;
+  salaireEmploye: number | null;
+  salaireOuvrier: number | null;
+  salaireTotal: number | null;
+};
+
+type AgeDistributionRow = {
+  part_0_14_ans: number | null;
+  part_15_29_ans: number | null;
+  part_30_44_ans: number | null;
+  part_45_59_ans: number | null;
+  part_60_74_ans: number | null;
+  part_75_89_ans: number | null;
+  part_90_plus: number | null;
+};
 
 @Injectable()
-export class CommunesRepository {
-  constructor(private readonly mongoService: MongoService) {}
+export class CommunesRepository extends PostgresReadRepository {
+  constructor(dbService: DbService) {
+    super(dbService);
+  }
 
   async loadCatalogue(): Promise<CommuneRecord[]> {
-    const [directDocs, viDocs] = await Promise.all([
-      this.findCollectionDocuments("communes_direct"),
-      this.findCollectionDocuments("communes_direct_vi")
-    ]);
-
-    const byCode = new Map<string, CommuneRecord>();
-
-    for (const doc of directDocs) {
-      const record = this.mapDirectDocument(doc);
-      byCode.set(record.id, record);
+    const tables = await this.getAvailableTables();
+    if (!tables.has("commune")) {
+      return [];
     }
 
-    for (const doc of viDocs) {
-      const code = this.asCode(doc.com);
-      if (!code) {
-        continue;
-      }
-
-      const viRecord = this.mapViDocument(doc);
-      const current = byCode.get(code);
-      if (current) {
-        byCode.set(code, this.mergeCommuneRecord(current, viRecord));
-      } else {
-        byCode.set(code, viRecord);
-      }
-    }
-
-    return Array.from(byCode.values()).sort((a, b) => {
+    const result = await this.dbService.query<CommuneSqlRow>(this.buildCatalogueQuery(tables));
+    return result.rows.map((row) => this.mapRow(row)).sort((a, b) => {
       const byName = a.nom.localeCompare(b.nom, "fr");
-      if (byName !== 0) {
-        return byName;
-      }
-
-      return a.id.localeCompare(b.id);
+      return byName !== 0 ? byName : a.id.localeCompare(b.id);
     });
   }
 
@@ -63,123 +104,22 @@ export class CommunesRepository {
       return null;
     }
 
-    const [directDoc, viDoc] = await Promise.all([
-      this.findOneDocument("communes_direct", { com: code }),
-      this.findOneDocument("communes_direct_vi", { com: code })
-    ]);
-
-    if (!directDoc && !viDoc) {
+    const tables = await this.getAvailableTables();
+    if (!tables.has("commune")) {
       return null;
     }
 
-    const base = directDoc ? this.mapDirectDocument(directDoc) : this.mapViDocument(viDoc!);
-    if (!viDoc) {
-      return base;
-    }
+    const result = await this.dbService.query<CommuneSqlRow>(
+      this.buildCatalogueQuery(tables, true),
+      [code]
+    );
 
-    return this.mergeCommuneRecord(base, this.mapViDocument(viDoc));
+    return result.rows[0] ? this.mapRow(result.rows[0]) : null;
   }
 
-  async findReviewsByCommuneCode(
-    code: string,
-    limit = 20
-  ): Promise<CommuneAvisRecord[]> {
-    const normalizedCode = this.normalizeCode(code);
-    if (!normalizedCode) {
-      return [];
-    }
-
-    const collection = await this.mongoService.getCollection<RawCommuneDocument>("reviews_raw");
-    const reviews = await collection
-      .find(
-        { com: normalizedCode },
-        {
-          projection: {
-            _id: 0,
-            text: 1,
-            rating: 1,
-            sentiment_label: 1,
-            source: 1,
-            url_page: 1,
-            collected_at: 1
-          }
-        }
-      )
-      .sort({ collected_at: -1, _id: -1 })
-      .limit(Math.max(1, Math.trunc(limit)))
-      .toArray();
-
-    return reviews.flatMap((review) => {
-      const texte = this.asString(review.text);
-      if (!texte) {
-        return [];
-      }
-
-      const sentimentLabel = this.asString(review.sentiment_label)?.toLowerCase();
-      const sentiment: "positif" | "negatif" =
-        sentimentLabel === "negative" || sentimentLabel === "negatif" ? "negatif" : "positif";
-
-      return [
-        {
-          auteur: this.asString(review.source) ?? "Anonyme",
-          note: this.asNumber(review.rating),
-          sentiment,
-          texte
-        }
-      ];
-    });
-  }
-
-  async findPriceHistory(code: string): Promise<CommunePriceHistoryRecord[]> {
-    const normalizedCode = this.normalizeCode(code);
-    if (!normalizedCode) {
-      return [];
-    }
-
-    const collection = await this.mongoService.getCollection<RawCommuneDocument>("real_estate_history");
-    const rows = await collection
-      .aggregate<{ _id: number; prixM2: number }>([
-        {
-          $match: {
-            com: normalizedCode,
-            prix_m2: { $type: "number" }
-          }
-        },
-        {
-          $addFields: {
-            year: {
-              $convert: {
-                input: { $substrBytes: [{ $ifNull: ["$date_mutation", ""] }, 0, 4] },
-                to: "int",
-                onError: null,
-                onNull: null
-              }
-            }
-          }
-        },
-        {
-          $match: {
-            year: { $ne: null }
-          }
-        },
-        {
-          $group: {
-            _id: "$year",
-            prixM2: { $avg: "$prix_m2" }
-          }
-        },
-        {
-          $sort: {
-            _id: 1
-          }
-        }
-      ])
-      .toArray();
-
-    return rows.map((row) => ({
-      annee: row._id,
-      prixM2: Math.round(row.prixM2 * 10) / 10
-    }));
+  async findPriceHistory(_code: string): Promise<CommunePriceHistoryRecord[]> {
+    // La base Postgres métier ne contient pas encore d'historique de prix.
+    return [];
   }
 
   async findAgeDistribution(id: string): Promise<CommuneAgeDistributionRecord[]> {
@@ -188,322 +128,355 @@ export class CommunesRepository {
       return [];
     }
 
-    const [directDoc, viDoc] = await Promise.all([
-      this.findOneDocument("communes_direct", { com: code }),
-      this.findOneDocument("communes_direct_vi", { com: code })
-    ]);
-
-    const source = directDoc ?? viDoc;
-    if (!source) {
+    const tables = await this.getAvailableTables();
+    if (!tables.has("demographie")) {
       return [];
     }
 
-    return this.buildAgeDistributionFromDocument(source);
-  }
-
-  private async findCollectionDocuments(name: string): Promise<RawCommuneDocument[]> {
-    const collection = await this.mongoService.getCollection<RawCommuneDocument>(name);
-    return collection.find({}, { projection: { _id: 0 } }).toArray();
-  }
-
-  private async findOneDocument(
-    name: string,
-    filter: Record<string, unknown>
-  ): Promise<RawCommuneDocument | null> {
-    const collection = await this.mongoService.getCollection<RawCommuneDocument>(name);
-    return collection.findOne(filter, { projection: { _id: 0 } });
-  }
-
-  private mapDirectDocument(doc: RawCommuneDocument): CommuneRecord {
-    const population = this.asNumber(
-      this.pickNumber(doc, "population", "nb_habitant", "population_totale")
+    const result = await this.dbService.query<AgeDistributionRow>(
+      this.buildAgeDistributionQuery(tables),
+      [code]
     );
-    const salary = this.buildSalary(doc);
-    const notes = this.buildNotes(doc);
 
-    return {
-      id: this.asCode(doc.com) ?? "",
-      nom: this.asString(doc.nom_commune) ?? this.asString(doc.nom) ?? this.asString(doc.nccenr) ?? "",
-      codePostal: this.asString(
-        this.pickValue(doc, "code_postal", "postal_code", "codePostal")
-      ),
-      codeDept: this.asString(this.pickValue(doc, "code_dept", "departement_id")),
-      regionCode: this.asString(this.pickValue(doc, "region_id", "numero_region")),
-      departement:
-        this.asString(this.pickValue(doc, "nom_departement", "departement_name")) ??
-        this.asString(this.pickValue(doc, "departement")) ??
-        this.asString(this.pickValue(doc, "code_dept", "departement_id")),
-      region:
-        this.asString(this.pickValue(doc, "nom_region", "region_name")) ??
-        this.asString(this.pickValue(doc, "region")),
-      metropole:
-        this.asString(this.pickValue(doc, "nom_metropole", "metropole_name", "metropole")) ??
-        null,
-      taille: this.deriveSize(population, this.asString(doc.nom_metropole)),
-      lon: this.asNumber(this.pickNumber(doc, "longitude", "lon")),
-      lat: this.asNumber(this.pickNumber(doc, "latitude", "lat")),
-      population,
-      densite: this.asNumber(this.pickNumber(doc, "densite", "pop_densite")),
-      superficie: this.asNumber(this.pickNumber(doc, "superficie")),
-      ageMoyen: this.asNumber(this.pickNumber(doc, "age_moyen")),
-      revenuMoyen: this.asNumber(this.pickNumber(doc, "revenu_moyen")),
-      tauxChomage: this.asNumber(this.pickNumber(doc, "taux_chomage")),
-      prixM2Maison: this.asNumber(
-        this.pickNumber(doc, "prix_m2_maison", "prix_m2_moyen_maison")
-      ),
-      prixM2Appartement: this.asNumber(
-        this.pickNumber(doc, "prix_m2_appartement", "prix_m2_moyen_appartement")
-      ),
-      partProprietaires: this.asNumber(
-        this.pickNumber(doc, "part_taux_proprietaires", "part_proprietaires")
-      ),
-      partLocataires: this.asNumber(
-        this.pickNumber(doc, "part_taux_locataires", "part_locataires")
-      ),
-      partResidencesPrincipales: this.asNumber(
-        this.pickNumber(doc, "part_residences_principales")
-      ),
-      partResidencesSecondaires: this.asNumber(
-        this.pickNumber(doc, "part_residences_secondaires")
-      ),
-      partResidencesVacantes: this.buildVacantResidences(doc),
-      agressions: this.asNumber(this.pickNumber(doc, "agressions")),
-      cambriolages: this.asNumber(this.pickNumber(doc, "cambriolages")),
-      volsDegradations: this.asNumber(this.pickNumber(doc, "vols_degradations")),
-      stupefiants: this.asNumber(this.pickNumber(doc, "stupefiants")),
-      notes,
-      noteGlobale:
-        this.pickNumber(doc, "note_moyenne_globale") ??
-        this.pickNumber(doc, "score_globale") ??
-        this.scaleScore(this.pickNumber(doc, "note_qualite_vie_10"), 0.5),
-      nbAvis: this.asNumber(this.pickNumber(doc, "nb_avis", "reviews_refs_count")),
-      services: this.buildServices(doc),
-      salary,
-      source: this.asString(doc.source),
-      cityPage: this.asString(this.pickValue(doc, "city_page", "avis_page", "links.city_page")),
-      avisPage: this.asString(this.pickValue(doc, "avis_page", "links.avis_page")),
-      updatedAt: this.asDateString(this.pickValue(doc, "updated_at", "updatedAt"))
-    };
-  }
-
-  private mapViDocument(doc: RawCommuneDocument): CommuneRecord {
-    const population = this.asNumber(this.pickNumber(doc, "population", "nb_habitant"));
-    const baseSalary = this.buildSalary(doc);
-    const notes = this.buildNotes(doc);
-
-    return {
-      id: this.asCode(doc.com) ?? "",
-      nom: this.asString(doc.nom_commune) ?? "",
-      codePostal: this.asString(this.pickValue(doc, "code_postal", "postal_code")),
-      codeDept: this.asString(this.pickValue(doc, "code_dept", "departement_id")),
-      regionCode: this.asString(this.pickValue(doc, "region_id", "numero_region")),
-      departement:
-        this.asString(this.pickValue(doc, "nom_departement", "departement_name")) ??
-        this.asString(this.pickValue(doc, "departement")) ??
-        this.asString(this.pickValue(doc, "code_dept", "departement_id")),
-      region:
-        this.asString(this.pickValue(doc, "nom_region", "region_name")) ??
-        this.asString(this.pickValue(doc, "region")),
-      metropole:
-        this.asString(this.pickValue(doc, "nom_metropole", "metropole_name", "metropole")) ??
-        null,
-      taille: this.deriveSize(population, this.asString(doc.nom_metropole)),
-      lon: this.asNumber(this.pickNumber(doc, "longitude", "lon")),
-      lat: this.asNumber(this.pickNumber(doc, "latitude", "lat")),
-      population,
-      densite: this.asNumber(this.pickNumber(doc, "densite")),
-      superficie: this.asNumber(this.pickNumber(doc, "superficie")),
-      ageMoyen: this.asNumber(this.pickNumber(doc, "age_moyen")),
-      revenuMoyen: this.asNumber(this.pickNumber(doc, "revenu_moyen")),
-      tauxChomage: this.asNumber(this.pickNumber(doc, "taux_chomage")),
-      prixM2Maison: this.asNumber(this.pickNumber(doc, "prix_m2_maison", "prix_m2_moyen_maison")),
-      prixM2Appartement: this.asNumber(
-        this.pickNumber(doc, "prix_m2_appartement", "prix_m2_moyen_appartement")
-      ),
-      partProprietaires: this.asNumber(this.pickNumber(doc, "part_taux_proprietaires")),
-      partLocataires: this.asNumber(this.pickNumber(doc, "part_taux_locataires")),
-      partResidencesPrincipales: this.asNumber(this.pickNumber(doc, "part_residences_principales")),
-      partResidencesSecondaires: this.asNumber(this.pickNumber(doc, "part_residences_secondaires")),
-      partResidencesVacantes: this.buildVacantResidences(doc),
-      agressions: this.asNumber(this.pickNumber(doc, "agressions")),
-      cambriolages: this.asNumber(this.pickNumber(doc, "cambriolages")),
-      volsDegradations: this.asNumber(this.pickNumber(doc, "vols_degradations")),
-      stupefiants: this.asNumber(this.pickNumber(doc, "stupefiants")),
-      notes,
-      noteGlobale:
-        this.pickNumber(doc, "note_moyenne_globale") ??
-        this.pickNumber(doc, "score_globale") ??
-        this.scaleScore(this.pickNumber(doc, "note_qualite_vie_10"), 0.5),
-      nbAvis: this.asNumber(this.pickNumber(doc, "nb_avis")),
-      services: this.buildServices(doc),
-      salary: baseSalary,
-      source: this.asString(doc.source),
-      cityPage: this.asString(this.pickValue(doc, "city_page", "links.city_page")),
-      avisPage: this.asString(this.pickValue(doc, "avis_page", "links.avis_page")),
-      updatedAt: this.asDateString(this.pickValue(doc, "updated_at", "updatedAt"))
-    };
-  }
-
-  private mergeCommuneRecord(base: CommuneRecord, overlay: CommuneRecord): CommuneRecord {
-    return {
-      ...base,
-      codePostal: overlay.codePostal ?? base.codePostal,
-      codeDept: overlay.codeDept ?? base.codeDept,
-      regionCode: overlay.regionCode ?? base.regionCode,
-      departement: overlay.departement ?? base.departement,
-      region: overlay.region ?? base.region,
-      metropole: overlay.metropole ?? base.metropole,
-      taille: overlay.taille ?? base.taille,
-      lon: overlay.lon ?? base.lon,
-      lat: overlay.lat ?? base.lat,
-      population: overlay.population ?? base.population,
-      densite: overlay.densite ?? base.densite,
-      superficie: overlay.superficie ?? base.superficie,
-      ageMoyen: overlay.ageMoyen ?? base.ageMoyen,
-      revenuMoyen: overlay.revenuMoyen ?? base.revenuMoyen,
-      tauxChomage: overlay.tauxChomage ?? base.tauxChomage,
-      prixM2Maison: overlay.prixM2Maison ?? base.prixM2Maison,
-      prixM2Appartement: overlay.prixM2Appartement ?? base.prixM2Appartement,
-      partProprietaires: overlay.partProprietaires ?? base.partProprietaires,
-      partLocataires: overlay.partLocataires ?? base.partLocataires,
-      partResidencesPrincipales:
-        overlay.partResidencesPrincipales ?? base.partResidencesPrincipales,
-      partResidencesSecondaires:
-        overlay.partResidencesSecondaires ?? base.partResidencesSecondaires,
-      agressions: overlay.agressions ?? base.agressions,
-      cambriolages: overlay.cambriolages ?? base.cambriolages,
-      volsDegradations: overlay.volsDegradations ?? base.volsDegradations,
-      stupefiants: overlay.stupefiants ?? base.stupefiants,
-      notes: this.mergeNotes(base.notes, overlay.notes),
-      noteGlobale: overlay.noteGlobale ?? base.noteGlobale,
-      nbAvis: overlay.nbAvis ?? base.nbAvis,
-      services: this.mergeServices(base.services, overlay.services),
-      salary: this.mergeSalary(base.salary, overlay.salary),
-      source: overlay.source ?? base.source,
-      cityPage: overlay.cityPage ?? base.cityPage,
-      avisPage: overlay.avisPage ?? base.avisPage,
-      updatedAt: overlay.updatedAt ?? base.updatedAt
-    };
-  }
-
-  private buildNotes(doc: RawCommuneDocument): CommuneNotes {
-    return {
-      environnement: this.pickNumber(doc, "note_environnement_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_environnement"), 2),
-      transports: this.pickNumber(doc, "note_transports_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_transports"), 2),
-      sante: this.pickNumber(doc, "note_sante_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_sante"), 2),
-      securite: this.pickNumber(doc, "note_securite_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_securite"), 2),
-      sportsLoisirs:
-        this.pickNumber(doc, "note_sports_loisirs_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_loisirs"), 2),
-      culture:
-        this.pickNumber(doc, "note_culture_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_loisirs"), 2),
-      enseignement:
-        this.pickNumber(doc, "note_enseignement_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_education"), 2),
-      commerces:
-        this.pickNumber(doc, "note_commerces_10") ??
-        this.scaleScore(this.pickNumber(doc, "score_vie_pratique"), 2),
-      qualiteVie:
-        this.pickNumber(doc, "note_qualite_vie_10") ??
-        this.scaleScore(this.pickNumber(doc, "note_moyenne_globale"), 2) ??
-        this.scaleScore(this.pickNumber(doc, "score_globale"), 2)
-    };
-  }
-
-  private buildServices(doc: RawCommuneDocument): CommuneServices {
-    return {
-      medecins: this.asNumber(this.pickNumber(doc, "nb_medecins")),
-      pharmacies: this.asNumber(this.pickNumber(doc, "nb_pharmacies")),
-      hopitaux: this.asNumber(this.pickNumber(doc, "nb_hopitaux")),
-      specialistes: this.sumNumbers([
-        this.pickNumber(doc, "nb_dentistes"),
-        this.pickNumber(doc, "nb_chirurgiens"),
-        this.pickNumber(doc, "nb_dermatologues"),
-        this.pickNumber(doc, "nb_anesthesistes"),
-        this.pickNumber(doc, "nb_gastroenterologues"),
-        this.pickNumber(doc, "nb_gynecologues"),
-        this.pickNumber(doc, "nb_cancerologues"),
-        this.pickNumber(doc, "nb_neurologues"),
-        this.pickNumber(doc, "nb_ophtalmologues"),
-        this.pickNumber(doc, "nb_orl"),
-        this.pickNumber(doc, "nb_cardiologues"),
-        this.pickNumber(doc, "nb_pediatres"),
-        this.pickNumber(doc, "nb_pneumologues"),
-        this.pickNumber(doc, "nb_psychologues"),
-        this.pickNumber(doc, "nb_radiologues"),
-        this.pickNumber(doc, "nb_rhumatologues"),
-        this.pickNumber(doc, "nb_sages_femmes"),
-        this.pickNumber(doc, "nb_laboratoires_analyses"),
-        this.pickNumber(doc, "nb_etablissements_handicapes"),
-        this.pickNumber(doc, "nb_ehpa")
-      ]),
-      creches: this.asNumber(this.pickNumber(doc, "nb_creches")),
-      ecolesMaternelles: this.sumNumbers([
-        this.pickNumber(doc, "nb_ecoles_maternelles_publiques"),
-        this.pickNumber(doc, "nb_ecoles_maternelles_privees")
-      ]),
-      ecolesPrimaires: this.sumNumbers([
-        this.pickNumber(doc, "nb_ecoles_primaires_publiques"),
-        this.pickNumber(doc, "nb_ecoles_primaires_privees")
-      ]),
-      colleges: this.sumNumbers([
-        this.pickNumber(doc, "nb_colleges_publics"),
-        this.pickNumber(doc, "nb_colleges_prives")
-      ]),
-      lycees: this.sumNumbers([
-        this.pickNumber(doc, "nb_lycees_publics"),
-        this.pickNumber(doc, "nb_lycees_prives")
-      ]),
-      hypermarches: this.asNumber(this.pickNumber(doc, "nb_hypermarches")),
-      supermarches: this.asNumber(this.pickNumber(doc, "nb_supermarches")),
-      restaurants: this.asNumber(this.pickNumber(doc, "nb_restaurants")),
-      banques: this.asNumber(this.pickNumber(doc, "nb_banques")),
-      boulangeries: this.asNumber(this.pickNumber(doc, "nb_boulangeries"))
-    };
-  }
-
-  private buildSalary(doc: RawCommuneDocument): CommuneSalary {
-    return {
-      cadre: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_cadre")),
-      profIntermediaire: this.asNumber(
-        this.pickNumber(doc, "salaire_net_mensuel_moyen_prof_intermediaire")
-      ),
-      employe: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_employe")),
-      ouvrier: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_ouvrier")),
-      total: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_total"))
-    };
-  }
-
-  private sumNumbers(values: Array<number | null>): number | null {
-    const filtered = values.filter(
-      (value): value is number => typeof value === "number" && Number.isFinite(value)
-    );
-    if (filtered.length === 0) {
-      return null;
+    const row = result.rows[0];
+    if (!row) {
+      return [];
     }
 
-    return filtered.reduce((sum, value) => sum + value, 0);
+    return [
+      { tranche: "0-14", part: this.asNumber(row.part_0_14_ans) ?? 0 },
+      { tranche: "15-29", part: this.asNumber(row.part_15_29_ans) ?? 0 },
+      { tranche: "30-44", part: this.asNumber(row.part_30_44_ans) ?? 0 },
+      { tranche: "45-59", part: this.asNumber(row.part_45_59_ans) ?? 0 },
+      { tranche: "60-74", part: this.asNumber(row.part_60_74_ans) ?? 0 },
+      { tranche: "75-89", part: this.asNumber(row.part_75_89_ans) ?? 0 },
+      { tranche: "90+", part: this.asNumber(row.part_90_plus) ?? 0 }
+    ].filter((item) => item.part > 0);
   }
 
-  private buildVacantResidences(doc: RawCommuneDocument): number | null {
-    const explicit = this.asNumber(this.pickNumber(doc, "part_residences_vacantes"));
+  private buildCatalogueQuery(tables: Set<string>, scoped = false): string {
+    const joins = [
+      this.buildOptionalLeftJoin(
+        tables,
+        "demographie",
+        "d",
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "immobilier",
+        "imm",
+        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "securite",
+        "sec",
+        `sec.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "scores",
+        "s",
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "education",
+        "edu",
+        `edu.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "sante",
+        "san",
+        `san.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "commerces",
+        "com",
+        `com.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "departement",
+        "dept",
+        `dept.${this.quoteIdentifier("numero_departement")} = c.${this.quoteIdentifier("departement_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "region",
+        "reg",
+        `reg.${this.quoteIdentifier("numero_region")} = dept.${this.quoteIdentifier("region_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "metropole",
+        "metro",
+        `metro.${this.quoteIdentifier("id")} = c.${this.quoteIdentifier("metropole_id")}`
+      )
+    ].filter(Boolean);
+
+    return `
+      SELECT
+        c.${this.quoteIdentifier("commune_id")}::text AS ${this.quoteIdentifier("com")},
+        c.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("nom")},
+        c.${this.quoteIdentifier("code_postal")}::text AS ${this.quoteIdentifier("codePostal")},
+        c.${this.quoteIdentifier("departement_id")}::text AS ${this.quoteIdentifier("codeDept")},
+        dept.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("departement")},
+        dept.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("regionCode")},
+        reg.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("region")},
+        metro.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("metropole")},
+        NULL::float AS ${this.quoteIdentifier("lon")},
+        NULL::float AS ${this.quoteIdentifier("lat")},
+        d.${this.quoteIdentifier("population")}::int AS ${this.quoteIdentifier("population")},
+        d.${this.quoteIdentifier("densite")}::float AS ${this.quoteIdentifier("densite")},
+        d.${this.quoteIdentifier("superficie")}::float AS ${this.quoteIdentifier("superficie")},
+        d.${this.quoteIdentifier("age_moyen")}::float AS ${this.quoteIdentifier("ageMoyen")},
+        d.${this.quoteIdentifier("revenu_moyen")}::float AS ${this.quoteIdentifier("revenuMoyen")},
+        d.${this.quoteIdentifier("taux_chomage")}::float AS ${this.quoteIdentifier("tauxChomage")},
+        imm.${this.quoteIdentifier("prix_m2_maison")}::float AS ${this.quoteIdentifier("prixM2Maison")},
+        imm.${this.quoteIdentifier("prix_m2_appartement")}::float AS ${this.quoteIdentifier("prixM2Appartement")},
+        imm.${this.quoteIdentifier("part_taux_proprietaires")}::float AS ${this.quoteIdentifier("partProprietaires")},
+        imm.${this.quoteIdentifier("part_taux_locataires")}::float AS ${this.quoteIdentifier("partLocataires")},
+        imm.${this.quoteIdentifier("part_residences_principales")}::float AS ${this.quoteIdentifier("partResidencesPrincipales")},
+        imm.${this.quoteIdentifier("part_residences_secondaires")}::float AS ${this.quoteIdentifier("partResidencesSecondaires")},
+        NULL::float AS ${this.quoteIdentifier("partResidencesVacantes")},
+        sec.${this.quoteIdentifier("agressions")}::float AS ${this.quoteIdentifier("agressions")},
+        sec.${this.quoteIdentifier("cambriolages")}::float AS ${this.quoteIdentifier("cambriolages")},
+        sec.${this.quoteIdentifier("vols_degradations")}::float AS ${this.quoteIdentifier("volsDegradations")},
+        sec.${this.quoteIdentifier("stupefiants")}::float AS ${this.quoteIdentifier("stupefiants")},
+        s.${this.quoteIdentifier("score_securite")}::float AS ${this.quoteIdentifier("scoreSecurite")},
+        s.${this.quoteIdentifier("score_education")}::float AS ${this.quoteIdentifier("scoreEducation")},
+        s.${this.quoteIdentifier("score_loisirs")}::float AS ${this.quoteIdentifier("scoreLoisirs")},
+        s.${this.quoteIdentifier("score_environnement")}::float AS ${this.quoteIdentifier("scoreEnvironnement")},
+        s.${this.quoteIdentifier("score_vie_pratique")}::float AS ${this.quoteIdentifier("scoreViePratique")},
+        s.${this.quoteIdentifier("score_globale")}::float AS ${this.quoteIdentifier("scoreGlobale")},
+        NULL::int AS ${this.quoteIdentifier("nbAvis")},
+        san.${this.quoteIdentifier("nb_medecins")}::float AS ${this.quoteIdentifier("nbMedecins")},
+        san.${this.quoteIdentifier("nb_pharmacies")}::float AS ${this.quoteIdentifier("nbPharmacies")},
+        san.${this.quoteIdentifier("nb_hopitaux")}::float AS ${this.quoteIdentifier("nbHopitaux")},
+        (
+          COALESCE(san.${this.quoteIdentifier("nb_dentistes")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_chirurgiens")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_dermatologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_anesthesistes")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_gastroenterologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_gynecologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_cancerologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_neurologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_ophtalmologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_orl")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_cardiologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_pediatres")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_pneumologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_psychologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_radiologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_rhumatologues")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_sages_femmes")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_laboratoires_analyses")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_etablissement_handicapes")}, 0)
+          + COALESCE(san.${this.quoteIdentifier("nb_ehpa")}, 0)
+        )::float AS ${this.quoteIdentifier("nbSpecialistes")},
+        edu.${this.quoteIdentifier("nb_creches")}::float AS ${this.quoteIdentifier("nbCreches")},
+        (
+          COALESCE(edu.${this.quoteIdentifier("nb_ecoles_maternelles_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_ecoles_maternelles_privees")}, 0)
+        )::float AS ${this.quoteIdentifier("nbEcolesMaternelles")},
+        (
+          COALESCE(edu.${this.quoteIdentifier("nb_ecoles_primaires_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_ecoles_primaires_privees")}, 0)
+        )::float AS ${this.quoteIdentifier("nbEcolesPrimaires")},
+        (
+          COALESCE(edu.${this.quoteIdentifier("nb_colleges_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_colleges_privees")}, 0)
+        )::float AS ${this.quoteIdentifier("nbColleges")},
+        (
+          COALESCE(edu.${this.quoteIdentifier("nb_lycees_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_lycees_privees")}, 0)
+        )::float AS ${this.quoteIdentifier("nbLycees")},
+        com.${this.quoteIdentifier("nb_hypermarches")}::float AS ${this.quoteIdentifier("nbHypermarches")},
+        com.${this.quoteIdentifier("nb_supermarches")}::float AS ${this.quoteIdentifier("nbSupermarches")},
+        com.${this.quoteIdentifier("nb_restaurants")}::float AS ${this.quoteIdentifier("nbRestaurants")},
+        com.${this.quoteIdentifier("nb_banques")}::float AS ${this.quoteIdentifier("nbBanques")},
+        com.${this.quoteIdentifier("nb_boulangeries")}::float AS ${this.quoteIdentifier("nbBoulangeries")},
+        ${this.selectColumnOrNull(
+          tables,
+          "salaire",
+          "sal",
+          "salaire_net_mensuel_moyen_cadre",
+          "salaireCadre"
+        )},
+        ${this.selectColumnOrNull(
+          tables,
+          "salaire",
+          "sal",
+          "salaire_net_mensuel_moyen_prof_intermediaire",
+          "salaireProfIntermediaire"
+        )},
+        ${this.selectColumnOrNull(
+          tables,
+          "salaire",
+          "sal",
+          "salaire_net_mensuel_moyen_employe",
+          "salaireEmploye"
+        )},
+        ${this.selectColumnOrNull(
+          tables,
+          "salaire",
+          "sal",
+          "salaire_net_mensuel_moyen_ouvrier",
+          "salaireOuvrier"
+        )},
+        ${this.selectColumnOrNull(
+          tables,
+          "salaire",
+          "sal",
+          "salaire_net_mensuel_moyen_total",
+          "salaireTotal"
+        )}
+      FROM ${this.relation("commune")} c
+      ${joins.join("\n      ")}
+      ${scoped ? `WHERE c.${this.quoteIdentifier("commune_id")}::text = $1` : ""}
+      ORDER BY c.${this.quoteIdentifier("nom")} ASC, c.${this.quoteIdentifier("commune_id")} ASC
+    `;
+  }
+
+  private buildAgeDistributionQuery(tables: Set<string>): string {
+    const joins = this.buildOptionalLeftJoin(
+      tables,
+      "demographie",
+      "d",
+      `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+    );
+
+    return `
+      SELECT
+        d.${this.quoteIdentifier("part_0_14_ans")},
+        d.${this.quoteIdentifier("part_15_29_ans")},
+        d.${this.quoteIdentifier("part_30_44_ans")},
+        d.${this.quoteIdentifier("part_45_59_ans")},
+        d.${this.quoteIdentifier("part_60_74_ans")},
+        d.${this.quoteIdentifier("part_75_89_ans")},
+        d.${this.quoteIdentifier("part_90_plus")}
+      FROM ${this.relation("commune")} c
+      ${joins}
+      WHERE c.${this.quoteIdentifier("commune_id")}::text = $1
+      LIMIT 1
+    `;
+  }
+
+  private mapRow(row: CommuneSqlRow): CommuneRecord {
+    const population = this.asNumber(row.population);
+    const metropoleName = this.asString(row.metropole);
+    const scoreSecurite = this.asNumber(row.scoreSecurite);
+    const scoreEducation = this.asNumber(row.scoreEducation);
+    const scoreLoisirs = this.asNumber(row.scoreLoisirs);
+    const scoreEnvironnement = this.asNumber(row.scoreEnvironnement);
+    const scoreViePratique = this.asNumber(row.scoreViePratique);
+    const scoreGlobale = this.asNumber(row.scoreGlobale);
+
+    return {
+      id: row.com,
+      nom: row.nom,
+      codePostal: row.codePostal,
+      codeDept: row.codeDept,
+      regionCode: row.regionCode,
+      departement: row.departement,
+      region: row.region,
+      metropole: metropoleName,
+      taille: this.deriveSize(population, metropoleName),
+      lon: null,
+      lat: null,
+      population,
+      densite: this.asNumber(row.densite),
+      superficie: this.asNumber(row.superficie),
+      ageMoyen: this.asNumber(row.ageMoyen),
+      revenuMoyen: this.asNumber(row.revenuMoyen),
+      tauxChomage: this.asNumber(row.tauxChomage),
+      prixM2Maison: this.asNumber(row.prixM2Maison),
+      prixM2Appartement: this.asNumber(row.prixM2Appartement),
+      partProprietaires: this.asNumber(row.partProprietaires),
+      partLocataires: this.asNumber(row.partLocataires),
+      partResidencesPrincipales: this.asNumber(row.partResidencesPrincipales),
+      partResidencesSecondaires: this.asNumber(row.partResidencesSecondaires),
+      partResidencesVacantes: this.buildVacantResidences(
+        row.partResidencesPrincipales,
+        row.partResidencesSecondaires,
+        row.partResidencesVacantes
+      ),
+      agressions: this.asNumber(row.agressions),
+      cambriolages: this.asNumber(row.cambriolages),
+      volsDegradations: this.asNumber(row.volsDegradations),
+      stupefiants: this.asNumber(row.stupefiants),
+      notes: {
+        environnement: this.scaleScore(scoreEnvironnement, 2),
+        transports: this.scaleScore(scoreViePratique, 2),
+        sante: null,
+        securite: this.scaleScore(scoreSecurite, 2),
+        sportsLoisirs: this.scaleScore(scoreLoisirs, 2),
+        culture: this.scaleScore(scoreLoisirs, 2),
+        enseignement: this.scaleScore(scoreEducation, 2),
+        commerces: this.scaleScore(scoreViePratique, 2),
+        qualiteVie: this.scaleScore(scoreGlobale, 2)
+      },
+      noteGlobale: scoreGlobale,
+      nbAvis: this.asNumber(row.nbAvis),
+      services: this.buildServices(row),
+      salary: this.buildSalary(row)
+    };
+  }
+
+  private buildServices(row: CommuneSqlRow): CommuneServices {
+    return {
+      medecins: this.asNumber(row.nbMedecins),
+      pharmacies: this.asNumber(row.nbPharmacies),
+      hopitaux: this.asNumber(row.nbHopitaux),
+      specialistes: this.asNumber(row.nbSpecialistes),
+      creches: this.asNumber(row.nbCreches),
+      ecolesMaternelles: this.sumNumbers([row.nbEcolesMaternellesPubliques, row.nbEcolesMaternellesPrivees]),
+      ecolesPrimaires: this.sumNumbers([row.nbEcolesPrimairesPubliques, row.nbEcolesPrimairesPrivees]),
+      colleges: this.sumNumbers([row.nbCollegesPublics, row.nbCollegesPrives]),
+      lycees: this.sumNumbers([row.nbLyceesPublics, row.nbLyceesPrives]),
+      hypermarches: this.asNumber(row.nbHypermarches),
+      supermarches: this.asNumber(row.nbSupermarches),
+      restaurants: this.asNumber(row.nbRestaurants),
+      banques: this.asNumber(row.nbBanques),
+      boulangeries: this.asNumber(row.nbBoulangeries)
+    };
+  }
+
+  private buildSalary(row: CommuneSqlRow): CommuneSalary {
+    return {
+      cadre: this.asNumber(row.salaireCadre),
+      profIntermediaire: this.asNumber(row.salaireProfIntermediaire),
+      employe: this.asNumber(row.salaireEmploye),
+      ouvrier: this.asNumber(row.salaireOuvrier),
+      total: this.asNumber(row.salaireTotal)
+    };
+  }
+
+  private buildVacantResidences(
+    principales: number | null,
+    secondaires: number | null,
+    explicit: number | null
+  ): number | null {
     if (explicit !== null) {
       return explicit;
     }
 
-    const principales = this.asNumber(this.pickNumber(doc, "part_residences_principales"));
-    const secondaires = this.asNumber(this.pickNumber(doc, "part_residences_secondaires"));
     if (principales === null || secondaires === null) {
       return null;
     }
 
-    const vacant = 100 - principales - secondaires;
-    return Math.max(0, Math.round(vacant * 10) / 10);
+    return Math.max(0, Math.round((100 - principales - secondaires) * 10) / 10);
   }
 
   private deriveSize(population: number | null, metropoleName: string | null): CommuneSize {
@@ -526,105 +499,6 @@ export class CommunesRepository {
     return "village";
   }
 
-  private buildAgeDistributionFromDocument(doc: RawCommuneDocument): CommuneAgeDistributionRecord[] {
-    const values = [
-      { tranche: "0-14", part: this.pickNumber(doc, "part_0_14_ans") },
-      { tranche: "15-29", part: this.pickNumber(doc, "part_15_29_ans") },
-      { tranche: "30-44", part: this.pickNumber(doc, "part_30_44_ans") },
-      { tranche: "45-59", part: this.pickNumber(doc, "part_45_59_ans") },
-      { tranche: "60-74", part: this.pickNumber(doc, "part_60_74_ans") },
-      { tranche: "75-89", part: this.pickNumber(doc, "part_75_89_ans") },
-      { tranche: "90+", part: this.pickNumber(doc, "part_90_plus") }
-    ];
-
-    return values
-      .map((item) => ({
-        tranche: item.tranche,
-        part: this.asNumber(item.part) ?? 0
-      }))
-      .filter((item) => item.part > 0);
-  }
-
-  private mergeNotes(base: CommuneNotes, overlay: CommuneNotes): CommuneNotes {
-    return {
-      environnement: overlay.environnement ?? base.environnement,
-      transports: overlay.transports ?? base.transports,
-      sante: overlay.sante ?? base.sante,
-      securite: overlay.securite ?? base.securite,
-      sportsLoisirs: overlay.sportsLoisirs ?? base.sportsLoisirs,
-      culture: overlay.culture ?? base.culture,
-      enseignement: overlay.enseignement ?? base.enseignement,
-      commerces: overlay.commerces ?? base.commerces,
-      qualiteVie: overlay.qualiteVie ?? base.qualiteVie
-    };
-  }
-
-  private mergeServices(base: CommuneServices, overlay: CommuneServices): CommuneServices {
-    return {
-      medecins: overlay.medecins ?? base.medecins,
-      pharmacies: overlay.pharmacies ?? base.pharmacies,
-      hopitaux: overlay.hopitaux ?? base.hopitaux,
-      specialistes: overlay.specialistes ?? base.specialistes,
-      creches: overlay.creches ?? base.creches,
-      ecolesMaternelles: overlay.ecolesMaternelles ?? base.ecolesMaternelles,
-      ecolesPrimaires: overlay.ecolesPrimaires ?? base.ecolesPrimaires,
-      colleges: overlay.colleges ?? base.colleges,
-      lycees: overlay.lycees ?? base.lycees,
-      hypermarches: overlay.hypermarches ?? base.hypermarches,
-      supermarches: overlay.supermarches ?? base.supermarches,
-      restaurants: overlay.restaurants ?? base.restaurants,
-      banques: overlay.banques ?? base.banques,
-      boulangeries: overlay.boulangeries ?? base.boulangeries
-    };
-  }
-
-  private mergeSalary(base: CommuneSalary, overlay: CommuneSalary): CommuneSalary {
-    return {
-      cadre: overlay.cadre ?? base.cadre,
-      profIntermediaire: overlay.profIntermediaire ?? base.profIntermediaire,
-      employe: overlay.employe ?? base.employe,
-      ouvrier: overlay.ouvrier ?? base.ouvrier,
-      total: overlay.total ?? base.total
-    };
-  }
-
-  private pickValue(doc: RawCommuneDocument, ...paths: string[]): unknown {
-    for (const path of paths) {
-      const value = this.readPath(doc, path);
-      if (value !== undefined && value !== null && value !== "") {
-        return value;
-      }
-    }
-
-    return undefined;
-  }
-
-  private pickNumber(doc: RawCommuneDocument, ...paths: string[]): number | null {
-    for (const path of paths) {
-      const value = this.readPath(doc, path);
-      const numeric = this.asNumber(value);
-      if (numeric !== null) {
-        return numeric;
-      }
-    }
-
-    return null;
-  }
-
-  private readPath(doc: RawCommuneDocument, path: string): unknown {
-    const segments = path.split(".");
-    let current: unknown = doc;
-    for (const segment of segments) {
-      if (current === null || current === undefined || typeof current !== "object") {
-        return undefined;
-      }
-
-      current = (current as Record<string, unknown>)[segment];
-    }
-
-    return current;
-  }
-
   private scaleScore(value: number | null, factor: number): number | null {
     if (value === null) {
       return null;
@@ -633,14 +507,15 @@ export class CommunesRepository {
     return Math.round(value * factor * 10) / 10;
   }
 
-  private asCode(value: unknown): string | null {
-    const text = this.asString(value)?.trim().toUpperCase();
-    return text || null;
-  }
+  private sumNumbers(values: Array<number | null>): number | null {
+    const filtered = values.filter(
+      (value): value is number => typeof value === "number" && Number.isFinite(value)
+    );
+    if (filtered.length === 0) {
+      return null;
+    }
 
-  private normalizeCode(value: string): string | null {
-    const text = value.trim().toUpperCase();
-    return text ? text : null;
+    return filtered.reduce((sum, value) => sum + value, 0);
   }
 
   private asString(value: unknown): string | null {
@@ -665,16 +540,8 @@ export class CommunesRepository {
     return Number.isFinite(numeric) ? numeric : null;
   }
 
-  private asDateString(value: unknown): string | null {
-    if (value === null || value === undefined || value === "") {
-      return null;
-    }
-
-    if (value instanceof Date) {
-      return value.toISOString();
-    }
-
-    const date = new Date(String(value));
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  private normalizeCode(value: string): string | null {
+    const text = value.trim().toUpperCase();
+    return text ? text : null;
   }
 }
