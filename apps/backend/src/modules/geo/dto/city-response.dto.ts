@@ -23,6 +23,23 @@ export class CityScoresDto {
   education!: number | null;
 }
 
+export class CitySalaryDto {
+  @ApiProperty({ type: Number, nullable: true, example: 4200 })
+  cadre!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 3200 })
+  profIntermediaire!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 2400 })
+  employe!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 2200 })
+  ouvrier!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 3100 })
+  total!: number | null;
+}
+
 export class CityMetricsDto {
   @ApiProperty({ type: Number, nullable: true, example: 2145906 })
   population!: number | null;
@@ -35,6 +52,9 @@ export class CityMetricsDto {
 
   @ApiProperty({ type: () => CityScoresDto })
   scores!: CityScoresDto;
+
+  @ApiProperty({ type: () => CitySalaryDto })
+  salary!: CitySalaryDto;
 }
 
 export class CityDto {
@@ -108,6 +128,9 @@ export class CityDetailBlocksDto {
 
   @ApiProperty({ type: () => CityDetailBlockDto })
   realEstate!: CityDetailBlockDto;
+
+  @ApiProperty({ type: () => CityDetailBlockDto })
+  salary!: CityDetailBlockDto;
 }
 
 export class CityDetailAdminDto {

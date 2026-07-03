@@ -18,6 +18,11 @@ export type CityRow = {
   score_sante: PrimitiveMetric;
   score_transports: PrimitiveMetric;
   score_education: PrimitiveMetric;
+  salaire_net_mensuel_moyen_cadre: PrimitiveMetric;
+  salaire_net_mensuel_moyen_prof_intermediaire: PrimitiveMetric;
+  salaire_net_mensuel_moyen_employe: PrimitiveMetric;
+  salaire_net_mensuel_moyen_ouvrier: PrimitiveMetric;
+  salaire_net_mensuel_moyen_total: PrimitiveMetric;
 };
 
 export type OverviewMetricsRow = {
@@ -50,6 +55,7 @@ export type CityDetailRow = {
     qualityOfLife: Record<string, PrimitiveMetric>;
     services: Record<string, PrimitiveMetric>;
     realEstate: Record<string, PrimitiveMetric>;
+    salary: Record<string, PrimitiveMetric>;
   };
   reviews: {
     count: number;
@@ -59,19 +65,7 @@ export type CityDetailRow = {
   };
 };
 
-type DetailSqlRow = Record<string, string | number | null> & {
-  com: string;
-  nccenr: string;
-  nb_habitant: PrimitiveMetric;
-  age_moyen: PrimitiveMetric;
-  pop_active: PrimitiveMetric;
-  score_securite: PrimitiveMetric;
-  score_environnement: PrimitiveMetric;
-  score_vie_pratique: PrimitiveMetric;
-  score_loisirs: PrimitiveMetric;
-  score_sante: PrimitiveMetric;
-  score_transports: PrimitiveMetric;
-  score_education: PrimitiveMetric;
+type DetailSqlRow = CityRow & {
   code_dept: string | null;
   postal_code: string | null;
   region_name: string | null;
@@ -96,6 +90,14 @@ const CITY_SCORE_COLUMNS = [
   "score_vie_pratique",
   "score_loisirs",
   "score_education"
+] as const;
+
+const CITY_SALARY_COLUMNS = [
+  "salaire_net_mensuel_moyen_cadre",
+  "salaire_net_mensuel_moyen_prof_intermediaire",
+  "salaire_net_mensuel_moyen_employe",
+  "salaire_net_mensuel_moyen_ouvrier",
+  "salaire_net_mensuel_moyen_total"
 ] as const;
 
 const DETAIL_DEMOGRAPHY_COLUMNS = [
@@ -205,6 +207,8 @@ const DETAIL_COMMERCE_COLUMNS = [
   "nb_veterinaires"
 ] as const;
 
+const DETAIL_SALARY_COLUMNS = CITY_SALARY_COLUMNS;
+
 @Injectable()
 export class GeoCitiesPostgresRepository extends PostgresReadRepository {
   constructor(dbService: DbService) {
@@ -285,7 +289,8 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         security: this.extractBlock(row, "security__"),
         qualityOfLife: this.extractBlock(row, "quality__"),
         services: this.extractBlock(row, "services__"),
-        realEstate: this.extractBlock(row, "real_estate__")
+        realEstate: this.extractBlock(row, "real_estate__"),
+        salary: this.extractBlock(row, "salary__")
       },
       reviews: {
         count: 0,
@@ -386,25 +391,25 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         tables,
         "demographie",
         "d",
-        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "scores",
         "s",
-        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "immobilier",
         "imm",
-        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "departement",
         "dept",
-        `dept.${this.quoteIdentifier("id")} = c.${this.quoteIdentifier("departement_id")}`
+        `dept.${this.quoteIdentifier("numero_departement")} = c.${this.quoteIdentifier("departement_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
@@ -420,14 +425,14 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         values.push(`%${normalizedSearch}%`);
         const parameter = `$${values.length}`;
         whereParts.push(
-          `(LOWER(c.${this.quoteIdentifier("com")}::text) LIKE ${parameter} OR LOWER(c.${this.quoteIdentifier("nom")}) LIKE ${parameter})`
+          `(LOWER(c.${this.quoteIdentifier("commune_id")}::text) LIKE ${parameter} OR LOWER(c.${this.quoteIdentifier("nom")}) LIKE ${parameter})`
         );
       }
     }
 
     if (scopedCodes) {
       values.push(scopedCodes);
-      whereParts.push(`c.${this.quoteIdentifier("com")}::text = ANY($${values.length})`);
+      whereParts.push(`c.${this.quoteIdentifier("commune_id")}::text = ANY($${values.length})`);
     }
 
     if (query.code_dept) {
@@ -444,7 +449,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         whereParts.push("1 = 0");
       } else {
         values.push(query.nom_region.trim().toLowerCase());
-        whereParts.push(`LOWER(reg.${this.quoteIdentifier("name")}) = $${values.length}`);
+        whereParts.push(`LOWER(reg.${this.quoteIdentifier("nom")}) = $${values.length}`);
       }
     }
 
@@ -496,7 +501,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
           CASE WHEN d.${this.quoteIdentifier("population")} IS NULL THEN 1 ELSE 0 END ASC,
           d.${this.quoteIdentifier("population")} ${direction},
           c.${this.quoteIdentifier("nom")} ASC,
-          c.${this.quoteIdentifier("com")} ASC`;
+          c.${this.quoteIdentifier("commune_id")} ASC`;
         }
         break;
       case CitySortBy.Security:
@@ -506,7 +511,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
           CASE WHEN s.${this.quoteIdentifier("score_securite")} IS NULL THEN 1 ELSE 0 END ASC,
           s.${this.quoteIdentifier("score_securite")} ${direction},
           c.${this.quoteIdentifier("nom")} ASC,
-          c.${this.quoteIdentifier("com")} ASC`;
+          c.${this.quoteIdentifier("commune_id")} ASC`;
         }
         break;
       case CitySortBy.Environment:
@@ -516,7 +521,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
           CASE WHEN s.${this.quoteIdentifier("score_environnement")} IS NULL THEN 1 ELSE 0 END ASC,
           s.${this.quoteIdentifier("score_environnement")} ${direction},
           c.${this.quoteIdentifier("nom")} ASC,
-          c.${this.quoteIdentifier("com")} ASC`;
+          c.${this.quoteIdentifier("commune_id")} ASC`;
         }
         break;
       case CitySortBy.Education:
@@ -526,7 +531,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
           CASE WHEN s.${this.quoteIdentifier("score_education")} IS NULL THEN 1 ELSE 0 END ASC,
           s.${this.quoteIdentifier("score_education")} ${direction},
           c.${this.quoteIdentifier("nom")} ASC,
-          c.${this.quoteIdentifier("com")} ASC`;
+          c.${this.quoteIdentifier("commune_id")} ASC`;
         }
         break;
       case CitySortBy.Name:
@@ -537,18 +542,21 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
     return `
         ORDER BY
           c.${this.quoteIdentifier("nom")} ${direction},
-          c.${this.quoteIdentifier("com")} ASC`;
+          c.${this.quoteIdentifier("commune_id")} ASC`;
   }
 
   private buildCitySelects(tables: Set<string>): string[] {
     return [
-      `c.${this.quoteIdentifier("com")}::text AS ${this.quoteIdentifier("com")}`,
+      `c.${this.quoteIdentifier("commune_id")}::text AS ${this.quoteIdentifier("com")}`,
       `c.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("nccenr")}`,
       ...CITY_DEMOGRAPHY_COLUMNS.map(({ column, alias }) =>
         this.selectColumnOrNull(tables, "demographie", "d", column, alias)
       ),
       ...CITY_SCORE_COLUMNS.map((column) =>
         this.selectColumnOrNull(tables, "scores", "s", column, column)
+      ),
+      ...CITY_SALARY_COLUMNS.map((column) =>
+        this.selectColumnOrNull(tables, "salaire", "sal", column, column)
       ),
       `NULL AS ${this.quoteIdentifier("score_sante")}`,
       `NULL AS ${this.quoteIdentifier("score_transports")}`
@@ -561,13 +569,19 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         tables,
         "demographie",
         "d",
-        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "scores",
         "s",
-        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -576,14 +590,14 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         ${this.buildCitySelects(tables).join(",\n        ")}
       FROM ${this.relation("commune")} c
       ${joins.join("\n      ")}
-      WHERE c.${this.quoteIdentifier("com")}::text = $1
+      WHERE c.${this.quoteIdentifier("commune_id")}::text = $1
       LIMIT 1
     `;
   }
 
   private buildFindDetailQuery(tables: Set<string>): string {
     const selects = [
-      `c.${this.quoteIdentifier("com")}::text AS ${this.quoteIdentifier("com")}`,
+      `c.${this.quoteIdentifier("commune_id")}::text AS ${this.quoteIdentifier("com")}`,
       `c.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("nccenr")}`,
       ...CITY_DEMOGRAPHY_COLUMNS.map(({ column, alias }) =>
         this.selectColumnOrNull(tables, "demographie", "d", column, alias)
@@ -602,7 +616,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         (expression) => `${expression}::text`
       ),
       `c.${this.quoteIdentifier("code_postal")}::text AS ${this.quoteIdentifier("postal_code")}`,
-      this.selectColumnOrNull(tables, "region", "reg", "name", "region_name"),
+      this.selectColumnOrNull(tables, "region", "reg", "nom", "region_name"),
       this.selectColumnOrNull(tables, "departement", "dept", "nom", "departement_name"),
       this.selectColumnOrNull(tables, "metropole", "metro", "nom", "metropole_name"),
       `c.${this.quoteIdentifier("maire")} AS ${this.quoteIdentifier("mayor_name")}`,
@@ -623,6 +637,9 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       ),
       ...DETAIL_QUALITY_COLUMNS.map((column) =>
         this.selectColumnOrNull(tables, "scores", "s", column, `quality__${column}`)
+      ),
+      ...DETAIL_SALARY_COLUMNS.map((column) =>
+        this.selectColumnOrNull(tables, "salaire", "sal", column, `salary__${column}`)
       ),
       ...DETAIL_EDUCATION_COLUMNS.map((column) =>
         this.selectColumnOrNull(
@@ -652,49 +669,55 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         tables,
         "demographie",
         "d",
-        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "scores",
         "s",
-        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "securite",
         "sec",
-        `sec.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `sec.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "immobilier",
         "imm",
-        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `imm.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "education",
         "edu",
-        `edu.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `edu.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "sante",
         "health",
-        `health.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `health.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "commerces",
         "shop",
-        `shop.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `shop.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "departement",
         "dept",
-        `dept.${this.quoteIdentifier("id")} = c.${this.quoteIdentifier("departement_id")}`
+        `dept.${this.quoteIdentifier("numero_departement")} = c.${this.quoteIdentifier("departement_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
@@ -715,7 +738,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         ${selects.join(",\n        ")}
       FROM ${this.relation("commune")} c
       ${joins.join("\n      ")}
-      WHERE c.${this.quoteIdentifier("com")}::text = $1
+      WHERE c.${this.quoteIdentifier("commune_id")}::text = $1
       LIMIT 1
     `;
   }
@@ -738,13 +761,19 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         tables,
         "demographie",
         "d",
-        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "scores",
         "s",
-        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -768,13 +797,19 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         tables,
         "demographie",
         "d",
-        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `d.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "scores",
         "s",
-        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("id")}`
+        `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -784,7 +819,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       FROM ${this.relation("commune")} c
       ${joins.join("\n      ")}
       WHERE s.${this.quoteIdentifier(column)} IS NOT NULL
-      ORDER BY s.${this.quoteIdentifier(column)} DESC, c.${this.quoteIdentifier("nom")} ASC, c.${this.quoteIdentifier("com")} ASC
+      ORDER BY s.${this.quoteIdentifier(column)} DESC, c.${this.quoteIdentifier("nom")} ASC, c.${this.quoteIdentifier("commune_id")} ASC
       LIMIT $1
     `;
   }
@@ -802,7 +837,13 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       score_loisirs: row.score_loisirs ?? null,
       score_sante: row.score_sante ?? null,
       score_transports: row.score_transports ?? null,
-      score_education: row.score_education ?? null
+      score_education: row.score_education ?? null,
+      salaire_net_mensuel_moyen_cadre: row.salaire_net_mensuel_moyen_cadre ?? null,
+      salaire_net_mensuel_moyen_prof_intermediaire:
+        row.salaire_net_mensuel_moyen_prof_intermediaire ?? null,
+      salaire_net_mensuel_moyen_employe: row.salaire_net_mensuel_moyen_employe ?? null,
+      salaire_net_mensuel_moyen_ouvrier: row.salaire_net_mensuel_moyen_ouvrier ?? null,
+      salaire_net_mensuel_moyen_total: row.salaire_net_mensuel_moyen_total ?? null
     };
   }
 

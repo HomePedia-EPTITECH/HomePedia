@@ -125,7 +125,8 @@ export class GeoService {
           security: { values: detail.blocks.security },
           qualityOfLife: { values: detail.blocks.qualityOfLife },
           services: { values: detail.blocks.services },
-          realEstate: { values: detail.blocks.realEstate }
+          realEstate: { values: detail.blocks.realEstate },
+          salary: { values: detail.blocks.salary }
         },
         reviews: {
           count: detail.reviews.count,
@@ -301,6 +302,13 @@ export class GeoService {
           health: parseMetricValue(row.score_sante),
           transport: parseMetricValue(row.score_transports),
           education: parseMetricValue(row.score_education)
+        },
+        salary: {
+          cadre: parseMetricValue(row.salaire_net_mensuel_moyen_cadre),
+          profIntermediaire: parseMetricValue(row.salaire_net_mensuel_moyen_prof_intermediaire),
+          employe: parseMetricValue(row.salaire_net_mensuel_moyen_employe),
+          ouvrier: parseMetricValue(row.salaire_net_mensuel_moyen_ouvrier),
+          total: parseMetricValue(row.salaire_net_mensuel_moyen_total)
         }
       }
     };
