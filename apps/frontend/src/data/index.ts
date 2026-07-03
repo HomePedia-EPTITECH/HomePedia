@@ -1,10 +1,17 @@
-import { COMMUNES } from "./communes"
 import { apiGet } from "./apiClient"
 import { mapCommune, type RawCommune } from "./mapCommune"
-import type { Commune, TailleCommune } from "./types"
+import type {
+  Commune,
+  CommuneSearchResult,
+  NationalStats,
+  TailleCommune,
+} from "./types"
 
 export * from "./types"
-export { COMMUNES, MOYENNES_NATIONALES } from "./communes"
+// Le mock `communes.ts` n'est plus affiché : il ne sert QUE de jeu de
+// calibration pour la normalisation des scores (voir criteria.ts). Seule la
+// moyenne nationale par défaut en est encore réexportée (fallback de fiche).
+export { MOYENNES_NATIONALES } from "./communes"
 export { scoreColor, scoreColorHex } from "./scoring"
 export {
   CRITERIA,
@@ -26,8 +33,8 @@ export {
 export { purchasingPower, type PurchasingPower } from "./purchasingPower"
 
 /**
- * Façade "API" mock. Le jour où le back NestJS existe, on remplace
- * l'implémentation de ces fonctions par des appels HTTP — l'UI ne bouge pas.
+ * Façade d'accès aux données : ces fonctions appellent le back NestJS via
+ * `apiClient`. La liste des communes, elle, passe par le hook `useCommunes`.
  */
 
 /**
@@ -44,47 +51,50 @@ export async function getCommuneById(id: string): Promise<Commune | undefined> {
   }
 }
 
-export function getCommunes(): Commune[] {
-  return COMMUNES
-}
-
-export interface CommuneFilters {
-  region?: string
-  departement?: string
-  taille?: TailleCommune
-  prixMax?: number
-}
-
-export function filterCommunes(filters: CommuneFilters): Commune[] {
-  return COMMUNES.filter((c) => {
-    if (filters.region && c.region !== filters.region) return false
-    if (filters.departement && c.departement !== filters.departement)
-      return false
-    if (filters.taille && c.taille !== filters.taille) return false
-    if (filters.prixMax && c.prixM2Appartement > filters.prixMax) return false
-    return true
-  })
-}
-
-export function searchCommunes(query: string, limit = 8): Commune[] {
-  const q = query.trim().toLowerCase()
+/**
+ * Recherche de communes via le back (`GET /communes/search?q=`).
+ * Renvoie une liste allégée (`CommuneSearchResult`) — de quoi afficher des
+ * suggestions. Sur requête vide ou erreur réseau : liste vide (pas de crash).
+ */
+export async function searchCommunes(
+  query: string,
+  limit = 8,
+): Promise<CommuneSearchResult[]> {
+  const q = query.trim()
   if (!q) return []
-  return COMMUNES.filter(
-    (c) =>
-      c.nom.toLowerCase().includes(q) ||
-      c.departement.toLowerCase().includes(q) ||
-      c.region.toLowerCase().includes(q) ||
-      c.codePostal.startsWith(q),
-  ).slice(0, limit)
+  try {
+    const results = await apiGet<CommuneSearchResult[]>(
+      `/communes/search?q=${encodeURIComponent(q)}`,
+    )
+    return results.slice(0, limit)
+  } catch {
+    return []
+  }
 }
 
-export const REGIONS: string[] = Array.from(
-  new Set(COMMUNES.map((c) => c.region)),
-).sort()
-
-export const DEPARTEMENTS: string[] = Array.from(
-  new Set(COMMUNES.map((c) => c.departement)),
-).sort()
+/**
+ * Moyennes nationales depuis le back (`GET /stats/national`).
+ * Mappe les clés `*Moyen` du back vers la forme `NationalStats` de la fiche.
+ * Ne capture pas l'erreur : l'appelant conserve son repère par défaut si ça échoue.
+ */
+export async function getNationalStats(): Promise<NationalStats> {
+  const raw = await apiGet<{
+    agressionsMoyen: number
+    cambriolagesMoyen: number
+    volsDegradationsMoyen: number
+    stupefiantsMoyen: number
+    prixM2AppartementMoyen: number
+    tauxChomageMoyen: number
+  }>("/stats/national")
+  return {
+    agressions: raw.agressionsMoyen,
+    cambriolages: raw.cambriolagesMoyen,
+    volsDegradations: raw.volsDegradationsMoyen,
+    stupefiants: raw.stupefiantsMoyen,
+    prixM2Appartement: raw.prixM2AppartementMoyen,
+    tauxChomage: raw.tauxChomageMoyen,
+  }
+}
 
 export const TAILLE_LABELS: Record<TailleCommune, string> = {
   village: "Village",

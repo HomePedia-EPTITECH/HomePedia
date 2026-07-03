@@ -38,9 +38,11 @@ import {
   formatNumber,
   formatPercent,
   getCommuneById,
+  getNationalStats,
   subScore,
   type Commune,
   type CriterionKey,
+  type NationalStats,
 } from "@/data"
 import { usePreferences } from "@/app/preferences"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
@@ -65,6 +67,9 @@ export function CityDetailPage() {
 
   const [commune, setCommune] = useState<Commune | undefined>(undefined)
   const [loading, setLoading] = useState(true)
+  // Repère de comparaison : par défaut le mock, remplacé par le back au montage.
+  // Si /stats/national échoue, on garde le mock (pas de crash).
+  const [national, setNational] = useState<NationalStats>(MOYENNES_NATIONALES)
 
   useEffect(() => {
     let cancelled = false
@@ -88,6 +93,20 @@ export function CityDetailPage() {
       cancelled = true
     }
   }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    getNationalStats()
+      .then((s) => {
+        if (!cancelled) setNational(s)
+      })
+      .catch(() => {
+        /* garde le repère par défaut (mock) */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   if (loading) {
     return (
@@ -202,8 +221,12 @@ export function CityDetailPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {has("pouvoirAchat") && <ImmobilierSection commune={commune} />}
         {has("qualiteVie") && <QualiteVieSection commune={commune} />}
-        {has("securite") && <SecuriteSection commune={commune} />}
-        {has("emploi") && <EmploiSection commune={commune} />}
+        {has("securite") && (
+          <SecuriteSection commune={commune} national={national} />
+        )}
+        {has("emploi") && (
+          <EmploiSection commune={commune} national={national} />
+        )}
         {has("transports") && <TransportsSection commune={commune} />}
         {has("cultureLoisirs") && <CultureLoisirsSection commune={commune} />}
         <DemographieSection commune={commune} />
@@ -374,12 +397,18 @@ function DemographieSection({ commune }: { commune: Commune }) {
   )
 }
 
-function SecuriteSection({ commune }: { commune: Commune }) {
+function SecuriteSection({
+  commune,
+  national,
+}: {
+  commune: Commune
+  national: NationalStats
+}) {
   const rows = [
-    { label: "Agressions", value: commune.agressions, moy: MOYENNES_NATIONALES.agressions },
-    { label: "Cambriolages", value: commune.cambriolages, moy: MOYENNES_NATIONALES.cambriolages },
-    { label: "Vols / dégradations", value: commune.volsDegradations, moy: MOYENNES_NATIONALES.volsDegradations },
-    { label: "Stupéfiants", value: commune.stupefiants, moy: MOYENNES_NATIONALES.stupefiants },
+    { label: "Agressions", value: commune.agressions, moy: national.agressions },
+    { label: "Cambriolages", value: commune.cambriolages, moy: national.cambriolages },
+    { label: "Vols / dégradations", value: commune.volsDegradations, moy: national.volsDegradations },
+    { label: "Stupéfiants", value: commune.stupefiants, moy: national.stupefiants },
   ]
   return (
     <SectionCard title="Sécurité" icon={Shield}>
@@ -432,9 +461,15 @@ function categorySubData(commune: Commune, key: CriterionKey) {
   }))
 }
 
-function EmploiSection({ commune }: { commune: Commune }) {
+function EmploiSection({
+  commune,
+  national,
+}: {
+  commune: Commune
+  national: NationalStats
+}) {
   const data = categorySubData(commune, "emploi")
-  const chomageBetter = commune.tauxChomage <= MOYENNES_NATIONALES.tauxChomage
+  const chomageBetter = commune.tauxChomage <= national.tauxChomage
   return (
     <SectionCard title="Emploi & revenus" icon={Briefcase}>
       <div className="mb-4 grid grid-cols-2 gap-3">

@@ -18,6 +18,7 @@ import {
   searchCommunes,
   subScore,
   type Commune,
+  type CommuneSearchResult,
   type CriterionKey,
 } from "@/data"
 import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
@@ -362,9 +363,27 @@ function CityPicker({
   onPick: (id: string) => void
 }) {
   const [query, setQuery] = useState("")
-  const results = query
-    ? searchCommunes(query).filter((c) => !exclude.includes(c.id))
-    : []
+  const [raw, setRaw] = useState<CommuneSearchResult[]>([])
+
+  // Recherche back debouncée ; le filtre `exclude` est appliqué au rendu.
+  useEffect(() => {
+    if (!query) {
+      setRaw([])
+      return
+    }
+    let cancelled = false
+    const t = setTimeout(() => {
+      searchCommunes(query).then((r) => {
+        if (!cancelled) setRaw(r)
+      })
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [query])
+
+  const results = raw.filter((c) => !exclude.includes(c.id))
 
   return (
     <div className="relative rounded-xl border border-dashed bg-card/50 p-3">
