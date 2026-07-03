@@ -14,7 +14,6 @@ import {
   Check,
 } from "lucide-react"
 import {
-  COMMUNES,
   CRITERIA,
   TAILLE_LABELS,
   formatEuro,
@@ -23,6 +22,7 @@ import {
   type CriterionKey,
   type PurchasingPower,
 } from "@/data"
+import { useCommunes } from "@/data/useCommunes"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
 import { CriteriaPanel, CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { GeoFilterBar } from "@/components/shared/GeoFilterBar"
@@ -70,6 +70,7 @@ export function ResultsPage() {
     toggleCompare,
   } = usePreferences()
   const { region, departement, taille } = filters
+  const { communes, loading } = useCommunes()
 
   // Panneau de critères repliable (le tableau prend alors toute la largeur).
   const [filtersOpen, setFiltersOpen] = useState(true)
@@ -88,7 +89,7 @@ export function ResultsPage() {
   }
 
   const rows = useMemo(() => {
-    const list: Row[] = COMMUNES.filter((c) => {
+    const list: Row[] = communes.filter((c) => {
       if (region !== ALL && c.region !== region) return false
       if (departement !== ALL && c.departement !== departement) return false
       if (taille !== ALL && c.taille !== taille) return false
@@ -113,6 +114,7 @@ export function ResultsPage() {
     })
     return list
   }, [
+    communes,
     region,
     departement,
     taille,
@@ -261,7 +263,9 @@ export function ResultsPage() {
                       colSpan={4 + selectedCriteria.length}
                       className="py-12 text-center text-muted-foreground"
                     >
-                      Aucune ville ne correspond à ces filtres.
+                      {loading
+                        ? "Chargement des communes…"
+                        : "Aucune ville ne correspond à ces filtres."}
                     </TableCell>
                   </TableRow>
                 )}

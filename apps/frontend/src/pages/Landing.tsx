@@ -3,12 +3,12 @@ import { useNavigate } from "react-router-dom"
 import { ArrowRight, Sparkles, User } from "lucide-react"
 import { usePreferences } from "@/app/preferences"
 import {
-  COMMUNES,
   CRITERIA,
   CRITERION_KEYS,
   formatEuro,
   type CriterionKey,
 } from "@/data"
+import { useCommunes } from "@/data/useCommunes"
 import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,6 +30,7 @@ export function LandingPage() {
     removeCriterion,
     setBaseline,
   } = usePreferences()
+  const { communes, loading } = useCommunes()
 
   // La sélection d'Accueil devient la référence que "Réinitialiser" restaurera.
   useEffect(() => {
@@ -58,7 +59,8 @@ export function LandingPage() {
       <div className="relative mx-auto max-w-3xl px-4 pt-20 pb-10 text-center">
         <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           <Sparkles className="size-3.5" />
-          Data immobilière & qualité de vie · {COMMUNES.length} villes
+          Data immobilière & qualité de vie · {loading ? "…" : communes.length}{" "}
+          villes
         </span>
         <h1 className="text-balance text-4xl font-bold tracking-tight sm:text-5xl">
           Trouvez votre{" "}

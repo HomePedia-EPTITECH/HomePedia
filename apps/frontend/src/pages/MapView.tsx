@@ -18,13 +18,8 @@ import {
   Sun,
 } from "lucide-react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
-import {
-  COMMUNES,
-  CRITERIA,
-  formatEuro,
-  scoreColorHex,
-  type Commune,
-} from "@/data"
+import { CRITERIA, formatEuro, scoreColorHex, type Commune } from "@/data"
+import { useCommunes } from "@/data/useCommunes"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -90,6 +85,7 @@ export function MapPage() {
   const mapRef = useRef<MapRef>(null)
   const { scoreOf, filters, selectedCriteria } = usePreferences()
   const { region, departement, taille } = filters
+  const { communes } = useCommunes()
 
   const [scoreMin, setScoreMin] = useState(0)
   const [active, setActive] = useState<Commune | null>(null)
@@ -139,8 +135,8 @@ export function MapPage() {
   }, [lightPreset, applyLight])
 
   const scored = useMemo(
-    () => COMMUNES.map((c) => ({ commune: c, score: scoreOf(c) })),
-    [scoreOf],
+    () => communes.map((c) => ({ commune: c, score: scoreOf(c) })),
+    [communes, scoreOf],
   )
 
   // Villes passant les filtres (région / département / taille / score min).
