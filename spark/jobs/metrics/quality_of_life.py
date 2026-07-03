@@ -1,14 +1,17 @@
-from pyspark.sql import DataFrame, functions as F
+from pyspark.sql import functions as F
 
-# Score composite de qualité de vie (moyenne pondérée des notes)
+
 def quality_of_life(df):
-    return df.withColumn("score_qualite_vie_calculate",
-        F.round(
-            (F.col("note_securite") * 0.25 +
-            F.col("note_transports") * 0.20 +
-            F.col("note_ecoles") * 0.20 +
-            F.col("note_proprete") * 0.15 +
-            F.col("note_commerces") * 0.10 +
-            F.col("note_espaces_verts") * 0.10)
-        )
-)
+    """
+    Score composite de qualité de vie basé sur les notes agrégées réellement
+    disponibles dans le dataset nettoyé.
+    """
+    weighted_score = (
+        F.col("score_environnement") * F.lit(0.30)
+        + F.col("score_vie_pratique") * F.lit(0.25)
+        + F.col("score_loisirs") * F.lit(0.20)
+        + F.col("score_education") * F.lit(0.15)
+        + F.col("score_securite") * F.lit(0.10)
+    )
+
+    return df.withColumn("score_qualite_vie_calcule", F.round(weighted_score, 2))
