@@ -14,11 +14,32 @@ from pyspark.sql.types import IntegerType, LongType, DoubleType, FloatType
 # ─────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────
-PG_HOST     = "localhost"
-PG_PORT     = 5432
-PG_DB       = "homepedia"
-PG_USER     = "admin"
-PG_PASSWORD = "admin"
+# Paramètres Postgres lus depuis la config partagée (charge le .env racine :
+# POSTGRES_HOST/PORT/DB/USER/PASSWORD). Évite tout port codé en dur — utile
+# notamment quand le Postgres Docker est publié sur un autre port que 5432.
+import os
+import sys
+from pathlib import Path
+
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "packages" / "shared"
+if str(_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(_SHARED_DIR))
+
+try:
+    from util.config import get_postgres_params
+
+    _pg = get_postgres_params()
+    PG_HOST = _pg["host"]
+    PG_PORT = int(_pg["port"])
+    PG_DB = _pg["db_name"]
+    PG_USER = _pg["user"]
+    PG_PASSWORD = _pg["password"]
+except Exception:  # fallback si la config partagée n'est pas importable
+    PG_HOST = os.getenv("POSTGRES_HOST", "localhost")
+    PG_PORT = int(os.getenv("POSTGRES_PORT", "5433"))
+    PG_DB = os.getenv("POSTGRES_DB", "homepedia")
+    PG_USER = os.getenv("POSTGRES_USER", "admin")
+    PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "admin")
 
 JDBC_URL = f"jdbc:postgresql://{PG_HOST}:{PG_PORT}/{PG_DB}"
 
