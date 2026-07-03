@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
+import { normalizeDepartmentName } from "../geo/french-departments";
 import {
   CommuneAgeDistributionRecord,
   CommuneNotes,
@@ -391,7 +392,7 @@ export class CommunesRepository extends PostgresReadRepository {
       codePostal: row.codePostal,
       codeDept: row.codeDept,
       regionCode: row.regionCode,
-      departement: row.departement,
+      departement: normalizeDepartmentName(row.codeDept, row.departement),
       region: row.region,
       metropole: metropoleName,
       taille: this.deriveSize(population, metropoleName),

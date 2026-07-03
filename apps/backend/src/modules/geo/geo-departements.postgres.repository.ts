@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
+import { normalizeDepartmentName } from "./french-departments";
 
 export type DepartementRow = {
   code: string;
@@ -22,7 +23,7 @@ export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
     }
 
     const result = await this.dbService.query<DepartementRow>(this.buildQuery(tables));
-    return result.rows;
+    return result.rows.map((row) => this.normalizeRow(row));
   }
 
   async findByCode(code: string): Promise<DepartementRow | null> {
@@ -36,7 +37,7 @@ export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
       [code.toUpperCase()]
     );
 
-    return result.rows[0] ?? null;
+    return result.rows[0] ? this.normalizeRow(result.rows[0]) : null;
   }
 
   private buildQuery(tables: Set<string>, scoped = false): string {
@@ -63,5 +64,12 @@ export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
       GROUP BY d.${this.quoteIdentifier("numero_departement")}, d.${this.quoteIdentifier("nom")}
       ORDER BY d.${this.quoteIdentifier("numero_departement")}::text ASC
     `;
+  }
+
+  private normalizeRow(row: DepartementRow): DepartementRow {
+    return {
+      ...row,
+      name: normalizeDepartmentName(row.code, row.name)
+    };
   }
 }
