@@ -57,6 +57,10 @@ function inBounds(lon: number, lat: number, b: Bounds): boolean {
   return lon >= b.w && lon <= b.e && lat >= b.s && lat <= b.n
 }
 
+function hasCoords(commune: Commune): boolean {
+  return Number.isFinite(commune.lon) && Number.isFinite(commune.lat)
+}
+
 /** Deux emprises quasi identiques (tolérance) → pas de nouvelle recherche à proposer. */
 function boundsEqual(a: Bounds, b: Bounds, eps = 1e-4): boolean {
   return (
@@ -156,10 +160,12 @@ export function MapPage() {
   const inZone = useMemo(
     () =>
       searchBounds
-        ? filtered.filter(({ commune }) =>
-            inBounds(commune.lon, commune.lat, searchBounds),
+        ? filtered.filter(
+            ({ commune }) =>
+              hasCoords(commune) &&
+              inBounds(commune.lon, commune.lat, searchBounds),
           )
-        : filtered,
+        : filtered.filter(({ commune }) => hasCoords(commune)),
     [filtered, searchBounds],
   )
 
