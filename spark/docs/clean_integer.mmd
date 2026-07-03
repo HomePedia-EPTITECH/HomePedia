@@ -1,0 +1,22 @@
+flowchart LR
+    A["Valeur brute\ndans MongoDB"] --> B{{"Type BSON ?"}}
+
+    B -->|"Integer\n ex: 1009"| C["$toString\n→ '1009'"]
+    B -->|"String espacé\n ex: '1 009'"| D["$toString\n→ '1 009'"]
+    B -->|"Vide ''"| E["$cond\n→ null"]
+
+    C --> F["regexp_replace\n[^\\d] supprimé\n→ '1009'"]
+    D --> F
+    E --> G["coalesce → 0"]
+
+    F --> H{{"cleaned == '' ?"}}
+    H -->|"Non"| I[".cast('int')\n→ 1009"]
+    H -->|"Oui (était null/vide)"| G
+
+    G --> J["Valeur finale : 0"]
+    I --> K["Valeur finale : 1009"]
+
+    style A fill:#e8e8e8
+    style K fill:#4DB33D,color:#fff
+    style J fill:#aaa,color:#fff
+    style E fill:#cc3300,color:#fff

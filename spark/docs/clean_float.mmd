@@ -1,0 +1,18 @@
+flowchart LR
+    A["Valeur brute\nex: '12,5' ou '12.5'"] --> B["regexp_replace\n',' → '.'"]
+    B --> C["regexp_replace\n[^\\d.] supprimé"]
+    C --> D{{"cleaned == '' ?"}}
+    D -->|"Non"| E[".cast('double')\n→ 12.5"]
+    D -->|"Oui"| F["coalesce → 0.0"]
+
+    E --> G["Valeur finale : 12.5"]
+    F --> H["Valeur finale : 0.0"]
+
+    A2["Valeur brute\nex: '98 %' ou '98,3 %'"] --> B2["regexp_replace\n',' → '.'"]
+    B2 --> C2["regexp_replace\n[^\\d.] supprimé\n→ '98.3'"]
+    C2 --> E2[".cast('double')\n→ 98.3"]
+    E2 --> G2["Valeur finale : 98.3"]
+
+    style G fill:#4DB33D,color:#fff
+    style G2 fill:#4DB33D,color:#fff
+    style H fill:#aaa,color:#fff
