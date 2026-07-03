@@ -2,7 +2,6 @@ import { GeoCitiesPostgresRepository } from "../modules/geo/geo-cities.postgres.
 import { GeoDepartementsPostgresRepository } from "../modules/geo/geo-departements.postgres.repository";
 import { GeoRegionsPostgresRepository } from "../modules/geo/geo-regions.postgres.repository";
 import { GeoService } from "../modules/geo/geo.service";
-import { ReviewsRepository } from "../modules/reviews/reviews.repository";
 
 export type GeoCitiesRepositoryMock = jest.Mocked<
   Pick<
@@ -30,21 +29,11 @@ export type GeoRegionsRepositoryMock = jest.Mocked<
   >
 >;
 
-export type ReviewsRepositoryMock = jest.Mocked<
-  Pick<
-    ReviewsRepository,
-    | "findByCityCode"
-    | "countReviewedCities"
-    | "findCityCodesWithMinimumReviews"
-  >
->;
-
 export type GeoServiceTestHarness = {
   service: GeoService;
   citiesRepository: GeoCitiesRepositoryMock;
   departementsRepository: GeoDepartementsRepositoryMock;
   regionsRepository: GeoRegionsRepositoryMock;
-  reviewsRepository: ReviewsRepositoryMock;
 };
 
 export function createGeoServiceTestHarness(): GeoServiceTestHarness {
@@ -68,22 +57,14 @@ export function createGeoServiceTestHarness(): GeoServiceTestHarness {
     findDepartementsByRegionCode: jest.fn()
   };
 
-  const reviewsRepository: ReviewsRepositoryMock = {
-    findByCityCode: jest.fn(),
-    countReviewedCities: jest.fn(),
-    findCityCodesWithMinimumReviews: jest.fn()
-  };
-
   return {
     service: new GeoService(
       citiesRepository as unknown as GeoCitiesPostgresRepository,
       departementsRepository as unknown as GeoDepartementsPostgresRepository,
-      regionsRepository as unknown as GeoRegionsPostgresRepository,
-      reviewsRepository as unknown as ReviewsRepository
+      regionsRepository as unknown as GeoRegionsPostgresRepository
     ),
     citiesRepository,
     departementsRepository,
-    regionsRepository,
-    reviewsRepository
+    regionsRepository
   };
 }

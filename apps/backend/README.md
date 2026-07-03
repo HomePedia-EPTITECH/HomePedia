@@ -31,6 +31,15 @@ src/
       geo-regions.postgres.repository.ts
       geo.module.ts
       geo.service.ts
+    reviews/
+      dto/
+        city-review-items-response.dto.ts
+        city-reviews-response.dto.ts
+        get-city-reviews-items-query.dto.ts
+      reviews.controller.ts
+      reviews.module.ts
+      reviews.repository.ts
+      reviews.service.ts
     communes/
       dto/
         commune-detail-response.dto.ts
@@ -144,23 +153,45 @@ La suite couvre:
 - API en lecture seule
 - les bases sont alimentees par les scripts de scraping et ETL
 - le backend expose les donnees sans modifier les donnees metier
-- `communes` regroupe les routes publiques de communes, ranking et geographie
-- `geo` regroupe les repositories et services de donnees geographiques
+- `communes` regroupe les routes publiques de communes, ranking et statistiques
+- `geo` regroupe les routes publiques de regions et departements
+- `reviews` regroupe les routes Mongo d'avis bruts
 - `health` porte le healthcheck applicatif
 
 ## Architecture
 
-- `modules/communes` contient les routes HTTP publiques de communes, regions et departements
-- `modules/geo` contient les acces SQL aux villes, departements et regions
+- `modules/communes` contient les routes HTTP publiques de communes, ranking et statistiques
+- `modules/geo` contient les acces SQL aux regions, departements et cities
+- `modules/reviews` contient les routes HTTP publiques de reviews Mongo
 - `modules/health` contient le healthcheck
 - `common/format.ts` centralise les conversions de valeurs et de dates
 - `common/validation.ts` centralise la validation des requetes
 - `common/postgres-read.repository.ts` factorise les helpers SQL read-only
 - `filters/http-exception.filter.ts` unifie le format des erreurs
-- `db/` centralise les acces PostgreSQL et MongoDB
+- `db/` centralise les acces PostgreSQL et MongoDB pour les reviews
 - les fichiers `types.ts` definissent les types metier internes
 - les DTO HTTP publics vivent dans les dossiers `dto/` des modules concernes
 - les modules exposent des `dto` lorsque leur contrat HTTP public le justifie
+
+## Definition de `taille`
+
+`taille` est un champ derive, non stocke en base.
+
+Valeurs possibles:
+
+- `village`
+- `ville`
+- `metropole`
+
+Regle de calcul actuelle:
+
+- `metropole` si la commune est rattachee a une metropole
+- `metropole` si sa population est superieure ou egale a `80000`
+- `ville` si sa population est superieure ou egale a `3000`
+- `village` sinon
+
+Ce champ sert au filtrage, aux labels UI et au classement.
+Le front ne doit pas inventer sa propre regle de taille.
 
 ## Routes
 
@@ -176,11 +207,16 @@ La suite couvre:
 - `GET /regions/:code/departements`
 - `GET /departements/:code`
 - `GET /departements/:code/cities`
+- `GET /reviews/cities/:cityCode`
+- `GET /reviews/cities/:cityCode/items`
 
 `GET /health` verifie l'accessibilite de PostgreSQL et MongoDB.
 
 - `200 OK` si les dependances sont joignables
 - `503 Service Unavailable` si elles ne le sont pas
+
+PostgreSQL sert les routes communes, geo et stats.
+Mongo sert uniquement les routes `reviews`.
 
 ## Base de donnees
 

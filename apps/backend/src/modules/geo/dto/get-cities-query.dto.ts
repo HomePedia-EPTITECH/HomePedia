@@ -57,12 +57,6 @@ export class GetCitiesQueryDto {
   note_moyenne_globale_min?: number;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  @ApiPropertyOptional({ minimum: 0, example: 100 })
-  nb_avis_min?: number;
-
-  @IsOptional()
   @IsNumber()
   @Min(0)
   @ApiPropertyOptional({ minimum: 0, example: 5000 })

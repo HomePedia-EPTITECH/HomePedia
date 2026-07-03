@@ -42,8 +42,7 @@ export class CommunesService {
     }
 
     try {
-      const [avis, prixHistorique, ageDistribution] = await Promise.all([
-        this.communesRepository.findReviewsByCommuneCode(commune.id, 20),
+      const [prixHistorique, ageDistribution] = await Promise.all([
         this.communesRepository.findPriceHistory(commune.id),
         this.communesRepository.findAgeDistribution(commune.id)
       ]);
@@ -51,7 +50,6 @@ export class CommunesService {
       return {
         data: {
           ...this.toListItem(commune),
-          avis,
           prixHistorique,
           ageDistribution
         }
@@ -187,7 +185,6 @@ export class CommunesService {
       (query.region ?? []).map((value) => value.trim().toUpperCase()).filter(Boolean)
     );
     const sizeFilter = new Set(query.taille ?? []);
-    const search = (query.search ?? "").trim().toLowerCase();
 
     return catalogue.filter((commune) => {
       if (regionFilter.size > 0 && !this.matchesRegion(commune, regionFilter, departmentCodes)) {
@@ -207,10 +204,6 @@ export class CommunesService {
         if (price !== null && price > query.prixMax) {
           return false;
         }
-      }
-
-      if (search && !this.matchesSearch(commune, search)) {
-        return false;
       }
 
       return true;
@@ -297,21 +290,6 @@ export class CommunesService {
 
     const label = commune.departement?.trim().toUpperCase();
     return Boolean(label && departementFilter.has(label));
-  }
-
-  private matchesSearch(commune: CommuneRecord, search: string): boolean {
-    const values = [
-      commune.nom,
-      commune.departement,
-      commune.region,
-      commune.codePostal,
-      commune.id,
-      commune.codeDept
-    ]
-      .map((value) => value?.toLowerCase().trim())
-      .filter(Boolean) as string[];
-
-    return values.some((value) => value.includes(search));
   }
 
   private scoreSearchMatch(commune: CommuneRecord, search: string): number {
