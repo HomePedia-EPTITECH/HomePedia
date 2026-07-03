@@ -39,7 +39,12 @@ describe("GeoPostgresRepositories", () => {
         score_loisirs: 3.2,
         score_sante: null,
         score_transports: null,
-        score_education: 4
+        score_education: 4,
+        salaire_net_mensuel_moyen_cadre: 5200,
+        salaire_net_mensuel_moyen_prof_intermediaire: 3600,
+        salaire_net_mensuel_moyen_employe: 2500,
+        salaire_net_mensuel_moyen_ouvrier: 2300,
+        salaire_net_mensuel_moyen_total: 3300
       });
     });
 
@@ -93,7 +98,8 @@ describe("GeoPostgresRepositories", () => {
           }),
           security: {},
           services: {},
-          realEstate: {}
+          realEstate: {},
+          salary: {}
         },
         source: {
           provider: null,

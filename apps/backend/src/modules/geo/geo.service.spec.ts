@@ -16,7 +16,12 @@ describe("GeoService", () => {
       score_loisirs: 3.2,
       score_sante: null,
       score_transports: null,
-      score_education: 4
+      score_education: 4,
+      salaire_net_mensuel_moyen_cadre: 5200,
+      salaire_net_mensuel_moyen_prof_intermediaire: 3600,
+      salaire_net_mensuel_moyen_employe: 2500,
+      salaire_net_mensuel_moyen_ouvrier: 2300,
+      salaire_net_mensuel_moyen_total: 3300
     };
 
     it("prefers SQL for GET /api/cities/:code while preserving the public payload shape", async () => {
@@ -27,22 +32,29 @@ describe("GeoService", () => {
         data: {
           code: "75056",
           name: "Paris",
-          metrics: {
-            population: 2145906,
-            averageAge: 36,
-            activePopulation: 65,
+            metrics: {
+              population: 2145906,
+              averageAge: 36,
+              activePopulation: 65,
             scores: {
               security: 3.8,
               environment: 4.1,
               practicalLife: 3.4,
               leisure: 3.2,
               health: null,
-              transport: null,
-              education: 4
+                transport: null,
+                education: 4
+              },
+              salary: {
+                cadre: 5200,
+                profIntermediaire: 3600,
+                employe: 2500,
+                ouvrier: 2300,
+                total: 3300
+              }
             }
           }
-        }
-      });
+        });
     });
 
     it("enriches SQL detail with Mongo reviews only", async () => {
@@ -79,7 +91,14 @@ describe("GeoService", () => {
             "sante.nb_pharmacies": 428,
             "commerces.nb_boulangeries": 1290
           },
-          realEstate: { prix_m2_maison: 10450 }
+          realEstate: { prix_m2_maison: 10450 },
+          salary: {
+            salaire_net_mensuel_moyen_cadre: 5200,
+            salaire_net_mensuel_moyen_prof_intermediaire: 3600,
+            salaire_net_mensuel_moyen_employe: 2500,
+            salaire_net_mensuel_moyen_ouvrier: 2300,
+            salaire_net_mensuel_moyen_total: 3300
+          }
         }
       } as CityDetailRow);
       reviewsRepository.findByCityCode.mockResolvedValue({
@@ -104,6 +123,13 @@ describe("GeoService", () => {
         "education.nb_creches": 320,
         "sante.nb_pharmacies": 428,
         "commerces.nb_boulangeries": 1290
+      });
+      expect(response.data.blocks.salary.values).toEqual({
+        salaire_net_mensuel_moyen_cadre: 5200,
+        salaire_net_mensuel_moyen_prof_intermediaire: 3600,
+        salaire_net_mensuel_moyen_employe: 2500,
+        salaire_net_mensuel_moyen_ouvrier: 2300,
+        salaire_net_mensuel_moyen_total: 3300
       });
     });
 
@@ -131,7 +157,8 @@ describe("GeoService", () => {
           security: {},
           qualityOfLife: { score_globale: 3.9 },
           services: {},
-          realEstate: {}
+          realEstate: {},
+          salary: {}
         },
         reviews: {
           count: 0,

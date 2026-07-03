@@ -18,6 +18,11 @@ export type CityRow = {
   score_sante: PrimitiveMetric;
   score_transports: PrimitiveMetric;
   score_education: PrimitiveMetric;
+  salaire_net_mensuel_moyen_cadre: PrimitiveMetric;
+  salaire_net_mensuel_moyen_prof_intermediaire: PrimitiveMetric;
+  salaire_net_mensuel_moyen_employe: PrimitiveMetric;
+  salaire_net_mensuel_moyen_ouvrier: PrimitiveMetric;
+  salaire_net_mensuel_moyen_total: PrimitiveMetric;
 };
 
 export type OverviewMetricsRow = {
@@ -50,6 +55,7 @@ export type CityDetailRow = {
     qualityOfLife: Record<string, PrimitiveMetric>;
     services: Record<string, PrimitiveMetric>;
     realEstate: Record<string, PrimitiveMetric>;
+    salary: Record<string, PrimitiveMetric>;
   };
   reviews: {
     count: number;
@@ -59,19 +65,7 @@ export type CityDetailRow = {
   };
 };
 
-type DetailSqlRow = Record<string, string | number | null> & {
-  com: string;
-  nccenr: string;
-  nb_habitant: PrimitiveMetric;
-  age_moyen: PrimitiveMetric;
-  pop_active: PrimitiveMetric;
-  score_securite: PrimitiveMetric;
-  score_environnement: PrimitiveMetric;
-  score_vie_pratique: PrimitiveMetric;
-  score_loisirs: PrimitiveMetric;
-  score_sante: PrimitiveMetric;
-  score_transports: PrimitiveMetric;
-  score_education: PrimitiveMetric;
+type DetailSqlRow = CityRow & {
   code_dept: string | null;
   postal_code: string | null;
   region_name: string | null;
@@ -96,6 +90,14 @@ const CITY_SCORE_COLUMNS = [
   "score_vie_pratique",
   "score_loisirs",
   "score_education"
+] as const;
+
+const CITY_SALARY_COLUMNS = [
+  "salaire_net_mensuel_moyen_cadre",
+  "salaire_net_mensuel_moyen_prof_intermediaire",
+  "salaire_net_mensuel_moyen_employe",
+  "salaire_net_mensuel_moyen_ouvrier",
+  "salaire_net_mensuel_moyen_total"
 ] as const;
 
 const DETAIL_DEMOGRAPHY_COLUMNS = [
@@ -205,6 +207,8 @@ const DETAIL_COMMERCE_COLUMNS = [
   "nb_veterinaires"
 ] as const;
 
+const DETAIL_SALARY_COLUMNS = CITY_SALARY_COLUMNS;
+
 @Injectable()
 export class GeoCitiesPostgresRepository extends PostgresReadRepository {
   constructor(dbService: DbService) {
@@ -285,7 +289,8 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         security: this.extractBlock(row, "security__"),
         qualityOfLife: this.extractBlock(row, "quality__"),
         services: this.extractBlock(row, "services__"),
-        realEstate: this.extractBlock(row, "real_estate__")
+        realEstate: this.extractBlock(row, "real_estate__"),
+        salary: this.extractBlock(row, "salary__")
       },
       reviews: {
         count: 0,
@@ -550,6 +555,9 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       ...CITY_SCORE_COLUMNS.map((column) =>
         this.selectColumnOrNull(tables, "scores", "s", column, column)
       ),
+      ...CITY_SALARY_COLUMNS.map((column) =>
+        this.selectColumnOrNull(tables, "salaire", "sal", column, column)
+      ),
       `NULL AS ${this.quoteIdentifier("score_sante")}`,
       `NULL AS ${this.quoteIdentifier("score_transports")}`
     ];
@@ -568,6 +576,12 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         "scores",
         "s",
         `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -624,6 +638,9 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       ...DETAIL_QUALITY_COLUMNS.map((column) =>
         this.selectColumnOrNull(tables, "scores", "s", column, `quality__${column}`)
       ),
+      ...DETAIL_SALARY_COLUMNS.map((column) =>
+        this.selectColumnOrNull(tables, "salaire", "sal", column, `salary__${column}`)
+      ),
       ...DETAIL_EDUCATION_COLUMNS.map((column) =>
         this.selectColumnOrNull(
           tables,
@@ -659,6 +676,12 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         "scores",
         "s",
         `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       ),
       this.buildOptionalLeftJoin(
         tables,
@@ -745,6 +768,12 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         "scores",
         "s",
         `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -775,6 +804,12 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         "scores",
         "s",
         `s.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
       )
     ].filter(Boolean);
 
@@ -802,7 +837,13 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       score_loisirs: row.score_loisirs ?? null,
       score_sante: row.score_sante ?? null,
       score_transports: row.score_transports ?? null,
-      score_education: row.score_education ?? null
+      score_education: row.score_education ?? null,
+      salaire_net_mensuel_moyen_cadre: row.salaire_net_mensuel_moyen_cadre ?? null,
+      salaire_net_mensuel_moyen_prof_intermediaire:
+        row.salaire_net_mensuel_moyen_prof_intermediaire ?? null,
+      salaire_net_mensuel_moyen_employe: row.salaire_net_mensuel_moyen_employe ?? null,
+      salaire_net_mensuel_moyen_ouvrier: row.salaire_net_mensuel_moyen_ouvrier ?? null,
+      salaire_net_mensuel_moyen_total: row.salaire_net_mensuel_moyen_total ?? null
     };
   }
 

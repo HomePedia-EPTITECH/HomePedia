@@ -90,6 +90,16 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       part_residences_secondaires REAL
     );
   `,
+  salaire: `
+    CREATE TABLE salaire (
+      commune_id VARCHAR(10) PRIMARY KEY REFERENCES commune(commune_id),
+      salaire_net_mensuel_moyen_cadre REAL,
+      salaire_net_mensuel_moyen_prof_intermediaire REAL,
+      salaire_net_mensuel_moyen_employe REAL,
+      salaire_net_mensuel_moyen_ouvrier REAL,
+      salaire_net_mensuel_moyen_total REAL
+    );
+  `,
   education: `
     CREATE TABLE education (
       id SERIAL PRIMARY KEY,
@@ -167,6 +177,7 @@ const TABLE_DEPENDENCIES: Record<string, string[]> = {
   scores: ["commune"],
   securite: ["commune"],
   immobilier: ["commune"],
+  salaire: ["commune"],
   education: ["commune"],
   sante: ["commune"],
   commerces: ["commune"]
@@ -222,6 +233,14 @@ const BASE_DATA_SQL = `
   ) VALUES
     ('75056', 10450, 9850, 33.1, 61.4, 85.2, 6.7),
     ('69123', 6120, 5480, 36.2, 57.8, 88.1, 4.2);
+
+  INSERT INTO salaire (
+    commune_id, salaire_net_mensuel_moyen_cadre, salaire_net_mensuel_moyen_prof_intermediaire,
+    salaire_net_mensuel_moyen_employe, salaire_net_mensuel_moyen_ouvrier, salaire_net_mensuel_moyen_total
+  ) VALUES
+    ('75056', 5200, 3600, 2500, 2300, 3300),
+    ('69123', 4300, 3000, 2200, 2100, 2900),
+    ('35238', 4100, 2900, 2100, 2000, 2800);
 
   INSERT INTO education (
     commune_id, nb_creches, nb_ecoles_maternelles_publiques, nb_ecoles_maternelles_privees,
