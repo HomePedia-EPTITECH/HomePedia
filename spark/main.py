@@ -2,7 +2,8 @@ from pyspark.sql import functions as F
 from utils.session import get_spark, load_mongodb_collection
 from pipelines.clean_data_pipeline import run_pipeline as clean_data_pipeline
 from pipelines.education_pipeline import run_pipeline as education_pipeline
-from pipelines.upsert_pipeline import run_upsert 
+from pipelines.geo_pipeline import run_pipeline as geo_pipeline
+from pipelines.upsert_pipeline import run_upsert
 import logging
 from pathlib import Path
 import os
@@ -20,6 +21,7 @@ spark.sparkContext.setLogLevel("ERROR")
 
 # ── Chargement ────────────────────────────────────────────────
 df = load_mongodb_collection(spark).persist()
+df = geo_pipeline(spark, df)
 
 # ── Pipelines de transformation ───────────────────────────────
 result = clean_data_pipeline(df)
