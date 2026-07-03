@@ -17,7 +17,7 @@ from pyspark.sql import DataFrame
 # Colonnes attendues par table (doivent correspondre à ton schéma PostgreSQL)
 TABLE_COLUMNS = {
 
-    "commune": ["commune_id", "nom", "code_postal", "maire"],
+    "commune": ["commune_id", "nom", "code_postal", "maire", "latitude", "longitude"],
 
     "education": [
         "commune_id",

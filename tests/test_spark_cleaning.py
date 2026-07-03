@@ -18,6 +18,7 @@ if str(SPARK_DIR) not in sys.path:
 
 from jobs.cleaning.cleaning_jobs import apply_schema, filter_low_reviews, filter_price_outliers  # noqa: E402
 from jobs.education.education_job import childcare_density, private_school_ratio, school_density  # noqa: E402
+from jobs.geo.geo_job import aggregate_commune_coordinates  # noqa: E402
 from pipelines.clean_data_pipeline import run_pipeline  # noqa: E402
 from upsert.postgres_upsert import _fill_numeric_nulls  # noqa: E402
 from upsert.split_dataframe import COLUMN_RENAMING, TABLE_COLUMNS, split_by_table  # noqa: E402
@@ -154,6 +155,40 @@ class FillNumericNullsTest(unittest.TestCase):
         rows = _fill_numeric_nulls(df).collect()
         self.assertEqual((rows[0].a, rows[0].b), (0, 0.0))
         self.assertEqual((rows[1].a, rows[1].b), (1, 2.5))
+
+    def test_skip_columns_are_left_null(self):
+        schema = StructType([
+            StructField("a", IntegerType()),
+            StructField("latitude", DoubleType()),
+        ])
+        df = spark.createDataFrame([(None, None)], schema=schema)
+        row = _fill_numeric_nulls(df, skip_columns=frozenset({"latitude"})).collect()[0]
+        self.assertEqual(row.a, 0)
+        self.assertIsNone(row.latitude)
+
+
+class GeoJobTest(unittest.TestCase):
+    def test_averages_coordinates_per_commune(self):
+        df = spark.createDataFrame(
+            [
+                ("01001", 46.0, 5.0),
+                ("01001", 46.2, 5.2),
+                ("01002", 45.0, 4.0),
+            ],
+            ["com", "latitude", "longitude"],
+        )
+        result = {r.com: (r.latitude, r.longitude) for r in aggregate_commune_coordinates(df).collect()}
+        self.assertAlmostEqual(result["01001"][0], 46.1)
+        self.assertAlmostEqual(result["01001"][1], 5.1)
+        self.assertEqual(result["01002"], (45.0, 4.0))
+
+    def test_rows_with_null_coordinates_are_excluded(self):
+        df = spark.createDataFrame(
+            [("01001", 46.0, 5.0), ("01003", None, None)],
+            ["com", "latitude", "longitude"],
+        )
+        result = aggregate_commune_coordinates(df).collect()
+        self.assertEqual({r.com for r in result}, {"01001"})
 
 
 class EducationJobTest(unittest.TestCase):

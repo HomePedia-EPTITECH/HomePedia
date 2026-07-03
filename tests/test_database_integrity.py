@@ -82,6 +82,18 @@ VALUE_RANGES = {
         "vols_degradations": (0, None),
         "stupefiants": (0, None),
     },
+    # latitude/longitude sont NULL pour ~95% des communes (pas de transaction
+    # DVF connue) : les requêtes `< low`/`> high` ci-dessous ignorent déjà les
+    # NULL naturellement, donc aucune commune "non peuplée" ne fait échouer ce test.
+    "commune": {
+        "latitude": (-90, 90),
+        "longitude": (-180, 180),
+    },
+}
+
+# Colonnes nullable (contrairement aux autres colonnes numériques du schéma)
+NULLABLE_FLOAT_COLUMNS = {
+    "commune": ["latitude", "longitude"],
 }
 
 # Colonnes qui doivent être des entiers Postgres (regression test arrondi salaires)
@@ -237,6 +249,17 @@ class DatabaseIntegrityTest(unittest.TestCase):
                             f"SELECT count(*) FROM bdd.{table} WHERE {column} > %s", (high,)
                         )[0]
                         self.assertEqual(bad, 0, f"bdd.{table}.{column} a {bad} valeur(s) > {high}")
+
+    def test_nullable_float_columns_are_double_and_nullable(self):
+        for table, columns in NULLABLE_FLOAT_COLUMNS.items():
+            for column in columns:
+                with self.subTest(table=table, column=column):
+                    data_type, is_nullable = self._fetchone("""
+                        SELECT data_type, is_nullable FROM information_schema.columns
+                        WHERE table_schema = 'bdd' AND table_name = %s AND column_name = %s
+                    """, (table, column))
+                    self.assertEqual(data_type, "double precision")
+                    self.assertEqual(is_nullable, "YES", f"bdd.{table}.{column} devrait être nullable")
 
     def test_integer_columns_have_integer_type(self):
         for table, columns in INTEGER_COLUMNS.items():
