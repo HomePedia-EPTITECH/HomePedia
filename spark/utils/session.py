@@ -6,6 +6,7 @@ from pyspark.sql.types import IntegerType
 MONGO_URI = "mongodb://admin:admin@localhost:27017/?authSource=admin"
 MONGO_DB = "homepedia_raw"
 MONGO_COLLECTION = "communes_direct"
+MONGO_REAL_ESTATE_COLLECTION = "real_estate_history"
 
 _DROP_COLS = {
     "_id",
@@ -120,7 +121,6 @@ def load_mongodb_collection(spark):
         print(f"✗ Error connecting to MongoDB: {e}")
         raise
 
-
 def safe_string(df, col_name):
     return df.withColumn(
         col_name,
@@ -137,3 +137,23 @@ def safe_metric_col(metric_name):
         .otherwise(F.col(f"metrics.{metric_name}").cast("string"))
         .alias(alias)
     )
+
+
+def load_real_estate_history(spark):
+    """Transactions DVF (une ligne par transaction/parcelle) : com, latitude, longitude uniquement."""
+    try:
+        df = (
+            spark.read.format("mongodb")
+            .option("spark.mongodb.read.connection.uri", MONGO_URI)
+            .option("spark.mongodb.read.database", MONGO_DB)
+            .option("spark.mongodb.read.collection", MONGO_REAL_ESTATE_COLLECTION)
+            .load()
+            .select("com", "latitude", "longitude")
+        )
+
+        print(f"✓ Spark DataFrame loaded: {df.count()} rows from {MONGO_REAL_ESTATE_COLLECTION}")
+        return df
+
+    except Exception as e:
+        print(f"✗ Error connecting to MongoDB: {e}")
+        raise
