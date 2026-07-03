@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import {
   PolarAngleAxis,
@@ -39,13 +39,24 @@ export function ComparePage() {
     selectedCriteria,
   } = usePreferences()
 
-  const cities = useMemo(
-    () =>
-      compareIds
-        .map(getCommuneById)
-        .filter((c): c is Commune => Boolean(c)),
-    [compareIds],
-  )
+  // `getCommuneById` est désormais async (fetch back) → on résout les ids
+  // en parallèle et on stocke le résultat dans un état.
+  const [cities, setCities] = useState<Commune[]>([])
+  useEffect(() => {
+    let cancelled = false
+    Promise.all(compareIds.map(getCommuneById))
+      .then((list) => {
+        if (!cancelled) {
+          setCities(list.filter((c): c is Commune => Boolean(c)))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCities([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [compareIds])
 
   // Catégorie affichée dans le graphe de droite (parmi les critères actifs).
   const [chartCat, setChartCat] = useState<CriterionKey | null>(null)

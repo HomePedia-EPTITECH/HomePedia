@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   Area,
@@ -61,7 +62,40 @@ export function CityDetailPage() {
   const { scoreOf, toggleCompare, isComparing, selectedCriteria } =
     usePreferences()
   const has = (k: CriterionKey) => selectedCriteria.includes(k)
-  const commune = id ? getCommuneById(id) : undefined
+
+  const [commune, setCommune] = useState<Commune | undefined>(undefined)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    if (!id) {
+      setCommune(undefined)
+      setLoading(false)
+      return
+    }
+    getCommuneById(id)
+      .then((c) => {
+        if (!cancelled) setCommune(c)
+      })
+      .catch(() => {
+        if (!cancelled) setCommune(undefined)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-muted-foreground">
+        Chargement…
+      </div>
+    )
+  }
 
   if (!commune) return <NotFoundPage />
 

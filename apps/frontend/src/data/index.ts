@@ -1,4 +1,6 @@
 import { COMMUNES } from "./communes"
+import { apiGet } from "./apiClient"
+import { mapCommune, type RawCommune } from "./mapCommune"
 import type { Commune, TailleCommune } from "./types"
 
 export * from "./types"
@@ -28,8 +30,18 @@ export { purchasingPower, type PurchasingPower } from "./purchasingPower"
  * l'implémentation de ces fonctions par des appels HTTP — l'UI ne bouge pas.
  */
 
-export function getCommuneById(id: string): Commune | undefined {
-  return COMMUNES.find((c) => c.id === id)
+/**
+ * Récupère une commune complète depuis le back (`GET /communes/:id`).
+ * Renvoie `undefined` si la commune est inconnue (404) ou si le back est
+ * injoignable — l'appelant affiche alors un état « introuvable » sans crasher.
+ */
+export async function getCommuneById(id: string): Promise<Commune | undefined> {
+  try {
+    const raw = await apiGet<RawCommune>(`/communes/${id}`)
+    return mapCommune(raw)
+  } catch {
+    return undefined
+  }
 }
 
 export function getCommunes(): Commune[] {
