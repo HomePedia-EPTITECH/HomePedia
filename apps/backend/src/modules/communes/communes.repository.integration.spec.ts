@@ -18,7 +18,7 @@ describe("CommunesRepository", () => {
     await harness.close();
   });
 
-  it("reads longitude and latitude when the commune columns exist", async () => {
+  it("reads longitude and latitude from commune columns", async () => {
     harness.exec(createPostgresV1Schema());
     harness.exec(createPostgresV1Seed());
 

@@ -88,17 +88,12 @@ export class CommunesRepository extends PostgresReadRepository {
   }
 
   async loadCatalogue(): Promise<CommuneRecord[]> {
-    const [tables, communeColumns] = await Promise.all([
-      this.getAvailableTables(),
-      this.getAvailableColumns("commune")
-    ]);
+    const tables = await this.getAvailableTables();
     if (!tables.has("commune")) {
       return [];
     }
 
-    const result = await this.dbService.query<CommuneSqlRow>(
-      this.buildCatalogueQuery(tables, communeColumns)
-    );
+    const result = await this.dbService.query<CommuneSqlRow>(this.buildCatalogueQuery(tables));
     return result.rows.map((row) => this.mapRow(row)).sort((a, b) => {
       const byName = a.nom.localeCompare(b.nom, "fr");
       return byName !== 0 ? byName : a.id.localeCompare(b.id);
@@ -111,16 +106,13 @@ export class CommunesRepository extends PostgresReadRepository {
       return null;
     }
 
-    const [tables, communeColumns] = await Promise.all([
-      this.getAvailableTables(),
-      this.getAvailableColumns("commune")
-    ]);
+    const tables = await this.getAvailableTables();
     if (!tables.has("commune")) {
       return null;
     }
 
     const result = await this.dbService.query<CommuneSqlRow>(
-      this.buildCatalogueQuery(tables, communeColumns, true),
+      this.buildCatalogueQuery(tables, true),
       [code]
     );
 
@@ -164,11 +156,7 @@ export class CommunesRepository extends PostgresReadRepository {
     ].filter((item) => item.part > 0);
   }
 
-  private buildCatalogueQuery(
-    tables: Set<string>,
-    communeColumns: Set<string>,
-    scoped = false
-  ): string {
+  private buildCatalogueQuery(tables: Set<string>, scoped = false): string {
     const joins = [
       this.buildOptionalLeftJoin(
         tables,
@@ -248,20 +236,8 @@ export class CommunesRepository extends PostgresReadRepository {
         dept.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("regionCode")},
         reg.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("region")},
         metro.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("metropole")},
-        ${this.selectColumnOrNullIfAvailable(
-          communeColumns,
-          "c",
-          "longitude",
-          "lon",
-          (expression) => `${expression}::float`
-        )},
-        ${this.selectColumnOrNullIfAvailable(
-          communeColumns,
-          "c",
-          "latitude",
-          "lat",
-          (expression) => `${expression}::float`
-        )},
+        c.${this.quoteIdentifier("longitude")}::float AS ${this.quoteIdentifier("lon")},
+        c.${this.quoteIdentifier("latitude")}::float AS ${this.quoteIdentifier("lat")},
         d.${this.quoteIdentifier("population")}::int AS ${this.quoteIdentifier("population")},
         d.${this.quoteIdentifier("densite")}::float AS ${this.quoteIdentifier("densite")},
         d.${this.quoteIdentifier("superficie")}::float AS ${this.quoteIdentifier("superficie")},
@@ -564,22 +540,6 @@ export class CommunesRepository extends PostgresReadRepository {
 
     const numeric = Number(String(value).replace(",", ".").replace(/\s+/g, ""));
     return Number.isFinite(numeric) ? numeric : null;
-  }
-
-  private selectColumnOrNullIfAvailable(
-    columns: Set<string>,
-    alias: string,
-    columnName: string,
-    outputName: string,
-    transform?: (expression: string) => string
-  ): string {
-    if (!columns.has(columnName)) {
-      return `NULL AS ${this.quoteIdentifier(outputName)}`;
-    }
-
-    const expression = `${alias}.${this.quoteIdentifier(columnName)}`;
-    const selected = transform ? transform(expression) : expression;
-    return `${selected} AS ${this.quoteIdentifier(outputName)}`;
   }
 
   private normalizeCode(value: string): string | null {
