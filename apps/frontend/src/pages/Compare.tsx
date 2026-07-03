@@ -10,18 +10,17 @@ import {
   Tooltip as RTooltip,
 } from "recharts"
 import { Plus, Search, X } from "lucide-react"
+import { MAX_COMPARE_CITIES, usePreferences } from "@/app/preferences"
 import {
-  MAX_COMPARE_CITIES,
-  usePreferences,
-} from "@/app/preferences"
-import {
-  formatEuro,
-  formatNumber,
-  formatPercent,
+  CRITERIA,
   getCommuneById,
+  purchasingPower,
   searchCommunes,
+  subScore,
   type Commune,
+  type CriterionKey,
 } from "@/data"
+import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -29,38 +28,16 @@ import { cn } from "@/lib/utils"
 
 const SERIES_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-4)"]
 
-type Direction = "high" | "low"
-
-interface Metric {
-  label: string
-  get: (c: Commune) => number
-  format: (v: number) => string
-  best: Direction
-}
-
-const METRICS: Metric[] = [
-  { label: "Prix m² appartement", get: (c) => c.prixM2Appartement, format: formatEuro, best: "low" },
-  { label: "Prix m² maison", get: (c) => c.prixM2Maison, format: formatEuro, best: "low" },
-  { label: "Qualité de vie", get: (c) => c.notes.qualiteVie, format: (v) => `${v.toFixed(1)}/10`, best: "high" },
-  { label: "Sécurité (note)", get: (c) => c.notes.securite, format: (v) => `${v.toFixed(1)}/10`, best: "high" },
-  { label: "Population", get: (c) => c.population, format: formatNumber, best: "high" },
-  { label: "Revenu moyen", get: (c) => c.revenuMoyen, format: (v) => `${formatEuro(v)}/an`, best: "high" },
-  { label: "Taux de chômage", get: (c) => c.tauxChomage, format: formatPercent, best: "low" },
-]
-
-const RADAR_DIMS: { key: keyof Commune["notes"]; label: string }[] = [
-  { key: "environnement", label: "Environ." },
-  { key: "transports", label: "Transports" },
-  { key: "sante", label: "Santé" },
-  { key: "securite", label: "Sécurité" },
-  { key: "sportsLoisirs", label: "Loisirs" },
-  { key: "culture", label: "Culture" },
-  { key: "enseignement", label: "Écoles" },
-  { key: "commerces", label: "Commerces" },
-]
-
 export function ComparePage() {
-  const { compareIds, toggleCompare, scoreOf } = usePreferences()
+  const {
+    compareIds,
+    toggleCompare,
+    scoreOf,
+    breakdownOf,
+    subFocus,
+    salary,
+    selectedCriteria,
+  } = usePreferences()
 
   const cities = useMemo(
     () =>
@@ -70,23 +47,43 @@ export function ComparePage() {
     [compareIds],
   )
 
-  const radarData = useMemo(
-    () =>
-      RADAR_DIMS.map((d) => {
-        const row: Record<string, string | number> = { dim: d.label }
-        cities.forEach((c) => (row[c.nom] = c.notes[d.key]))
-        return row
-      }),
-    [cities],
-  )
+  // Catégorie affichée dans le graphe de droite (parmi les critères actifs).
+  const [chartCat, setChartCat] = useState<CriterionKey | null>(null)
+  const activeCat =
+    chartCat && selectedCriteria.includes(chartCat)
+      ? chartCat
+      : (selectedCriteria[0] ?? null)
+
+  // Sous-critères montrés : les ciblés si ≥ 3, sinon tous (radar lisible).
+  const chartData = useMemo(() => {
+    if (!activeCat) return []
+    const all = CRITERIA[activeCat].subs
+    const focus = subFocus[activeCat] ?? []
+    const shown =
+      focus.length >= 3 ? all.filter((s) => focus.includes(s.key)) : all
+    return shown.map((s) => {
+      const row: Record<string, string | number> = { dim: s.label }
+      cities.forEach((c) => (row[c.nom] = subScore(c, activeCat, s.key)))
+      return row
+    })
+  }, [activeCat, subFocus, cities])
+
+  /** Valeur comparée d'un critère pour une ville (m² louables pour le pouvoir d'achat, sinon sous-score). */
+  function criterionValue(key: CriterionKey, c: Commune): number {
+    if (key === "pouvoirAchat") return purchasingPower(c, salary).surfaceLouable
+    return breakdownOf(c)[key]
+  }
+  function criterionDisplay(key: CriterionKey, value: number): string {
+    return key === "pouvoirAchat" ? `${value} m²` : `${value}/100`
+  }
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-8 lg:px-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Comparateur</h1>
         <p className="text-muted-foreground">
-          Comparez jusqu'à {MAX_COMPARE_CITIES} villes côte à côte. La meilleure
-          valeur par ligne est surlignée.
+          Comparez jusqu'à {MAX_COMPARE_CITIES} villes sur vos critères conservés.
+          La meilleure valeur par ligne est surlignée.
         </p>
       </header>
 
@@ -172,25 +169,30 @@ export function ComparePage() {
                       )
                     })}
                   </tr>
-                  {METRICS.map((m) => {
-                    const values = cities.map((c) => m.get(c))
-                    const bestVal =
-                      m.best === "low" ? Math.min(...values) : Math.max(...values)
+                  {selectedCriteria.map((key) => {
+                    const Icon = CRITERION_ICONS[key]
+                    const values = cities.map((c) => criterionValue(key, c))
+                    const bestVal = Math.max(...values)
                     return (
-                      <tr key={m.label} className="border-b last:border-0">
-                        <td className="p-3 text-muted-foreground">{m.label}</td>
+                      <tr key={key} className="border-b last:border-0">
+                        <td className="p-3 text-muted-foreground">
+                          <span className="inline-flex items-center gap-2">
+                            <Icon className="size-4 text-primary" />
+                            {CRITERIA[key].label}
+                          </span>
+                        </td>
                         {cities.map((c, i) => {
-                          const v = m.get(c)
-                          const isBest = v === bestVal && cities.length > 1
+                          const isBest = values[i] === bestVal && cities.length > 1
                           return (
                             <td key={c.id} className="p-3 text-right tabular-nums">
                               <span
                                 className={cn(
                                   "rounded-md px-2 py-1",
-                                  isBest && "bg-success/15 font-medium text-success",
+                                  isBest &&
+                                    "bg-success/15 font-medium text-success",
                                 )}
                               >
-                                {m.format(values[i])}
+                                {criterionDisplay(key, values[i])}
                               </span>
                             </td>
                           )
@@ -198,47 +200,102 @@ export function ComparePage() {
                       </tr>
                     )
                   })}
+                  {selectedCriteria.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={cities.length + 1}
+                        className="p-4 text-center text-sm text-muted-foreground"
+                      >
+                        Aucun critère actif — les lignes reflètent vos critères.{" "}
+                        <Link
+                          to="/resultats"
+                          className="text-primary underline-offset-2 hover:underline"
+                        >
+                          En choisir
+                        </Link>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </Card>
 
-          {/* Radar superposé + CTA */}
+          {/* Graphe par catégorie de critère + CTA */}
           <div className="flex flex-col gap-4">
             <Card>
               <CardContent className="pt-6">
-                <h3 className="mb-2 text-sm font-semibold">
-                  Profil qualité de vie
-                </h3>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RadarChart data={radarData} outerRadius="70%">
-                      <PolarGrid stroke="var(--border)" />
-                      <PolarAngleAxis
-                        dataKey="dim"
-                        tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
-                      />
-                      {cities.map((c, i) => (
-                        <Radar
-                          key={c.id}
-                          dataKey={c.nom}
-                          stroke={SERIES_COLORS[i]}
-                          fill={SERIES_COLORS[i]}
-                          fillOpacity={0.15}
-                        />
-                      ))}
-                      <Legend wrapperStyle={{ fontSize: 11 }} />
-                      <RTooltip
-                        contentStyle={{
-                          background: "var(--popover)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 8,
-                          fontSize: 12,
-                        }}
-                      />
-                    </RadarChart>
-                  </ResponsiveContainer>
+                {/* Sélecteur : une catégorie de critère active */}
+                <div className="mb-3 flex flex-wrap gap-1.5">
+                  {selectedCriteria.map((key) => {
+                    const Icon = CRITERION_ICONS[key]
+                    const isActive = activeCat === key
+                    return (
+                      <button
+                        key={key}
+                        onClick={() => setChartCat(key)}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors",
+                          isActive
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <Icon className="size-3" />
+                        {CRITERIA[key].label}
+                      </button>
+                    )
+                  })}
                 </div>
+
+                {activeCat ? (
+                  <>
+                    <h3 className="mb-1 text-sm font-semibold">
+                      {CRITERIA[activeCat].label} — détail
+                    </h3>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {(subFocus[activeCat]?.length ?? 0) >= 3
+                        ? "Sous-critères que vous avez ciblés"
+                        : "Tous les sous-critères de la catégorie"}
+                    </p>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart data={chartData} outerRadius="70%">
+                          <PolarGrid stroke="var(--border)" />
+                          <PolarAngleAxis
+                            dataKey="dim"
+                            tick={{
+                              fontSize: 10,
+                              fill: "var(--muted-foreground)",
+                            }}
+                          />
+                          {cities.map((c, i) => (
+                            <Radar
+                              key={c.id}
+                              dataKey={c.nom}
+                              stroke={SERIES_COLORS[i]}
+                              fill={SERIES_COLORS[i]}
+                              fillOpacity={0.15}
+                            />
+                          ))}
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <RTooltip
+                            contentStyle={{
+                              background: "var(--popover)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
+                          />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </>
+                ) : (
+                  <p className="py-16 text-center text-sm text-muted-foreground">
+                    Aucun critère actif pour afficher un détail.
+                  </p>
+                )}
               </CardContent>
             </Card>
 

@@ -59,7 +59,8 @@ interface PreferencesState {
   setImportance: (key: CriterionKey, level: ImportanceLevel) => void
   addCriterion: (key: CriterionKey) => void
   removeCriterion: (key: CriterionKey) => void
-  toggleSub: (key: CriterionKey, subKey: string) => void
+  /** Fixe la liste des sous-critères pris en compte ([] = tous). */
+  setSubFocusFor: (key: CriterionKey, subKeys: string[]) => void
   /** Réinitialise les critères sur la sélection de référence (l'Accueil). */
   resetCriteria: () => void
   /** Fige la sélection de référence (appelée depuis l'Accueil). */
@@ -125,14 +126,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     setSubFocus((prev) => ({ ...prev, [key]: [] }))
   }, [])
 
-  const toggleSub = useCallback((key: CriterionKey, subKey: string) => {
-    setSubFocus((prev) => {
-      const current = prev[key] ?? []
-      const next = current.includes(subKey)
-        ? current.filter((s) => s !== subKey)
-        : [...current, subKey]
-      return { ...prev, [key]: next }
-    })
+  const setSubFocusFor = useCallback((key: CriterionKey, subKeys: string[]) => {
+    setSubFocus((prev) => ({ ...prev, [key]: subKeys }))
   }, [])
 
   const toggleCompare = useCallback((id: string) => {
@@ -158,7 +153,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       setImportance,
       addCriterion,
       removeCriterion,
-      toggleSub,
+      setSubFocusFor,
       resetCriteria: () => {
         setImportanceState(baseline)
         setSubFocus({})
@@ -186,7 +181,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
     setImportance,
     addCriterion,
     removeCriterion,
-    toggleSub,
+    setSubFocusFor,
     toggleCompare,
   ])
 

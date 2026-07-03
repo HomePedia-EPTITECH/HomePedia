@@ -11,6 +11,7 @@ export {
   LEVEL_LABELS,
   DEFAULT_IMPORTANCE,
   criterionScore,
+  subScore,
   personalScore,
   scoreBreakdown,
   type CriterionKey,
