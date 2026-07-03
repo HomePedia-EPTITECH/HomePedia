@@ -59,8 +59,8 @@ This is the endpoint that moves scoring to the backend.
 Rules:
 
 - `filters` are hard constraints.
-- `weights` are scoring coefficients.
-- `context` contains user-specific economic data used in the score.
+- `importance` matches the frontend importance model.
+- `subFocus` matches the frontend per-criterion focus model.
 - The backend applies filters first, then computes scores, then sorts, then paginates.
 
 Return shape:
@@ -73,22 +73,22 @@ export class CommuneRankRequestDto {
     tailles?: Array<"village" | "ville" | "metropole">;
   };
 
-  weights!: {
-    immobilier!: number;
+  importance!: {
+    pouvoirAchat!: 0 | 1 | 2 | 3;
     securite!: number;
-    education!: number;
+    qualiteVie!: number;
+    ecoles!: number;
     sante!: number;
+    emploi!: number;
     commerces!: number;
-    salaire!: number;
-    environnement!: number;
     transports!: number;
-    loisirs!: number;
-    viePratique!: number;
+    cultureLoisirs!: number;
   };
 
-  context!: {
-    salaryNetMensuel!: number;
-  };
+  subFocus?: Partial<Record<
+    "pouvoirAchat" | "securite" | "qualiteVie" | "ecoles" | "sante" | "emploi" | "commerces" | "transports" | "cultureLoisirs",
+    string[]
+  >>;
 
   page?: number;
   limit?: number;
@@ -98,16 +98,15 @@ export class CommuneRankItemDto {
   commune!: CommuneListItemDto;
   score!: number;
   breakdown!: {
-    immobilier!: number;
+    pouvoirAchat!: number;
     securite!: number;
-    education!: number;
+    qualiteVie!: number;
+    ecoles!: number;
     sante!: number;
+    emploi!: number;
     commerces!: number;
-    salaire!: number;
-    environnement!: number;
     transports!: number;
-    loisirs!: number;
-    viePratique!: number;
+    cultureLoisirs!: number;
   };
 }
 
@@ -128,6 +127,7 @@ Scoring behavior:
 - All remaining communes are scored with the same weighting model.
 - The ranking uses a global normalization baseline, not a page-local one.
 - Pagination happens only after sorting by the final score.
+- The scoring model mirrors `apps/frontend/src/data/criteria.ts`.
 
 ### `GET /communes`
 
@@ -158,6 +158,7 @@ export class CommuneListItemDto {
   partLocataires!: number | null;
   partResidencesPrincipales!: number | null;
   partResidencesSecondaires!: number | null;
+  partResidencesVacantes!: number | null;
 
   agressions!: number | null;
   cambriolages!: number | null;
@@ -180,26 +181,20 @@ export class CommuneListItemDto {
   nbAvis!: number | null;
 
   services!: {
-    sante!: {
-      medecins!: number | null;
-      specialistes!: number | null;
-      pharmacies!: number | null;
-      hopitaux!: number | null;
-    };
-    education!: {
-      creches!: number | null;
-      ecolesMaternelles!: number | null;
-      ecolesPrimaires!: number | null;
-      colleges!: number | null;
-      lycees!: number | null;
-    };
-    commerces!: {
-      hypermarches!: number | null;
-      supermarches!: number | null;
-      restaurants!: number | null;
-      banques!: number | null;
-      boulangeries!: number | null;
-    };
+    medecins!: number | null;
+    pharmacies!: number | null;
+    hopitaux!: number | null;
+    specialistes!: number | null;
+    creches!: number | null;
+    ecolesMaternelles!: number | null;
+    ecolesPrimaires!: number | null;
+    colleges!: number | null;
+    lycees!: number | null;
+    hypermarches!: number | null;
+    supermarches!: number | null;
+    restaurants!: number | null;
+    banques!: number | null;
+    boulangeries!: number | null;
   };
 
   salary!: {
@@ -569,22 +564,22 @@ export class RankCommunesRequestDto {
     tailles?: Array<"village" | "ville" | "metropole">;
   };
 
-  weights!: {
-    immobilier!: number;
-    securite!: number;
-    education!: number;
-    sante!: number;
-    commerces!: number;
-    salaire!: number;
-    environnement!: number;
-    transports!: number;
-    loisirs!: number;
-    viePratique!: number;
+  importance!: {
+    pouvoirAchat!: 0 | 1 | 2 | 3;
+    securite!: 0 | 1 | 2 | 3;
+    qualiteVie!: 0 | 1 | 2 | 3;
+    ecoles!: 0 | 1 | 2 | 3;
+    sante!: 0 | 1 | 2 | 3;
+    emploi!: 0 | 1 | 2 | 3;
+    commerces!: 0 | 1 | 2 | 3;
+    transports!: 0 | 1 | 2 | 3;
+    cultureLoisirs!: 0 | 1 | 2 | 3;
   };
 
-  context!: {
-    salaryNetMensuel!: number;
-  };
+  subFocus?: Partial<Record<
+    "pouvoirAchat" | "securite" | "qualiteVie" | "ecoles" | "sante" | "emploi" | "commerces" | "transports" | "cultureLoisirs",
+    string[]
+  >>;
 
   page?: number;
   limit?: number;
@@ -598,16 +593,15 @@ export class CommuneRankItemDto {
   commune!: CommuneListItemDto;
   score!: number;
   breakdown!: {
-    immobilier!: number;
+    pouvoirAchat!: number;
     securite!: number;
-    education!: number;
+    qualiteVie!: number;
+    ecoles!: number;
     sante!: number;
+    emploi!: number;
     commerces!: number;
-    salaire!: number;
-    environnement!: number;
     transports!: number;
-    loisirs!: number;
-    viePratique!: number;
+    cultureLoisirs!: number;
   };
 }
 
@@ -636,6 +630,7 @@ Implementation steps:
 - Compute the final score.
 - Sort descending by final score.
 - Apply pagination after sorting.
+- Mirror the frontend criteria engine exactly.
 
 ### `GET /communes/:id`
 

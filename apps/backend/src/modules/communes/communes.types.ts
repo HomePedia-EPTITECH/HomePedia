@@ -13,26 +13,20 @@ export type CommuneNotes = {
 };
 
 export type CommuneServices = {
-  sante: {
-    medecins: number | null;
-    specialistes: number | null;
-    pharmacies: number | null;
-    hopitaux: number | null;
-  };
-  education: {
-    creches: number | null;
-    ecolesMaternelles: number | null;
-    ecolesPrimaires: number | null;
-    colleges: number | null;
-    lycees: number | null;
-  };
-  commerces: {
-    hypermarches: number | null;
-    supermarches: number | null;
-    restaurants: number | null;
-    banques: number | null;
-    boulangeries: number | null;
-  };
+  medecins: number | null;
+  pharmacies: number | null;
+  hopitaux: number | null;
+  specialistes: number | null;
+  creches: number | null;
+  ecolesMaternelles: number | null;
+  ecolesPrimaires: number | null;
+  colleges: number | null;
+  lycees: number | null;
+  hypermarches: number | null;
+  supermarches: number | null;
+  restaurants: number | null;
+  banques: number | null;
+  boulangeries: number | null;
 };
 
 export type CommuneSalary = {
@@ -69,6 +63,7 @@ export type CommuneRecord = {
   partLocataires: number | null;
   partResidencesPrincipales: number | null;
   partResidencesSecondaires: number | null;
+  partResidencesVacantes: number | null;
 
   agressions: number | null;
   cambriolages: number | null;

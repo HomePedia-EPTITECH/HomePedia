@@ -266,6 +266,7 @@ export class CommunesRepository {
       partResidencesSecondaires: this.asNumber(
         this.pickNumber(doc, "part_residences_secondaires")
       ),
+      partResidencesVacantes: this.buildVacantResidences(doc),
       agressions: this.asNumber(this.pickNumber(doc, "agressions")),
       cambriolages: this.asNumber(this.pickNumber(doc, "cambriolages")),
       volsDegradations: this.asNumber(this.pickNumber(doc, "vols_degradations")),
@@ -323,6 +324,7 @@ export class CommunesRepository {
       partLocataires: this.asNumber(this.pickNumber(doc, "part_taux_locataires")),
       partResidencesPrincipales: this.asNumber(this.pickNumber(doc, "part_residences_principales")),
       partResidencesSecondaires: this.asNumber(this.pickNumber(doc, "part_residences_secondaires")),
+      partResidencesVacantes: this.buildVacantResidences(doc),
       agressions: this.asNumber(this.pickNumber(doc, "agressions")),
       cambriolages: this.asNumber(this.pickNumber(doc, "cambriolages")),
       volsDegradations: this.asNumber(this.pickNumber(doc, "vols_degradations")),
@@ -414,68 +416,54 @@ export class CommunesRepository {
   }
 
   private buildServices(doc: RawCommuneDocument): CommuneServices {
-    const medecins = this.asNumber(this.pickNumber(doc, "nb_medecins"));
-    const specialists = [
-      this.pickNumber(doc, "nb_dentistes"),
-      this.pickNumber(doc, "nb_chirurgiens"),
-      this.pickNumber(doc, "nb_dermatologues"),
-      this.pickNumber(doc, "nb_anesthesistes"),
-      this.pickNumber(doc, "nb_gastroenterologues"),
-      this.pickNumber(doc, "nb_gynecologues"),
-      this.pickNumber(doc, "nb_cancerologues"),
-      this.pickNumber(doc, "nb_neurologues"),
-      this.pickNumber(doc, "nb_ophtalmologues"),
-      this.pickNumber(doc, "nb_orl"),
-      this.pickNumber(doc, "nb_cardiologues"),
-      this.pickNumber(doc, "nb_pediatres"),
-      this.pickNumber(doc, "nb_pneumologues"),
-      this.pickNumber(doc, "nb_psychologues"),
-      this.pickNumber(doc, "nb_radiologues"),
-      this.pickNumber(doc, "nb_rhumatologues"),
-      this.pickNumber(doc, "nb_sages_femmes"),
-      this.pickNumber(doc, "nb_laboratoires_analyses"),
-      this.pickNumber(doc, "nb_etablissements_handicapes"),
-      this.pickNumber(doc, "nb_ehpa")
-    ];
-
-    const sumSpecialists = specialists.reduce<number>(
-      (sum, value) => sum + (this.asNumber(value) ?? 0),
-      0
-    );
-    const ecolesMaternelles =
-      (this.asNumber(this.pickNumber(doc, "nb_ecoles_maternelles_publiques")) ?? 0) +
-      (this.asNumber(this.pickNumber(doc, "nb_ecoles_maternelles_privees")) ?? 0) || null;
-    const ecolesPrimaires =
-      (this.asNumber(this.pickNumber(doc, "nb_ecoles_primaires_publiques")) ?? 0) +
-      (this.asNumber(this.pickNumber(doc, "nb_ecoles_primaires_privees")) ?? 0) || null;
-    const colleges =
-      (this.asNumber(this.pickNumber(doc, "nb_colleges_publics")) ?? 0) +
-      (this.asNumber(this.pickNumber(doc, "nb_colleges_prives")) ?? 0) || null;
-    const lycees =
-      (this.asNumber(this.pickNumber(doc, "nb_lycees_publics")) ?? 0) +
-      (this.asNumber(this.pickNumber(doc, "nb_lycees_prives")) ?? 0) || null;
-
     return {
-      sante: {
-        medecins,
-        specialistes: Number.isFinite(sumSpecialists) ? sumSpecialists : null,
-        pharmacies: this.asNumber(this.pickNumber(doc, "nb_pharmacies")),
-        hopitaux: this.asNumber(this.pickNumber(doc, "nb_hopitaux"))
-      },
-      education: {
-        creches: this.asNumber(this.pickNumber(doc, "nb_creches")),
-        ecolesMaternelles,
-        ecolesPrimaires,
-        colleges,
-        lycees
-      },
-      commerces: {
-        hypermarches: this.asNumber(this.pickNumber(doc, "nb_hypermarches")),
-        supermarches: this.asNumber(this.pickNumber(doc, "nb_supermarches")),
-        restaurants: this.asNumber(this.pickNumber(doc, "nb_restaurants")),
-        banques: this.asNumber(this.pickNumber(doc, "nb_banques")),
-        boulangeries: this.asNumber(this.pickNumber(doc, "nb_boulangeries"))
-      }
+      medecins: this.asNumber(this.pickNumber(doc, "nb_medecins")),
+      pharmacies: this.asNumber(this.pickNumber(doc, "nb_pharmacies")),
+      hopitaux: this.asNumber(this.pickNumber(doc, "nb_hopitaux")),
+      specialistes: this.sumNumbers([
+        this.pickNumber(doc, "nb_dentistes"),
+        this.pickNumber(doc, "nb_chirurgiens"),
+        this.pickNumber(doc, "nb_dermatologues"),
+        this.pickNumber(doc, "nb_anesthesistes"),
+        this.pickNumber(doc, "nb_gastroenterologues"),
+        this.pickNumber(doc, "nb_gynecologues"),
+        this.pickNumber(doc, "nb_cancerologues"),
+        this.pickNumber(doc, "nb_neurologues"),
+        this.pickNumber(doc, "nb_ophtalmologues"),
+        this.pickNumber(doc, "nb_orl"),
+        this.pickNumber(doc, "nb_cardiologues"),
+        this.pickNumber(doc, "nb_pediatres"),
+        this.pickNumber(doc, "nb_pneumologues"),
+        this.pickNumber(doc, "nb_psychologues"),
+        this.pickNumber(doc, "nb_radiologues"),
+        this.pickNumber(doc, "nb_rhumatologues"),
+        this.pickNumber(doc, "nb_sages_femmes"),
+        this.pickNumber(doc, "nb_laboratoires_analyses"),
+        this.pickNumber(doc, "nb_etablissements_handicapes"),
+        this.pickNumber(doc, "nb_ehpa")
+      ]),
+      creches: this.asNumber(this.pickNumber(doc, "nb_creches")),
+      ecolesMaternelles: this.sumNumbers([
+        this.pickNumber(doc, "nb_ecoles_maternelles_publiques"),
+        this.pickNumber(doc, "nb_ecoles_maternelles_privees")
+      ]),
+      ecolesPrimaires: this.sumNumbers([
+        this.pickNumber(doc, "nb_ecoles_primaires_publiques"),
+        this.pickNumber(doc, "nb_ecoles_primaires_privees")
+      ]),
+      colleges: this.sumNumbers([
+        this.pickNumber(doc, "nb_colleges_publics"),
+        this.pickNumber(doc, "nb_colleges_prives")
+      ]),
+      lycees: this.sumNumbers([
+        this.pickNumber(doc, "nb_lycees_publics"),
+        this.pickNumber(doc, "nb_lycees_prives")
+      ]),
+      hypermarches: this.asNumber(this.pickNumber(doc, "nb_hypermarches")),
+      supermarches: this.asNumber(this.pickNumber(doc, "nb_supermarches")),
+      restaurants: this.asNumber(this.pickNumber(doc, "nb_restaurants")),
+      banques: this.asNumber(this.pickNumber(doc, "nb_banques")),
+      boulangeries: this.asNumber(this.pickNumber(doc, "nb_boulangeries"))
     };
   }
 
@@ -489,6 +477,33 @@ export class CommunesRepository {
       ouvrier: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_ouvrier")),
       total: this.asNumber(this.pickNumber(doc, "salaire_net_mensuel_moyen_total"))
     };
+  }
+
+  private sumNumbers(values: Array<number | null>): number | null {
+    const filtered = values.filter(
+      (value): value is number => typeof value === "number" && Number.isFinite(value)
+    );
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    return filtered.reduce((sum, value) => sum + value, 0);
+  }
+
+  private buildVacantResidences(doc: RawCommuneDocument): number | null {
+    const explicit = this.asNumber(this.pickNumber(doc, "part_residences_vacantes"));
+    if (explicit !== null) {
+      return explicit;
+    }
+
+    const principales = this.asNumber(this.pickNumber(doc, "part_residences_principales"));
+    const secondaires = this.asNumber(this.pickNumber(doc, "part_residences_secondaires"));
+    if (principales === null || secondaires === null) {
+      return null;
+    }
+
+    const vacant = 100 - principales - secondaires;
+    return Math.max(0, Math.round(vacant * 10) / 10);
   }
 
   private deriveSize(population: number | null, metropoleName: string | null): CommuneSize {
@@ -546,26 +561,20 @@ export class CommunesRepository {
 
   private mergeServices(base: CommuneServices, overlay: CommuneServices): CommuneServices {
     return {
-      sante: {
-        medecins: overlay.sante.medecins ?? base.sante.medecins,
-        specialistes: overlay.sante.specialistes ?? base.sante.specialistes,
-        pharmacies: overlay.sante.pharmacies ?? base.sante.pharmacies,
-        hopitaux: overlay.sante.hopitaux ?? base.sante.hopitaux
-      },
-      education: {
-        creches: overlay.education.creches ?? base.education.creches,
-        ecolesMaternelles: overlay.education.ecolesMaternelles ?? base.education.ecolesMaternelles,
-        ecolesPrimaires: overlay.education.ecolesPrimaires ?? base.education.ecolesPrimaires,
-        colleges: overlay.education.colleges ?? base.education.colleges,
-        lycees: overlay.education.lycees ?? base.education.lycees
-      },
-      commerces: {
-        hypermarches: overlay.commerces.hypermarches ?? base.commerces.hypermarches,
-        supermarches: overlay.commerces.supermarches ?? base.commerces.supermarches,
-        restaurants: overlay.commerces.restaurants ?? base.commerces.restaurants,
-        banques: overlay.commerces.banques ?? base.commerces.banques,
-        boulangeries: overlay.commerces.boulangeries ?? base.commerces.boulangeries
-      }
+      medecins: overlay.medecins ?? base.medecins,
+      pharmacies: overlay.pharmacies ?? base.pharmacies,
+      hopitaux: overlay.hopitaux ?? base.hopitaux,
+      specialistes: overlay.specialistes ?? base.specialistes,
+      creches: overlay.creches ?? base.creches,
+      ecolesMaternelles: overlay.ecolesMaternelles ?? base.ecolesMaternelles,
+      ecolesPrimaires: overlay.ecolesPrimaires ?? base.ecolesPrimaires,
+      colleges: overlay.colleges ?? base.colleges,
+      lycees: overlay.lycees ?? base.lycees,
+      hypermarches: overlay.hypermarches ?? base.hypermarches,
+      supermarches: overlay.supermarches ?? base.supermarches,
+      restaurants: overlay.restaurants ?? base.restaurants,
+      banques: overlay.banques ?? base.banques,
+      boulangeries: overlay.boulangeries ?? base.boulangeries
     };
   }
 

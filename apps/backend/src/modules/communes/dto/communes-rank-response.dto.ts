@@ -3,41 +3,38 @@ import { CommuneListItemDto } from "./commune-list-response.dto";
 
 export class CommuneRankBreakdownDto {
   @ApiProperty({ type: Number, example: 64 })
-  immobilier!: number;
+  pouvoirAchat!: number;
 
   @ApiProperty({ type: Number, example: 72 })
   securite!: number;
 
   @ApiProperty({ type: Number, example: 68 })
-  education!: number;
+  qualiteVie!: number;
 
   @ApiProperty({ type: Number, example: 70 })
-  sante!: number;
+  ecoles!: number;
 
   @ApiProperty({ type: Number, example: 66 })
-  commerces!: number;
+  sante!: number;
 
   @ApiProperty({ type: Number, example: 58 })
-  salaire!: number;
+  emploi!: number;
 
   @ApiProperty({ type: Number, example: 75 })
-  environnement!: number;
+  commerces!: number;
 
   @ApiProperty({ type: Number, example: 61 })
   transports!: number;
 
   @ApiProperty({ type: Number, example: 63 })
-  loisirs!: number;
-
-  @ApiProperty({ type: Number, example: 69 })
-  viePratique!: number;
+  cultureLoisirs!: number;
 }
 
 export class CommuneRankItemDto {
   @ApiProperty({ type: () => CommuneListItemDto })
   commune!: CommuneListItemDto;
 
-  @ApiProperty({ type: Number, example: 71.2 })
+  @ApiProperty({ type: Number, example: 71 })
   score!: number;
 
   @ApiProperty({ type: () => CommuneRankBreakdownDto })

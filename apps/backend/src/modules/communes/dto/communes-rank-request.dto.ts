@@ -3,8 +3,8 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
   ArrayMaxSize,
   IsArray,
-  IsNumber,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   Max,
@@ -12,6 +12,7 @@ import {
   ValidateNested
 } from "class-validator";
 import { CommuneSize } from "../communes.types";
+import { ImportanceLevel } from "../communes.scoring";
 
 function normalizeArrayValue(value: unknown): string[] | undefined {
   if (value === undefined || value === null) {
@@ -64,63 +65,125 @@ export class CommuneRankFiltersDto {
   tailles?: CommuneSize[];
 }
 
-export class CommuneRankWeightsDto {
-  @IsNumber()
+export class CommuneRankImportanceDto {
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  immobilier!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 2 })
+  pouvoirAchat!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  securite!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 2 })
+  securite!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  education!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  qualiteVie!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  sante!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  ecoles!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  commerces!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  sante!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  salaire!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  emploi!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  environnement!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  commerces!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  transports!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  transports!: ImportanceLevel;
 
-  @IsNumber()
+  @IsInt()
   @Min(0)
-  @ApiProperty({ example: 1 })
-  loisirs!: number;
-
-  @IsNumber()
-  @Min(0)
-  @ApiProperty({ example: 1 })
-  viePratique!: number;
+  @Max(3)
+  @ApiProperty({ enum: [0, 1, 2, 3], example: 0 })
+  cultureLoisirs!: ImportanceLevel;
 }
 
-export class CommuneRankContextDto {
-  @IsNumber()
-  @Min(0)
-  @ApiProperty({ example: 3200 })
-  salaryNetMensuel!: number;
+export class CommuneRankSubFocusDto {
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["louer"] })
+  pouvoirAchat?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["agressions"] })
+  securite?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["environnement"] })
+  qualiteVie?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["maternelle"] })
+  ecoles?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["medecins"] })
+  sante?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["revenus"] })
+  emploi?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["supermarches"] })
+  commerces?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["transports"] })
+  transports?: string[];
+
+  @IsOptional()
+  @Transform(({ value }) => normalizeArrayValue(value))
+  @IsArray()
+  @IsString({ each: true })
+  @ApiPropertyOptional({ type: [String], example: ["culture"] })
+  cultureLoisirs?: string[];
 }
 
 export class CommuneRankRequestDto {
@@ -130,25 +193,26 @@ export class CommuneRankRequestDto {
   filters!: CommuneRankFiltersDto;
 
   @ValidateNested()
-  @Type(() => CommuneRankWeightsDto)
-  @ApiProperty({ type: () => CommuneRankWeightsDto })
-  weights!: CommuneRankWeightsDto;
+  @Type(() => CommuneRankImportanceDto)
+  @ApiProperty({ type: () => CommuneRankImportanceDto })
+  importance!: CommuneRankImportanceDto;
 
+  @IsOptional()
   @ValidateNested()
-  @Type(() => CommuneRankContextDto)
-  @ApiProperty({ type: () => CommuneRankContextDto })
-  context!: CommuneRankContextDto;
+  @Type(() => CommuneRankSubFocusDto)
+  @ApiPropertyOptional({ type: () => CommuneRankSubFocusDto })
+  subFocus?: CommuneRankSubFocusDto;
 
   @IsOptional()
   @Transform(({ value }) => (value === undefined || value === null ? undefined : Number(value)))
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @ApiPropertyOptional({ default: 1, minimum: 1 })
   page?: number = 1;
 
   @IsOptional()
   @Transform(({ value }) => (value === undefined || value === null ? undefined : Number(value)))
-  @IsNumber()
+  @IsInt()
   @Min(1)
   @Max(100)
   @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })

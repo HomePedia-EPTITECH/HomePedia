@@ -11,24 +11,13 @@ import { CommuneRankRequestDto } from "./dto/communes-rank-request.dto";
 import { CommuneRankResponseDto } from "./dto/communes-rank-response.dto";
 import { NationalStatsResponseDto } from "./dto/national-stats-response.dto";
 import { GetCommunesQueryDto } from "./dto/communes-list-query.dto";
-import { CommuneAgeDistributionRecord, CommuneRecord } from "./communes.types";
+import { CommuneRecord } from "./communes.types";
 import { CommunesRepository } from "./communes.repository";
-
-type RankDimensionKey =
-  | "immobilier"
-  | "securite"
-  | "education"
-  | "sante"
-  | "commerces"
-  | "salaire"
-  | "environnement"
-  | "transports"
-  | "loisirs"
-  | "viePratique";
-
-type RankRawScores = Record<RankDimensionKey, number | null>;
-type RankBreakdownScores = Record<RankDimensionKey, number>;
-type RankRanges = Record<RankDimensionKey, { min: number; max: number } | null>;
+import {
+  buildScoreRanges,
+  personalScore,
+  scoreBreakdown
+} from "./communes.scoring";
 
 @Injectable()
 export class CommunesService {
@@ -101,14 +90,14 @@ export class CommunesService {
 
   async rank(request: CommuneRankRequestDto): Promise<CommuneRankResponseDto> {
     const catalogue = await this.loadCatalogue();
-    const ranges = this.buildRanges(catalogue, request.context.salaryNetMensuel);
+    const ranges = buildScoreRanges(catalogue);
     const hardFiltered = await this.applyRankFilters(catalogue, request.filters);
 
     const ranked: CommuneRankResponseDto["data"] = hardFiltered
       .map((commune) => {
-        const raw = this.computeRawScores(commune, request.context.salaryNetMensuel);
-        const breakdown = this.computeBreakdown(raw, ranges);
-        const score = this.computeWeightedScore(breakdown, request.weights);
+        const focus = request.subFocus ?? {};
+        const breakdown = scoreBreakdown(commune, ranges, focus);
+        const score = personalScore(commune, request.importance, ranges, focus);
 
         return {
           commune: this.toListItem(commune),
@@ -393,6 +382,7 @@ export class CommunesService {
       partLocataires: commune.partLocataires,
       partResidencesPrincipales: commune.partResidencesPrincipales,
       partResidencesSecondaires: commune.partResidencesSecondaires,
+      partResidencesVacantes: commune.partResidencesVacantes,
       agressions: commune.agressions,
       cambriolages: commune.cambriolages,
       volsDegradations: commune.volsDegradations,
@@ -403,122 +393,6 @@ export class CommunesService {
       services: commune.services,
       salary: commune.salary
     };
-  }
-
-  private buildRanges(catalogue: CommuneRecord[], contextSalary: number): RankRanges {
-    const raws = catalogue.map((commune) => this.computeRawScores(commune, contextSalary));
-    return {
-      immobilier: this.rangeOf(raws.map((item) => item.immobilier)),
-      securite: this.rangeOf(raws.map((item) => item.securite)),
-      education: this.rangeOf(raws.map((item) => item.education)),
-      sante: this.rangeOf(raws.map((item) => item.sante)),
-      commerces: this.rangeOf(raws.map((item) => item.commerces)),
-      salaire: this.rangeOf(raws.map((item) => item.salaire)),
-      environnement: this.rangeOf(raws.map((item) => item.environnement)),
-      transports: this.rangeOf(raws.map((item) => item.transports)),
-      loisirs: this.rangeOf(raws.map((item) => item.loisirs)),
-      viePratique: this.rangeOf(raws.map((item) => item.viePratique))
-    };
-  }
-
-  private computeRawScores(commune: CommuneRecord, contextSalary: number): RankRawScores {
-    const referencePrice = this.referencePrice(commune);
-    const localSalary = commune.salary.total ?? commune.revenuMoyen ?? null;
-    const santeDensity = this.serviceDensity(
-      this.sumNumbers([
-        commune.services.sante.medecins,
-        commune.services.sante.specialistes,
-        commune.services.sante.pharmacies,
-        commune.services.sante.hopitaux
-      ]),
-      commune.population
-    );
-    const educationDensity = this.serviceDensity(
-      this.sumNumbers([
-        commune.services.education.creches,
-        commune.services.education.ecolesMaternelles,
-        commune.services.education.ecolesPrimaires,
-        commune.services.education.colleges,
-        commune.services.education.lycees
-      ]),
-      commune.population
-    );
-    const commercesDensity = this.serviceDensity(
-      this.sumNumbers([
-        commune.services.commerces.hypermarches,
-        commune.services.commerces.supermarches,
-        commune.services.commerces.restaurants,
-        commune.services.commerces.banques,
-        commune.services.commerces.boulangeries
-      ]),
-      commune.population
-    );
-
-    return {
-      immobilier:
-        referencePrice !== null && contextSalary > 0 ? contextSalary / referencePrice : null,
-      securite: this.invertedSecurityScore(commune),
-      education: commune.notes.enseignement ?? educationDensity,
-      sante: commune.notes.sante ?? santeDensity,
-      commerces: commune.notes.commerces ?? commercesDensity,
-      salaire:
-        localSalary !== null && contextSalary > 0 ? localSalary / contextSalary : localSalary,
-      environnement: commune.notes.environnement,
-      transports: commune.notes.transports,
-      loisirs: this.average([commune.notes.sportsLoisirs, commune.notes.culture]),
-      viePratique: commune.notes.qualiteVie
-    };
-  }
-
-  private computeBreakdown(raw: RankRawScores, ranges: RankRanges): RankBreakdownScores {
-    return {
-      immobilier: this.normalize(raw.immobilier, ranges.immobilier),
-      securite: this.normalize(raw.securite, ranges.securite),
-      education: this.normalize(raw.education, ranges.education),
-      sante: this.normalize(raw.sante, ranges.sante),
-      commerces: this.normalize(raw.commerces, ranges.commerces),
-      salaire: this.normalize(raw.salaire, ranges.salaire),
-      environnement: this.normalize(raw.environnement, ranges.environnement),
-      transports: this.normalize(raw.transports, ranges.transports),
-      loisirs: this.normalize(raw.loisirs, ranges.loisirs),
-      viePratique: this.normalize(raw.viePratique, ranges.viePratique)
-    };
-  }
-
-  private computeWeightedScore(
-    breakdown: RankBreakdownScores,
-    weights: CommuneRankRequestDto["weights"]
-  ): number {
-    const entries: Array<[RankDimensionKey, number]> = [
-      ["immobilier", weights.immobilier],
-      ["securite", weights.securite],
-      ["education", weights.education],
-      ["sante", weights.sante],
-      ["commerces", weights.commerces],
-      ["salaire", weights.salaire],
-      ["environnement", weights.environnement],
-      ["transports", weights.transports],
-      ["loisirs", weights.loisirs],
-      ["viePratique", weights.viePratique]
-    ];
-
-    let totalWeight = 0;
-    let weightedSum = 0;
-
-    for (const [key, weight] of entries) {
-      if (weight <= 0) {
-        continue;
-      }
-
-      totalWeight += weight;
-      weightedSum += (breakdown[key] ?? 0) * weight;
-    }
-
-    if (totalWeight === 0) {
-      return 0;
-    }
-
-    return Math.round((weightedSum / totalWeight) * 10) / 10;
   }
 
   private average(values: Array<number | null | undefined>): number | null {

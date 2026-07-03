@@ -70,6 +70,9 @@ export class CommuneListItemDto {
   @ApiProperty({ type: Number, nullable: true, example: 6.7 })
   partResidencesSecondaires!: number | null;
 
+  @ApiProperty({ type: Number, nullable: true, example: 8.1 })
+  partResidencesVacantes!: number | null;
+
   @ApiProperty({ type: Number, nullable: true, example: 120 })
   agressions!: number | null;
 

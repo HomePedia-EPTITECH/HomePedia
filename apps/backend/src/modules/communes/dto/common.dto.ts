@@ -29,21 +29,19 @@ export class CommuneNotesDto {
   qualiteVie!: number | null;
 }
 
-export class CommuneServicesSanteDto {
+export class CommuneServicesDto {
   @ApiProperty({ type: Number, nullable: true, example: 120 })
   medecins!: number | null;
-
-  @ApiProperty({ type: Number, nullable: true, example: 340 })
-  specialistes!: number | null;
 
   @ApiProperty({ type: Number, nullable: true, example: 22 })
   pharmacies!: number | null;
 
   @ApiProperty({ type: Number, nullable: true, example: 5 })
   hopitaux!: number | null;
-}
 
-export class CommuneServicesEducationDto {
+  @ApiProperty({ type: Number, nullable: true, example: 340 })
+  specialistes!: number | null;
+
   @ApiProperty({ type: Number, nullable: true, example: 18 })
   creches!: number | null;
 
@@ -58,9 +56,7 @@ export class CommuneServicesEducationDto {
 
   @ApiProperty({ type: Number, nullable: true, example: 20 })
   lycees!: number | null;
-}
 
-export class CommuneServicesCommercesDto {
   @ApiProperty({ type: Number, nullable: true, example: 8 })
   hypermarches!: number | null;
 
@@ -75,17 +71,6 @@ export class CommuneServicesCommercesDto {
 
   @ApiProperty({ type: Number, nullable: true, example: 1400 })
   boulangeries!: number | null;
-}
-
-export class CommuneServicesDto {
-  @ApiProperty({ type: () => CommuneServicesSanteDto })
-  sante!: CommuneServicesSanteDto;
-
-  @ApiProperty({ type: () => CommuneServicesEducationDto })
-  education!: CommuneServicesEducationDto;
-
-  @ApiProperty({ type: () => CommuneServicesCommercesDto })
-  commerces!: CommuneServicesCommercesDto;
 }
 
 export class CommuneSalaryDto {

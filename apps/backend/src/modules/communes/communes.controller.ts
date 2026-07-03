@@ -46,7 +46,7 @@ export class CommunesController {
 
   @Post("communes/rank")
   @HttpCode(200)
-  @ApiOperation({ summary: "Rank communes according to user weights" })
+  @ApiOperation({ summary: "Rank communes according to user preferences" })
   @ApiBody({ type: CommuneRankRequestDto })
   @ApiOkResponse({ type: CommuneRankResponseDto })
   @ApiBadRequestResponse({ description: "Invalid body parameters" })

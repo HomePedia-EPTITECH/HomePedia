@@ -61,21 +61,18 @@ describe("Communes HTTP", () => {
         .post("/communes/rank")
         .send({
           filters: {},
-          weights: {
-            immobilier: 1,
-            securite: 1,
-            education: 1,
-            sante: 1,
-            commerces: 1,
-            salaire: 1,
-            environnement: 1,
-            transports: 1,
-            loisirs: 1,
-            viePratique: 1
+          importance: {
+            pouvoirAchat: 2,
+            securite: 2,
+            qualiteVie: 0,
+            ecoles: 0,
+            sante: 0,
+            emploi: 0,
+            commerces: 0,
+            transports: 0,
+            cultureLoisirs: 0
           },
-          context: {
-            salaryNetMensuel: 3000
-          }
+          subFocus: {}
         });
 
       expect(response.status).toBe(200);
