@@ -39,7 +39,7 @@ export class CommuneSearchQueryDto {
   @Transform(({ value }) => (value === undefined || value === null ? undefined : Number(value)))
   @IsNumber()
   @Min(1)
-  @Max(10)
-  @ApiPropertyOptional({ example: 8, minimum: 1, maximum: 10 })
+  @Max(8)
+  @ApiPropertyOptional({ example: 8, minimum: 1, maximum: 8 })
   limit?: number;
 }

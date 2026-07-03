@@ -24,7 +24,7 @@ describe("GeoService", () => {
       salaire_net_mensuel_moyen_total: 3300
     };
 
-    it("prefers SQL for GET /api/cities/:code while preserving the public payload shape", async () => {
+    it("prefers SQL for GET /communes/:id while preserving the public payload shape", async () => {
       const { service, citiesRepository } = createGeoServiceTestHarness();
       citiesRepository.findByCode.mockResolvedValue(sqlCity);
 
