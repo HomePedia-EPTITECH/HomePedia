@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
+import { normalizeDepartmentName } from "../geo/french-departments";
 import {
   CommuneAgeDistributionRecord,
   CommuneNotes,
@@ -20,6 +21,8 @@ type CommuneSqlRow = {
   departement: string | null;
   region: string | null;
   metropole: string | null;
+  lon: number | null;
+  lat: number | null;
   population: number | null;
   densite: number | null;
   superficie: number | null;
@@ -234,8 +237,8 @@ export class CommunesRepository extends PostgresReadRepository {
         dept.${this.quoteIdentifier("region_id")}::text AS ${this.quoteIdentifier("regionCode")},
         reg.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("region")},
         metro.${this.quoteIdentifier("nom")} AS ${this.quoteIdentifier("metropole")},
-        NULL::float AS ${this.quoteIdentifier("lon")},
-        NULL::float AS ${this.quoteIdentifier("lat")},
+        c.${this.quoteIdentifier("longitude")}::float AS ${this.quoteIdentifier("lon")},
+        c.${this.quoteIdentifier("latitude")}::float AS ${this.quoteIdentifier("lat")},
         d.${this.quoteIdentifier("population")}::int AS ${this.quoteIdentifier("population")},
         d.${this.quoteIdentifier("densite")}::float AS ${this.quoteIdentifier("densite")},
         d.${this.quoteIdentifier("superficie")}::float AS ${this.quoteIdentifier("superficie")},
@@ -389,12 +392,12 @@ export class CommunesRepository extends PostgresReadRepository {
       codePostal: row.codePostal,
       codeDept: row.codeDept,
       regionCode: row.regionCode,
-      departement: row.departement,
+      departement: normalizeDepartmentName(row.codeDept, row.departement),
       region: row.region,
       metropole: metropoleName,
       taille: this.deriveSize(population, metropoleName),
-      lon: null,
-      lat: null,
+      lon: this.asNumber(row.lon),
+      lat: this.asNumber(row.lat),
       population,
       densite: this.asNumber(row.densite),
       superficie: this.asNumber(row.superficie),
