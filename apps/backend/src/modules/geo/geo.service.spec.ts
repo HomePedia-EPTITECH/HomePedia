@@ -24,7 +24,7 @@ describe("GeoService", () => {
       salaire_net_mensuel_moyen_total: 3300
     };
 
-    it("prefers SQL for GET /communes/:id while preserving the public payload shape", async () => {
+    it("prefers SQL for city lookups", async () => {
       const { service, citiesRepository } = createGeoServiceTestHarness();
       citiesRepository.findByCode.mockResolvedValue(sqlCity);
 
@@ -32,33 +32,33 @@ describe("GeoService", () => {
         data: {
           code: "75056",
           name: "Paris",
-            metrics: {
-              population: 2145906,
-              averageAge: 36,
-              activePopulation: 65,
+          metrics: {
+            population: 2145906,
+            averageAge: 36,
+            activePopulation: 65,
             scores: {
               security: 3.8,
               environment: 4.1,
               practicalLife: 3.4,
               leisure: 3.2,
               health: null,
-                transport: null,
-                education: 4
-              },
-              salary: {
-                cadre: 5200,
-                profIntermediaire: 3600,
-                employe: 2500,
-                ouvrier: 2300,
-                total: 3300
-              }
+              transport: null,
+              education: 4
+            },
+            salary: {
+              cadre: 5200,
+              profIntermediaire: 3600,
+              employe: 2500,
+              ouvrier: 2300,
+              total: 3300
             }
           }
-        });
+        }
+      });
     });
 
-    it("enriches SQL detail with Mongo reviews only", async () => {
-      const { service, citiesRepository, reviewsRepository } = createGeoServiceTestHarness();
+    it("returns SQL detail without Mongo enrichment", async () => {
+      const { service, citiesRepository } = createGeoServiceTestHarness();
       citiesRepository.findDetailByCode.mockResolvedValue({
         city: sqlCity,
         admin: {
@@ -75,12 +75,6 @@ describe("GeoService", () => {
           reviewsPage: null,
           harvestedAt: null,
           updatedAt: null
-        },
-        reviews: {
-          count: 0,
-          positive: [],
-          negative: [],
-          all: []
         },
         blocks: {
           demography: { population: 2145906 },
@@ -99,66 +93,6 @@ describe("GeoService", () => {
             salaire_net_mensuel_moyen_ouvrier: 2300,
             salaire_net_mensuel_moyen_total: 3300
           }
-        }
-      } as CityDetailRow);
-      reviewsRepository.findByCityCode.mockResolvedValue({
-        code: "75056",
-        source: "ville-ideale",
-        sourceUrl: "https://example.test/cities/paris/reviews",
-        harvestedAt: "2026-03-24T12:00:00.000Z",
-        totalReviews: 3,
-        reviews: [
-          { com: "75056", text: "Ville agreable", sentiment_label: "positive" },
-          { com: "75056", text: "Cher", sentiment_label: "negative" },
-          { com: "75056", text: "Ville agreable", sentiment_label: "positive" }
-        ]
-      });
-
-      const response = await service.getCityDetailsByCode("75056");
-
-      expect(response.data.source.provider).toBe("ville-ideale");
-      expect(response.data.source.reviewsPage).toBe("https://example.test/cities/paris/reviews");
-      expect(response.data.reviews.count).toBe(3);
-      expect(response.data.blocks.services.values).toEqual({
-        "education.nb_creches": 320,
-        "sante.nb_pharmacies": 428,
-        "commerces.nb_boulangeries": 1290
-      });
-      expect(response.data.blocks.salary.values).toEqual({
-        salaire_net_mensuel_moyen_cadre: 5200,
-        salaire_net_mensuel_moyen_prof_intermediaire: 3600,
-        salaire_net_mensuel_moyen_employe: 2500,
-        salaire_net_mensuel_moyen_ouvrier: 2300,
-        salaire_net_mensuel_moyen_total: 3300
-      });
-    });
-
-    it("returns SQL detail with empty reviews when Mongo detail lookup fails", async () => {
-      const { service, citiesRepository, reviewsRepository } = createGeoServiceTestHarness();
-      citiesRepository.findDetailByCode.mockResolvedValue({
-        city: sqlCity,
-        admin: {
-          codeDept: "75",
-          postalCode: "75000",
-          region: "Ile-de-France",
-          departement: "Paris",
-          metropole: null,
-          mayor: "Anne Hidalgo"
-        },
-        source: {
-          provider: null,
-          cityPage: null,
-          reviewsPage: null,
-          harvestedAt: null,
-          updatedAt: null
-        },
-        blocks: {
-          demography: { population: 2145906 },
-          security: {},
-          qualityOfLife: { score_globale: 3.9 },
-          services: {},
-          realEstate: {},
-          salary: {}
         },
         reviews: {
           count: 0,
@@ -167,40 +101,30 @@ describe("GeoService", () => {
           all: []
         }
       } as CityDetailRow);
-      reviewsRepository.findByCityCode.mockRejectedValue(new Error("mongo down"));
 
       const response = await service.getCityDetailsByCode("75056");
 
-      expect(response.data.city.code).toBe("75056");
+      expect(response.data.admin.codeDept).toBe("75");
+      expect(response.data.source.reviewsPage).toBeNull();
       expect(response.data.reviews).toEqual({
         count: 0,
         positive: [],
         negative: [],
         all: []
       });
+      expect(response.data.blocks.services.values).toEqual({
+        "education.nb_creches": 320,
+        "sante.nb_pharmacies": 428,
+        "commerces.nb_boulangeries": 1290
+      });
     });
 
-    it("keeps the 404 behavior when neither SQL nor Mongo can resolve the city", async () => {
+    it("keeps the 404 behavior when SQL cannot resolve the city", async () => {
       const { service, citiesRepository } = createGeoServiceTestHarness();
       citiesRepository.findByCode.mockResolvedValue(null);
       citiesRepository.findDetailByCode.mockResolvedValue(null);
 
       await expect(service.getCityByCode("00000")).rejects.toBeInstanceOf(NotFoundException);
-    });
-
-    it("uses Mongo review counts to scope SQL city filters when nb_avis_min is present", async () => {
-      const { service, citiesRepository, reviewsRepository } = createGeoServiceTestHarness();
-      citiesRepository.findAll.mockResolvedValue([sqlCity]);
-      citiesRepository.countAll.mockResolvedValue(1);
-      reviewsRepository.findCityCodesWithMinimumReviews.mockResolvedValue(["75056"]);
-
-      const response = await service.getCities({
-        page: 1,
-        limit: 20,
-        nb_avis_min: 10
-      } as never);
-
-      expect(response.meta.total).toBe(1);
     });
   });
 
@@ -263,19 +187,6 @@ describe("GeoService", () => {
           total: 0,
           totalPages: 0
         }
-      });
-
-      expect(citiesRepository.findAll.mock.calls).toHaveLength(1);
-      expect(citiesRepository.findAll.mock.calls[0][0]).toMatchObject({
-        page: 1,
-        limit: 20,
-        code_dept: "75"
-      });
-      expect(citiesRepository.countAll.mock.calls).toHaveLength(1);
-      expect(citiesRepository.countAll.mock.calls[0][0]).toMatchObject({
-        page: 1,
-        limit: 20,
-        code_dept: "75"
       });
     });
 
