@@ -1,38 +1,28 @@
 # API contract cible for communes
 
-This document defines the target backend contract expected by the frontend.
-It is meant to replace the current `/api/cities`, `/api/departements`,
-`/api/regions`, `/api/overview`, and `/api/reviews/*` split where needed.
+This document defines the public backend contract exposed to the frontend.
 
 ## Goals
 
-- Serve a complete commune list for client-side scoring.
+- Serve a complete commune list for backend ranking and map views.
 - Serve a full commune detail payload for the city page.
 - Keep geographic lookups lightweight and predictable.
-- Preserve legacy routes only as temporary aliases.
 
 ## Route map
 
 | Method | Route | Status | Purpose |
 |---|---|---|---|
-| `GET` | `/communes` | New, primary | Full filtered commune list, no pagination |
-| `GET` | `/communes/:id` | New, primary | Full commune detail payload |
-| `GET` | `/communes/search` | New, primary | Lightweight autocomplete/search |
-| `GET` | `/stats/national` | New, primary | National averages for comparisons |
-| `POST` | `/communes/rank` | New, primary | Filter, score, sort, and paginate communes |
-| `GET` | `/regions` | Keep | Region list |
-| `GET` | `/departements` | Keep and extend | Department list, optional `?region=` filter |
-| `GET` | `/regions/:code/departements` | Optional alias | Compatibility shortcut |
-
-## Legacy route mapping
-
-| Legacy route | Target |
-|---|---|
-| `/api/cities` | `/communes` |
-| `/api/cities/:code` | `/communes/:id` |
-| `/api/cities/:code/details` | `/communes/:id` |
-| `/api/overview` | `/stats/national` |
-| `/api/analytics/overview` | `/stats/national` |
+| `GET` | `/communes` | Primary | Full filtered commune list, no pagination |
+| `POST` | `/communes/rank` | Primary | Filter, score, sort, and paginate communes |
+| `GET` | `/communes/search` | Primary | Lightweight autocomplete/search |
+| `GET` | `/communes/:id` | Primary | Full commune detail payload |
+| `GET` | `/stats/national` | Primary | National averages for comparisons |
+| `GET` | `/regions` | Primary | Region list |
+| `GET` | `/regions/:code` | Primary | Single region payload |
+| `GET` | `/regions/:code/departements` | Primary | Departments in a region |
+| `GET` | `/departements` | Primary | Department list, optional `?region=` filter |
+| `GET` | `/departements/:code` | Primary | Single department payload |
+| `GET` | `/departements/:code/cities` | Primary | Cities in a department |
 
 ## File layout proposal
 
@@ -42,11 +32,18 @@ src/modules/communes/
   communes.service.ts
   communes.repository.ts
   dto/
+    communes-list-query.dto.ts
     commune-list-response.dto.ts
     commune-detail-response.dto.ts
     commune-search-response.dto.ts
+    communes-rank-request.dto.ts
+    communes-rank-response.dto.ts
     national-stats-response.dto.ts
+src/modules/geo/
+  dto/
+    city-response.dto.ts
     departement-response.dto.ts
+    get-cities-query.dto.ts
     region-response.dto.ts
 ```
 
@@ -250,8 +247,6 @@ export class CommuneDetailResponseDto {
 Notes:
 
 - This route is the single source of truth for the city page.
-- It replaces the current `admin/source/blocks/reviews` split unless you want to keep
-  an internal-only compatibility layer.
 - If some values are unavailable, return `null` or empty arrays, but keep the keys stable.
 
 ### `GET /communes/search`
@@ -277,7 +272,7 @@ Query params:
 
 ```ts
 q?: string
-limit?: number // default 8, max 8 or 10
+limit?: number // default 8, max 8
 ```
 
 Search should match:
@@ -343,7 +338,7 @@ Suggested repository behavior:
 
 - Select one row per commune.
 - Join optional satellite tables with left joins.
-- Return all fields needed by the frontend scoring pipeline.
+- Return all fields needed by the ranking pipeline.
 - Keep `lon` and `lat` in the contract only if the data source really provides them.
 
 If `lon` and `lat` do not exist in SQL yet, add them to the source pipeline or explicitly return
@@ -380,29 +375,13 @@ Suggested strategy:
 - Compute national averages once.
 - Keep the payload minimal and stable.
 
-## Suggested deprecation plan
-
-Phase 1:
-
-- Add `/communes`, `/communes/:id`, `/communes/search`, `/stats/national`.
-- Keep legacy `/api/*` routes as aliases.
-
-Phase 2:
-
-- Switch the frontend to the new routes.
-- Remove pagination from the list endpoint if it still exists.
-
-Phase 3:
-
-- Remove legacy `/api/cities*` and `/api/overview` endpoints.
-
 ## Recommended priority order
 
 1. Implement `/communes`.
 2. Implement `/communes/:id`.
 3. Implement `/communes/search`.
 4. Implement `/stats/national`.
-5. Deprecate legacy routes.
+5. Implement the geo detail routes.
 
 ## NestJS blueprint
 
@@ -707,15 +686,59 @@ Controller:
 
 ```ts
 @Get("/regions")
-findRegions(): Promise<RegionResponseDto>
+findRegions(): Promise<RegionsResponseDto>
 ```
 
-Suggested DTO:
+Return shape:
 
 ```ts
 export class RegionItemDto {
   id!: string;
   nom!: string;
+}
+
+export class RegionsResponseDto {
+  data!: RegionItemDto[];
+}
+```
+
+### `GET /regions/:code`
+
+Controller:
+
+```ts
+@Get("/regions/:code")
+findRegion(@Param("code") code: string): Promise<RegionResponseDto>
+```
+
+Return shape:
+
+```ts
+export class RegionResponseDto {
+  data!: RegionItemDto | null;
+}
+```
+
+### `GET /regions/:code/departements`
+
+Controller:
+
+```ts
+@Get("/regions/:code/departements")
+findRegionDepartements(@Param("code") code: string): Promise<DepartementsResponseDto>
+```
+
+Return shape:
+
+```ts
+export class DepartementItemDto {
+  id!: string;
+  nom!: string;
+  regionId!: string;
+}
+
+export class DepartementsResponseDto {
+  data!: DepartementItemDto[];
 }
 ```
 
@@ -725,10 +748,16 @@ Controller:
 
 ```ts
 @Get("/departements")
-findDepartements(@Query("region") region?: string): Promise<DepartementResponseDto>
+findDepartements(@Query("region") region?: string): Promise<DepartementsResponseDto>
 ```
 
-Suggested DTO:
+Query params:
+
+```ts
+region?: string
+```
+
+Return shape:
 
 ```ts
 export class DepartementItemDto {
@@ -736,30 +765,52 @@ export class DepartementItemDto {
   nom!: string;
   regionId!: string;
 }
-```
 
-### Legacy aliases
-
-If you keep the current API alive temporarily, the controller can expose aliases:
-
-```ts
-@Get("/api/cities")
-findCitiesLegacy(@Query() query: GetCommunesQueryDto) {
-  return this.findAll(query);
+export class DepartementsResponseDto {
+  data!: DepartementItemDto[];
 }
 ```
 
+### `GET /departements/:code`
+
+Controller:
+
 ```ts
-@Get("/api/cities/:code")
-findCityLegacy(@Param("code") code: string) {
-  return this.findOne(code);
+@Get("/departements/:code")
+findDepartement(@Param("code") code: string): Promise<DepartementResponseDto>
+```
+
+Return shape:
+
+```ts
+export class DepartementResponseDto {
+  data!: DepartementItemDto | null;
 }
 ```
 
+### `GET /departements/:code/cities`
+
+Controller:
+
 ```ts
-@Get("/api/cities/:code/details")
-findCityDetailsLegacy(@Param("code") code: string) {
-  return this.findOne(code);
+@Get("/departements/:code/cities")
+findDepartementCities(
+  @Param("code") code: string,
+  @Query() query: GetCitiesQueryDto
+): Promise<CitiesResponseDto>
+```
+
+Return shape:
+
+```ts
+export class CityItemDto {
+  code!: string;
+  nom!: string;
+  codePostal!: string;
+}
+
+export class CitiesResponseDto {
+  data!: CityItemDto[];
 }
 ```
 
@@ -770,7 +821,7 @@ findCityDetailsLegacy(@Param("code") code: string) {
 1. Create the new `communes` module and DTO files.
 2. Define `CommuneRecord` and `CommuneDetailRecord`.
 3. Add the `/communes/rank` request/response contract.
-4. Keep legacy routes as aliases.
+4. Keep the response shapes stable across all commune endpoints.
 
 ### Phase 2 - Repository
 
@@ -788,16 +839,10 @@ findCityDetailsLegacy(@Param("code") code: string) {
 4. Sort and paginate in the service.
 5. Add tests for filtered ranking and deterministic score ordering.
 
-### Phase 4 - Compatibility
-
-1. Expose legacy aliases for the old `/api/*` routes.
-2. Keep old DTOs only as wrappers if needed.
-3. Migrate the frontend route by route.
-4. Remove aliases once the frontend no longer calls them.
-
-### Phase 5 - Verification
+### Phase 4 - Verification
 
 1. Add integration tests for `/communes`, `/communes/:id`, `/communes/search`, `/stats/national`.
-2. Add ranking tests with at least one synthetic filter scenario.
-3. Verify pagination after sort, not before.
-4. Remove pagination from any endpoint where the frontend needs the full dataset.
+2. Add integration tests for `/regions`, `/regions/:code`, `/regions/:code/departements`, `/departements`, `/departements/:code`, `/departements/:code/cities`.
+3. Add ranking tests with at least one synthetic filter scenario.
+4. Verify pagination after sort, not before.
+5. Keep `/communes` unpaginated and reserve pagination for `/communes/rank`.
