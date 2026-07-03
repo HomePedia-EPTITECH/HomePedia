@@ -13,7 +13,6 @@ export async function createTestApp(
   }).compile();
 
   const app = module.createNestApplication();
-  app.setGlobalPrefix("api");
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());
 

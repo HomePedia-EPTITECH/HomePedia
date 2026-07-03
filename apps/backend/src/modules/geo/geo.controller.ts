@@ -26,7 +26,7 @@ import {
 import { GeoService } from "./geo.service";
 
 @ApiTags("cities")
-@Controller("cities")
+@Controller("api/cities")
 export class GeoCitiesController {
   constructor(private readonly geoService: GeoService) {}
 
@@ -62,7 +62,7 @@ export class GeoCitiesController {
 }
 
 @ApiTags("departements")
-@Controller("departements")
+@Controller("api/departements")
 export class GeoDepartementsController {
   constructor(private readonly geoService: GeoService) {}
 
@@ -98,7 +98,7 @@ export class GeoDepartementsController {
 }
 
 @ApiTags("regions")
-@Controller("regions")
+@Controller("api/regions")
 export class GeoRegionsController {
   constructor(private readonly geoService: GeoService) {}
 

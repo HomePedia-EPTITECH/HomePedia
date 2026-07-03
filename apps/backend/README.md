@@ -103,7 +103,7 @@ Notes sur le CORS:
 npm run start:dev
 ```
 
-Le serveur demarre sur `http://localhost:3000` avec le prefixe global `api`.
+Le serveur demarre sur `http://localhost:3000`.
 
 ## Docker
 
@@ -182,6 +182,15 @@ La suite couvre:
 - `GET /api/analytics/overview` recommended
 - `GET /api/reviews/cities/:cityCode` legacy summary `data/meta`
 - `GET /api/reviews/cities/:cityCode/items?limit=100&cursor=...` paginated raw items
+- `GET /communes`
+- `GET /communes/:id`
+- `GET /communes/search`
+- `POST /communes/rank`
+- `GET /stats/national`
+- `GET /regions`
+- `GET /departements`
+- `GET /departements/:code/cities`
+- `GET /regions/:code/departements`
 
 `/api/overview` est conservee pour compatibilite legacy. L'endpoint recommande pour les syntheses est `/api/analytics/overview`.
 `/api/reviews/cities/:cityCode` est la route legacy de synthese `data/meta`.

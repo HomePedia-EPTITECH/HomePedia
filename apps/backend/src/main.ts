@@ -23,7 +23,6 @@ async function bootstrap() {
   const config = validateEnvironment(process.env);
 
   const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix("api");
   app.enableCors(createCorsOptions(config.cors));
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new HttpExceptionFilter());

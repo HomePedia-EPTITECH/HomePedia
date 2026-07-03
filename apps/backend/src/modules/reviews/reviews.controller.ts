@@ -17,7 +17,7 @@ import { GetCityReviewsItemsQueryDto } from "./dto/get-city-reviews-items-query.
 import { ReviewsService } from "./reviews.service";
 
 @ApiTags("reviews")
-@Controller("reviews")
+@Controller("api/reviews")
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 

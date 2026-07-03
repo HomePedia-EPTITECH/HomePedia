@@ -9,7 +9,7 @@ import { OverviewResponseDto } from "./dto/analytics-overview-response.dto";
 import { AnalyticsService } from "./analytics.service";
 
 @ApiTags("analytics")
-@Controller()
+@Controller("api")
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
 
