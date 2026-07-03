@@ -3,8 +3,8 @@ import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   ArrayMaxSize,
   IsArray,
-  IsNumber,
   IsIn,
+  IsNumber,
   IsOptional,
   IsString,
   Min
@@ -60,12 +60,6 @@ export class GetCommunesQueryDto {
   @IsIn(["village", "ville", "metropole"], { each: true })
   @ApiPropertyOptional({ type: [String], enum: ["village", "ville", "metropole"] })
   taille?: CommuneSize[];
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
-  @IsString()
-  @ApiPropertyOptional({ example: "paris" })
-  search?: string;
 
   @IsOptional()
   @Transform(({ value }) => (value === undefined || value === null ? undefined : Number(value)))

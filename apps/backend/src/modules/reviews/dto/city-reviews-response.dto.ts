@@ -25,18 +25,7 @@ export class CityReviewsDto {
   reviews!: ReviewsBucketsDto;
 }
 
-export class CityReviewsMetaDto {
-  @ApiProperty({ enum: ["mongo"], example: "mongo" })
-  source!: "mongo";
-
-  @ApiProperty({ enum: ["reviews_raw"], example: "reviews_raw" })
-  collection!: "reviews_raw";
-}
-
 export class CityReviewsResponseDto {
   @ApiProperty({ type: () => CityReviewsDto })
   data!: CityReviewsDto;
-
-  @ApiProperty({ type: () => CityReviewsMetaDto })
-  meta!: CityReviewsMetaDto;
 }

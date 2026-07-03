@@ -37,10 +37,6 @@ export class ReviewsService {
         sourceUrl: document.sourceUrl,
         harvestedAt: toIsoString(document.harvestedAt, "seconds"),
         reviews: this.groupReviews(document.reviews)
-      },
-      meta: {
-        source: "mongo",
-        collection: "reviews_raw"
       }
     };
   }
