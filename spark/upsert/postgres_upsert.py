@@ -9,6 +9,7 @@ from contextlib import contextmanager
 
 import psycopg2
 from pyspark.sql import DataFrame
+from pyspark.sql.types import IntegerType, LongType, DoubleType, FloatType
 
 # ─────────────────────────────────────────────
 # CONFIGURATION
@@ -41,7 +42,19 @@ def pg_cursor():
         conn.close()
 
 
+def _fill_numeric_nulls(df: DataFrame) -> DataFrame:
+    """Remplace les nulls des colonnes numériques par 0 (contraintes NOT NULL en PG)."""
+    int_nulls = {f.name: 0   for f in df.schema.fields if isinstance(f.dataType, (IntegerType, LongType))}
+    float_nulls = {f.name: 0.0 for f in df.schema.fields if isinstance(f.dataType, (DoubleType, FloatType))}
+    if int_nulls:
+        df = df.fillna(int_nulls)
+    if float_nulls:
+        df = df.fillna(float_nulls)
+    return df
+
+
 def write_to_staging(df: DataFrame, table: str) -> None:
+    df = _fill_numeric_nulls(df)
     log.info(f"  → Staging : staging.{table} ({df.count()} lignes)")
     (
         df.write
@@ -311,5 +324,26 @@ SQL_UPSERT = {
             part_taux_locataires        = EXCLUDED.part_taux_locataires,
             part_residences_principales = EXCLUDED.part_residences_principales,
             part_residences_secondaires = EXCLUDED.part_residences_secondaires;
+    """,
+
+    "salaire": """
+        INSERT INTO bdd.salaire (
+            commune_id,
+            salaire_net_mensuel_moyen_cadre, salaire_net_mensuel_moyen_prof_intermediaire,
+            salaire_net_mensuel_moyen_employe, salaire_net_mensuel_moyen_ouvrier,
+            salaire_net_mensuel_moyen_total
+        )
+        SELECT
+            commune_id,
+            salaire_net_mensuel_moyen_cadre, salaire_net_mensuel_moyen_prof_intermediaire,
+            salaire_net_mensuel_moyen_employe, salaire_net_mensuel_moyen_ouvrier,
+            salaire_net_mensuel_moyen_total
+        FROM staging.salaire
+        ON CONFLICT (commune_id) DO UPDATE SET
+            salaire_net_mensuel_moyen_cadre              = EXCLUDED.salaire_net_mensuel_moyen_cadre,
+            salaire_net_mensuel_moyen_prof_intermediaire = EXCLUDED.salaire_net_mensuel_moyen_prof_intermediaire,
+            salaire_net_mensuel_moyen_employe            = EXCLUDED.salaire_net_mensuel_moyen_employe,
+            salaire_net_mensuel_moyen_ouvrier            = EXCLUDED.salaire_net_mensuel_moyen_ouvrier,
+            salaire_net_mensuel_moyen_total              = EXCLUDED.salaire_net_mensuel_moyen_total;
     """,
 }

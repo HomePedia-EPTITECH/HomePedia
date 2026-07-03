@@ -73,13 +73,20 @@ TABLE_COLUMNS = {
         "part_taux_proprietaires", "part_taux_locataires",
         "part_residences_principales", "part_residences_secondaires",
     ],
+
+    "salaire": [
+        "commune_id",
+        "salaire_net_mensuel_moyen_cadre", "salaire_net_mensuel_moyen_prof_intermediaire",
+        "salaire_net_mensuel_moyen_employe", "salaire_net_mensuel_moyen_ouvrier",
+        "salaire_net_mensuel_moyen_total",
+    ],
 }
 
 # Mapping optionnel : si vos colonnes sources ont des noms différents, mapez-les ici
 # Clé = nom attendu (dans TABLE_COLUMNS), Valeur = nom dans votre dataframe source
 COLUMN_RENAMING = {
     "commune_id" : "com",
-    "nom": "nccenr",        # Renommez "nccenr" en "com"
+    "nom": "nom_commune",
     "maire": "nom_maire",   # Renommez "nom_maire" en "maire"
     "nb_colleges_publiques": "nb_colleges_publics",
     "nb_colleges_privees" : "nb_colleges_prives", 

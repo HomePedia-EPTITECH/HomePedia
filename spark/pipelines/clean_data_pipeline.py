@@ -1,107 +1,19 @@
-from jobs.cleaning.cleaning_jobs import (filter_low_reviews, clean_integer_values, clean_float_values, filter_price_outliers)
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, DoubleType
+from jobs.cleaning.cleaning_jobs import apply_schema, filter_low_reviews, filter_price_outliers
+from schema import COLUMN_SCHEMA
+
+# Colonnes déclarées dans COLUMN_SCHEMA mais absentes du DataFrame Mongo (champ
+# trop rare pour être vu par l'échantillonnage de schéma du connecteur Mongo
+# Spark, ex: nb_cancerologues présent dans <1% des documents) alors que la
+# colonne PostgreSQL correspondante est NOT NULL → valeur par défaut 0 / 0.0
+_DEFAULT_ZERO_TYPES = {"int": IntegerType(), "float": DoubleType()}
 
 def run_pipeline(df):
-    
-    df = clean_integer_values(df, [
-        "com",
-        "nb_avis",
-        "nb_habitant", 
-        "age_moyen", 
-        "pop_densite", 
-        "revenu_moyen", 
-        "superficie_km2", 
-        "agressions", 
-        "cambriolages", 
-        "vols_degradations", 
-        "stupefiants", 
-        "estimation_pop_2026", 
-        "estimation_pop_2025", 
-        "inscrits_election", 
-        "code_postal", 
-        "nb_hypermarches", 
-        "nb_supermarches", 
-        "nb_superettes", 
-        "nb_boulangeries", 
-        "nb_boucheries", 
-        "nb_restaurants", 
-        "nb_garages", 
-        "nb_stations_service", 
-        "nb_banques", 
-        "nb_bureaux_poste", 
-        "nb_coiffeurs", 
-        "nb_tabacs", 
-        "nb_bars_discotheques", 
-        "nb_bibliotheques", 
-        "nb_cinemas", 
-        "nb_veterinaires", 
-        "nb_pharmacies", 
-        "nb_hopitaux", 
-        "nb_laboratoires_analyses", 
-        "nb_etablissements_handicapes", 
-        "nb_ehpa", 
-        "nb_medecins", 
-        "nb_dentistes", 
-        "nb_chirurgiens", 
-        "nb_dermatologues", 
-        "nb_anesthesistes", 
-        "nb_gastroenterologues", 
-        "nb_gynecologues", 
-        "nb_cancerologues", 
-        "nb_neurologues", 
-        "nb_ophtalmologues", 
-        "nb_orl", 
-        "nb_cardiologues", 
-        "nb_pediatres", 
-        "nb_pneumologues", 
-        "nb_psychologues", 
-        "nb_radiologues", 
-        "nb_rhumatologues", 
-        "nb_sages_femmes", 
-        "nb_creches", 
-        "nb_ecoles_maternelles_publiques", 
-        "nb_ecoles_maternelles_privees", 
-        "nb_ecoles_primaires_publiques", 
-        "nb_ecoles_primaires_privees", 
-        "nb_colleges_publics", 
-        "nb_colleges_prives", 
-        "nb_lycees_publics", 
-        "nb_lycees_prives", 
-        "prix_m2_maison", 
-        "prix_m2_appartement"
-    ])
-    
-    df = clean_float_values(df, [
-        "pop_active", 
-        "taux_chomage", 
-        "note_moyenne_globale",  
-        "score_securite", 
-        "score_education", 
-        "score_loisirs", 
-        "score_environnement", 
-        "score_vie_pratique",
-        "part_0_14_ans",
-        "part_15_29_ans",
-        "part_30_44_ans",
-        "part_45_59_ans",
-        "part_60_74_ans",
-        "part_75_89_ans",
-        "part_90_plus",
-        "part_cadres",
-        "part_retraites",
-        "part_employes",
-        "part_ouvriers",
-        "part_sans_diplome",
-        "part_bac5_plus",
-        "part_couple_avec_enfant",
-        "part_personnes_seules", 
-        "participation_1er_tour",
-        "participation_2nd_tour",
-        "part_residences_principales",
-        "part_residences_secondaires",
-        "part_taux_proprietaires",
-        "part_taux_locataires"
-    ])
+    df = apply_schema(df)
+    for col_name, (col_type, _) in COLUMN_SCHEMA.items():
+        if col_name not in df.columns and col_type in _DEFAULT_ZERO_TYPES:
+            df = df.withColumn(col_name, F.lit(0).cast(_DEFAULT_ZERO_TYPES[col_type]))
     df = filter_low_reviews(df)
-    
     df = filter_price_outliers(df)
     return df

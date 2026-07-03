@@ -1,0 +1,27 @@
+flowchart TD
+    A[("MongoDB\nhomepedia_raw\ncommunes_direct")] -->|"Aggregation pipeline\n$toString sur tous les metrics"| B
+
+    B["Spark DataFrame\n(toutes les valeurs = string)"]
+
+    B --> C["Aplatir les structs\nmetrics.* → colonnes\nreal_estate.* → colonnes"]
+
+    C --> D["clean_integer_values\n(~50 colonnes)"]
+    C --> E["clean_float_values\n(~30 colonnes)"]
+
+    D --> F["filter_low_reviews\nnb_avis >= 2"]
+    E --> F
+
+    F --> G["filter_price_outliers\n500 < prix_m2 < 30 000"]
+
+    G --> H["education_pipeline\n(calcul agrégats éducation)"]
+
+    H --> I["dropDuplicates\npar com (code INSEE)"]
+
+    I --> J["split_by_table\n8 sous-DataFrames"]
+
+    J --> K[("PostgreSQL\nbdd.*")]
+
+    style A fill:#4DB33D,color:#fff
+    style K fill:#336791,color:#fff
+    style B fill:#E25A1C,color:#fff
+    style J fill:#E25A1C,color:#fff
