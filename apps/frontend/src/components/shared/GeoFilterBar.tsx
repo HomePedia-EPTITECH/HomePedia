@@ -1,10 +1,6 @@
 import { useMemo } from "react"
-import {
-  COMMUNES,
-  REGIONS,
-  TAILLE_LABELS,
-  type TailleCommune,
-} from "@/data"
+import { TAILLE_LABELS, type TailleCommune } from "@/data"
+import { useCommunes } from "@/data/useCommunes"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
 import { Button } from "@/components/ui/button"
 import {
@@ -28,12 +24,20 @@ interface GeoFilterBarProps {
 export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
   const { filters, setFilter, resetFilters } = usePreferences()
   const { region, departement, taille } = filters
+  const { communes } = useCommunes()
+
+  // Régions et départements dérivés des communes chargées (le back /regions et
+  // /departements sont vides pour l'instant → on dérive de la liste).
+  const regions = useMemo(
+    () => Array.from(new Set(communes.map((c) => c.region))).sort(),
+    [communes],
+  )
 
   const departements = useMemo(() => {
     const source =
-      region === ALL ? COMMUNES : COMMUNES.filter((c) => c.region === region)
+      region === ALL ? communes : communes.filter((c) => c.region === region)
     return Array.from(new Set(source.map((c) => c.departement))).sort()
-  }, [region])
+  }, [communes, region])
 
   const stack = layout === "stack"
   const hasFilter =
@@ -51,7 +55,7 @@ export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
         label="Région"
         value={region}
         onChange={(v) => setFilter("region", v)}
-        options={REGIONS}
+        options={regions}
         fluid={stack}
       />
       <FilterSelect
