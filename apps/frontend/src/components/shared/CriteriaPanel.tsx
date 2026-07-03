@@ -50,12 +50,25 @@ export function CriteriaPanel() {
     setImportance,
     addCriterion,
     removeCriterion,
-    toggleSub,
+    setSubFocusFor,
     resetCriteria,
   } = usePreferences()
 
   const [expanded, setExpanded] = useState<CriterionKey | null>(null)
   const [adding, setAdding] = useState(false)
+
+  // Sous-critères tous cochés par défaut ([] = tous). Décocher retire du calcul.
+  function toggleSubChecked(key: CriterionKey, subKey: string) {
+    const allKeys = CRITERIA[key].subs.map((s) => s.key)
+    const focus = subFocus[key] ?? []
+    const included = focus.length ? focus : allKeys
+    if (included.includes(subKey) && included.length === 1) return // garder au moins 1
+    const next = included.includes(subKey)
+      ? included.filter((k) => k !== subKey)
+      : [...included, subKey]
+    // Tout coché → on stocke [] (= tous), sinon le sous-ensemble.
+    setSubFocusFor(key, next.length === allKeys.length ? [] : next)
+  }
 
   const available = CRITERION_KEYS.filter((k) => importance[k] === 0)
 
@@ -128,9 +141,9 @@ export function CriteriaPanel() {
               >
                 <span>
                   Affiner
-                  {focus.length > 0 && (
+                  {focus.length > 0 && focus.length < def.subs.length && (
                     <span className="ml-1 text-primary">
-                      · {focus.length} ciblé{focus.length > 1 ? "s" : ""}
+                      · {focus.length}/{def.subs.length}
                     </span>
                   )}
                 </span>
@@ -145,12 +158,12 @@ export function CriteriaPanel() {
               {isOpen && (
                 <div className="mt-2 flex flex-col gap-1.5">
                   <p className="text-xs text-muted-foreground">
-                    {focus.length === 0
-                      ? "Tous pris en compte. Cochez pour cibler."
-                      : "Seuls les sous-critères cochés comptent."}
+                    Tous comptent par défaut — décochez pour en retirer.
                   </p>
                   {def.subs.map((sub) => {
-                    const active = focus.includes(sub.key)
+                    // [] = tous cochés ; sinon seul le sous-ensemble est coché.
+                    const active =
+                      focus.length === 0 || focus.includes(sub.key)
                     return (
                       <label
                         key={sub.key}
@@ -170,7 +183,7 @@ export function CriteriaPanel() {
                           type="checkbox"
                           className="sr-only"
                           checked={active}
-                          onChange={() => toggleSub(key, sub.key)}
+                          onChange={() => toggleSubChecked(key, sub.key)}
                         />
                         <span className="text-muted-foreground">
                           {sub.label}
