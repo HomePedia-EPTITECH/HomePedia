@@ -31,3 +31,12 @@ Lancer le projet (MongoDB + données) puis le scrap.
 
 - **Conteneurs déjà démarrés** : `python setup.py` pour refaire uniquement migrations + chargement des données.
 - **Détails** (migrations, baseline, réinitialisation, etc.) : voir le dossier **`Docs/`**.
+
+## Répartition
+
+- **Récupération et croisement des sources** : scraping et ingestion brute.
+- **Nettoyage des données** : normalisation, typage, suppression des valeurs aberrantes.
+- **Frontend / backend prototype** : UI React + API NestJS sur données mockées.
+- **Branchement de la vraie base au backend** : exposition API sur les données réelles.
+- **Affichage des données sur le frontend** : intégration UI de l'API.
+- **Analyse des données** : voir [Docs/data-analysis.md](Docs/data-analysis.md).

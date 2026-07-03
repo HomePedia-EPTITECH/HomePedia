@@ -1,6 +1,7 @@
 # Documentation
 
 - **`scrap-bases.md`** : moteur de scraping, structure MongoDB, flux de données.
+- **`data-analysis.md`** : périmètre, livrables et priorités du lot analyse des données.
 
 ## Config détaillée
 
