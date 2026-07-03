@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { MapPin, Search } from "lucide-react"
-import { searchCommunes, TAILLE_LABELS } from "@/data"
+import { searchCommunes, TAILLE_LABELS, type CommuneSearchResult } from "@/data"
 import { cn } from "@/lib/utils"
 
 interface UniversalSearchProps {
@@ -20,7 +20,25 @@ export function UniversalSearch({
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
-  const results = query ? searchCommunes(query) : []
+  const [results, setResults] = useState<CommuneSearchResult[]>([])
+
+  // Recherche back debouncée (évite un appel réseau par frappe).
+  useEffect(() => {
+    if (!query) {
+      setResults([])
+      return
+    }
+    let cancelled = false
+    const t = setTimeout(() => {
+      searchCommunes(query).then((r) => {
+        if (!cancelled) setResults(r)
+      })
+    }, 200)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [query])
 
   useEffect(() => {
     function onClick(e: MouseEvent) {

@@ -96,5 +96,29 @@ export interface Commune {
   services: ServicesCommune
 }
 
+/**
+ * Résultat allégé de la recherche (`GET /communes/search`) : le back ne renvoie
+ * que de quoi afficher une suggestion (nom + département + région + taille).
+ * On ne prétend PAS avoir une `Commune` complète ici.
+ */
+export type CommuneSearchResult = Pick<
+  Commune,
+  "id" | "nom" | "codePostal" | "departement" | "region" | "taille"
+>
+
+/**
+ * Moyennes nationales (`GET /stats/national`) servant de repère de comparaison
+ * sur la fiche commune (sécurité, chômage…).
+ */
+export type NationalStats = Pick<
+  Commune,
+  | "agressions"
+  | "cambriolages"
+  | "volsDegradations"
+  | "stupefiants"
+  | "prixM2Appartement"
+  | "tauxChomage"
+>
+
 // Le modèle de critères / scoring (importance, sous-critères) vit dans
 // `criteria.ts`. Ce fichier ne décrit plus que la donnée "commune".
