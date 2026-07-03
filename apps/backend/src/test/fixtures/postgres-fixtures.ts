@@ -111,10 +111,10 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_ecoles_maternelles_privees INT,
       nb_ecoles_primaires_publiques INT,
       nb_ecoles_primaires_privees INT,
-      nb_colleges_publics INT,
-      nb_colleges_prives INT,
-      nb_lycees_publics INT,
-      nb_lycees_prives INT
+      nb_colleges_publiques INT,
+      nb_colleges_privees INT,
+      nb_lycees_publiques INT,
+      nb_lycees_privees INT
     );
   `,
   sante: `
@@ -246,8 +246,8 @@ const BASE_DATA_SQL = `
 
   INSERT INTO education (
     commune_id, nb_creches, nb_ecoles_maternelles_publiques, nb_ecoles_maternelles_privees,
-    nb_ecoles_primaires_publiques, nb_ecoles_primaires_privees, nb_colleges_publics, nb_colleges_prives,
-    nb_lycees_publics, nb_lycees_prives
+    nb_ecoles_primaires_publiques, nb_ecoles_primaires_privees, nb_colleges_publiques, nb_colleges_privees,
+    nb_lycees_publiques, nb_lycees_privees
   ) VALUES
     ('75056', 320, 210, 35, 230, 40, 115, 28, 72, 19),
     ('69123', 140, 88, 14, 96, 12, 44, 8, 27, 7);

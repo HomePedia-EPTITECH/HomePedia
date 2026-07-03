@@ -321,12 +321,12 @@ export class CommunesRepository extends PostgresReadRepository {
           + COALESCE(edu.${this.quoteIdentifier("nb_ecoles_primaires_privees")}, 0)
         )::float AS ${this.quoteIdentifier("nbEcolesPrimaires")},
         (
-          COALESCE(edu.${this.quoteIdentifier("nb_colleges_publics")}, 0)
-          + COALESCE(edu.${this.quoteIdentifier("nb_colleges_prives")}, 0)
+          COALESCE(edu.${this.quoteIdentifier("nb_colleges_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_colleges_privees")}, 0)
         )::float AS ${this.quoteIdentifier("nbColleges")},
         (
-          COALESCE(edu.${this.quoteIdentifier("nb_lycees_publics")}, 0)
-          + COALESCE(edu.${this.quoteIdentifier("nb_lycees_prives")}, 0)
+          COALESCE(edu.${this.quoteIdentifier("nb_lycees_publiques")}, 0)
+          + COALESCE(edu.${this.quoteIdentifier("nb_lycees_privees")}, 0)
         )::float AS ${this.quoteIdentifier("nbLycees")},
         com.${this.quoteIdentifier("nb_hypermarches")}::float AS ${this.quoteIdentifier("nbHypermarches")},
         com.${this.quoteIdentifier("nb_supermarches")}::float AS ${this.quoteIdentifier("nbSupermarches")},
