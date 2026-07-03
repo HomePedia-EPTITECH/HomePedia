@@ -10,8 +10,13 @@ import type { Commune } from "./types"
  *   3. Il AFFINE avec des sous-critères "focus" propres à chaque critère.
  *
  * Le score de compatibilité = moyenne des scores de critères, pondérée par le
- * niveau d'importance. Chaque score de critère = moyenne de ses sous-métriques
- * (ou seulement celles sur lesquelles l'utilisateur a mis le focus).
+ * niveau d'importance. Chaque score de critère = moyenne de ses sous-critères
+ * (ou seulement ceux sur lesquels l'utilisateur a mis le focus).
+ *
+ * Chaque catégorie possède 5–8 sous-critères. Tant que la data réelle n'est
+ * pas branchée, le sous-score est DÉTERMINISTE : il part du niveau réel de la
+ * catégorie (prix, délinquance, notes…) + une variation stable par sous-critère
+ * → une ville forte en sécurité l'est sur ses sous-critères, avec du relief.
  */
 
 export type CriterionKey =
@@ -92,52 +97,97 @@ function norm(value: number, r: Range, invert = false): number {
   return Math.round((invert ? 1 - t : t) * 100)
 }
 
+const clamp = (v: number, min = 0, max = 100) =>
+  Math.max(min, Math.min(max, v))
 const perMille = (count: number, pop: number) => count / (pop / 1000)
 
+function delinquance(c: Commune): number {
+  return (
+    c.agressions * 1.4 +
+    c.cambriolages * 1.1 +
+    c.volsDegradations * 0.6 +
+    c.stupefiants * 1.0
+  )
+}
+function santeIdx(c: Commune): number {
+  return perMille(
+    (c.services.medecins + c.services.specialistes) * 1 +
+      c.services.pharmacies * 0.8 +
+      c.services.hopitaux * 4,
+    c.population,
+  )
+}
+function commerceIdx(c: Commune): number {
+  return perMille(
+    c.services.hypermarches +
+      c.services.supermarches +
+      c.services.boulangeries +
+      c.services.restaurants * 0.5 +
+      c.services.banques,
+    c.population,
+  )
+}
+
 const R = {
-  prixAppart: rangeOf(COMMUNES.map((c) => c.prixM2Appartement)),
   prixMoyen: rangeOf(
     COMMUNES.map((c) => (c.prixM2Appartement + c.prixM2Maison) / 2),
   ),
   revenu: rangeOf(COMMUNES.map((c) => c.revenuMoyen)),
   chomage: rangeOf(COMMUNES.map((c) => c.tauxChomage)),
-  agr: rangeOf(COMMUNES.map((c) => c.agressions)),
-  camb: rangeOf(COMMUNES.map((c) => c.cambriolages)),
-  vols: rangeOf(COMMUNES.map((c) => c.volsDegradations)),
-  stup: rangeOf(COMMUNES.map((c) => c.stupefiants)),
-  maternelle: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.ecolesMaternelles, c.population)),
-  ),
-  primaire: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.ecolesPrimaires, c.population)),
-  ),
-  college: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.colleges, c.population)),
-  ),
-  lycee: rangeOf(COMMUNES.map((c) => perMille(c.services.lycees, c.population))),
-  medecins: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.medecins, c.population)),
-  ),
-  specialistes: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.specialistes, c.population)),
-  ),
-  hopitaux: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.hopitaux, c.population)),
-  ),
-  supermarches: rangeOf(
-    COMMUNES.map((c) =>
-      perMille(c.services.hypermarches + c.services.supermarches, c.population),
-    ),
-  ),
-  restaurants: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.restaurants, c.population)),
-  ),
-  boulangeries: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.boulangeries, c.population)),
-  ),
-  banques: rangeOf(
-    COMMUNES.map((c) => perMille(c.services.banques, c.population)),
-  ),
+  delinquance: rangeOf(COMMUNES.map(delinquance)),
+  sante: rangeOf(COMMUNES.map(santeIdx)),
+  commerce: rangeOf(COMMUNES.map(commerceIdx)),
+}
+
+/** Niveau réel (0–100) d'une catégorie, ancré sur les données disponibles. */
+function categoryBase(c: Commune, key: CriterionKey): number {
+  switch (key) {
+    case "pouvoirAchat":
+      return norm((c.prixM2Appartement + c.prixM2Maison) / 2, R.prixMoyen, true)
+    case "securite":
+      return norm(delinquance(c), R.delinquance, true)
+    case "qualiteVie":
+      return Math.round(c.notes.qualiteVie * 10)
+    case "ecoles":
+      return Math.round(c.notes.enseignement * 10)
+    case "sante":
+      return norm(santeIdx(c), R.sante)
+    case "emploi":
+      return Math.round(
+        (norm(c.revenuMoyen, R.revenu) + norm(c.tauxChomage, R.chomage, true)) /
+          2,
+      )
+    case "commerces":
+      return norm(commerceIdx(c), R.commerce)
+    case "transports":
+      return Math.round(c.notes.transports * 10)
+    case "cultureLoisirs":
+      return Math.round(((c.notes.culture + c.notes.sportsLoisirs) / 2) * 10)
+  }
+}
+
+// Hash déterministe (FNV-1a) → variation stable par (ville, catégorie, sous-critère).
+function hash(str: string): number {
+  let h = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+const SUB_SPREAD = 16
+function variation(id: string, key: string, sub: string): number {
+  const r = (hash(`${id}:${key}:${sub}`) % 1000) / 1000 // [0,1)
+  return (r * 2 - 1) * SUB_SPREAD
+}
+
+/** Sous-score (0–100) d'un sous-critère pour une ville. */
+export function subScore(
+  c: Commune,
+  key: CriterionKey,
+  subKey: string,
+): number {
+  return clamp(Math.round(categoryBase(c, key) + variation(c.id, key, subKey)))
 }
 
 // ---- Définition des critères et sous-critères ----
@@ -145,16 +195,17 @@ const R = {
 export interface SubMetricDef {
   key: string
   label: string
-  /** Score normalisé 0–100 ("plus c'est haut, mieux c'est"). */
-  score: (c: Commune) => number
 }
 
 export interface CriterionDef {
   key: CriterionKey
   label: string
-  /** Texte d'aide court affiché sous le libellé. */
   hint: string
   subs: SubMetricDef[]
+}
+
+function sub(key: string, label: string): SubMetricDef {
+  return { key, label }
 }
 
 export const CRITERIA: Record<CriterionKey, CriterionDef> = {
@@ -163,17 +214,13 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Pouvoir d'achat",
     hint: "Ce que votre salaire vous permet ici",
     subs: [
-      {
-        key: "louer",
-        label: "Se loger en location",
-        score: (c) => norm(c.prixM2Appartement, R.prixAppart, true),
-      },
-      {
-        key: "acheter",
-        label: "Devenir propriétaire",
-        score: (c) =>
-          norm((c.prixM2Appartement + c.prixM2Maison) / 2, R.prixMoyen, true),
-      },
+      sub("location", "Loyer accessible"),
+      sub("achat", "Achat accessible"),
+      sub("maison", "Prix des maisons"),
+      sub("appartement", "Prix des appartements"),
+      sub("surface", "Surface pour votre budget"),
+      sub("charges", "Charges & taxes"),
+      sub("primoAccession", "Accès à la propriété"),
     ],
   },
   securite: {
@@ -181,42 +228,57 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Sécurité",
     hint: "Délinquance rapportée à la population",
     subs: [
-      { key: "agressions", label: "Agressions", score: (c) => norm(c.agressions, R.agr, true) },
-      { key: "cambriolages", label: "Cambriolages", score: (c) => norm(c.cambriolages, R.camb, true) },
-      { key: "vols", label: "Vols & dégradations", score: (c) => norm(c.volsDegradations, R.vols, true) },
-      { key: "stupefiants", label: "Stupéfiants", score: (c) => norm(c.stupefiants, R.stup, true) },
+      sub("agressions", "Agressions"),
+      sub("cambriolages", "Cambriolages"),
+      sub("vols", "Vols & dégradations"),
+      sub("stupefiants", "Stupéfiants"),
+      sub("tranquillite", "Tranquillité nocturne"),
+      sub("incivilites", "Incivilités"),
+      sub("presencePolice", "Présence policière"),
+      sub("routiere", "Sécurité routière"),
     ],
   },
   qualiteVie: {
     key: "qualiteVie",
     label: "Qualité de vie",
-    hint: "Cadre, culture, mobilité, loisirs",
+    hint: "Cadre, environnement, ambiance",
     subs: [
-      { key: "environnement", label: "Environnement & nature", score: (c) => Math.round(c.notes.environnement * 10) },
-      { key: "transports", label: "Transports", score: (c) => Math.round(c.notes.transports * 10) },
-      { key: "culture", label: "Culture", score: (c) => Math.round(c.notes.culture * 10) },
-      { key: "sportsLoisirs", label: "Sports & loisirs", score: (c) => Math.round(c.notes.sportsLoisirs * 10) },
+      sub("environnement", "Environnement"),
+      sub("espacesVerts", "Espaces verts"),
+      sub("proprete", "Propreté"),
+      sub("calme", "Calme / bruit"),
+      sub("air", "Qualité de l'air"),
+      sub("cadre", "Cadre de vie"),
+      sub("convivialite", "Convivialité"),
     ],
   },
   ecoles: {
     key: "ecoles",
     label: "Écoles",
-    hint: "Offre scolaire par habitant",
+    hint: "Offre et qualité scolaire",
     subs: [
-      { key: "maternelle", label: "Maternelles", score: (c) => norm(perMille(c.services.ecolesMaternelles, c.population), R.maternelle) },
-      { key: "primaire", label: "Primaires", score: (c) => norm(perMille(c.services.ecolesPrimaires, c.population), R.primaire) },
-      { key: "college", label: "Collèges", score: (c) => norm(perMille(c.services.colleges, c.population), R.college) },
-      { key: "lycee", label: "Lycées", score: (c) => norm(perMille(c.services.lycees, c.population), R.lycee) },
+      sub("maternelle", "Maternelles"),
+      sub("primaire", "Primaires"),
+      sub("college", "Collèges"),
+      sub("lycee", "Lycées"),
+      sub("superieur", "Enseignement supérieur"),
+      sub("reussite", "Taux de réussite"),
+      sub("effectifs", "Effectifs par classe"),
     ],
   },
   sante: {
     key: "sante",
     label: "Santé",
-    hint: "Accès aux soins par habitant",
+    hint: "Accès aux soins",
     subs: [
-      { key: "medecins", label: "Médecins généralistes", score: (c) => norm(perMille(c.services.medecins, c.population), R.medecins) },
-      { key: "specialistes", label: "Spécialistes", score: (c) => norm(perMille(c.services.specialistes, c.population), R.specialistes) },
-      { key: "hopitaux", label: "Hôpitaux", score: (c) => norm(perMille(c.services.hopitaux, c.population), R.hopitaux) },
+      sub("medecins", "Médecins généralistes"),
+      sub("specialistes", "Spécialistes"),
+      sub("hopitaux", "Hôpitaux"),
+      sub("urgences", "Urgences"),
+      sub("pharmacies", "Pharmacies"),
+      sub("dentistes", "Dentistes"),
+      sub("delais", "Délais de rendez-vous"),
+      sub("maternite", "Maternité"),
     ],
   },
   emploi: {
@@ -224,8 +286,13 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Emploi & revenus",
     hint: "Dynamisme économique local",
     subs: [
-      { key: "revenus", label: "Revenus médians", score: (c) => norm(c.revenuMoyen, R.revenu) },
-      { key: "emploi", label: "Faible chômage", score: (c) => norm(c.tauxChomage, R.chomage, true) },
+      sub("revenus", "Revenus médians"),
+      sub("chomage", "Faible chômage"),
+      sub("dynamisme", "Dynamisme économique"),
+      sub("offres", "Offres d'emploi"),
+      sub("teletravail", "Connectivité / télétravail"),
+      sub("entrepreneuriat", "Création d'entreprises"),
+      sub("salaires", "Niveau des salaires"),
     ],
   },
   commerces: {
@@ -233,10 +300,14 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Commerces",
     hint: "Vie pratique & achats du quotidien",
     subs: [
-      { key: "supermarches", label: "Grandes surfaces", score: (c) => norm(perMille(c.services.hypermarches + c.services.supermarches, c.population), R.supermarches) },
-      { key: "boulangeries", label: "Boulangeries", score: (c) => norm(perMille(c.services.boulangeries, c.population), R.boulangeries) },
-      { key: "restaurants", label: "Restaurants", score: (c) => norm(perMille(c.services.restaurants, c.population), R.restaurants) },
-      { key: "banques", label: "Banques", score: (c) => norm(perMille(c.services.banques, c.population), R.banques) },
+      sub("grandesSurfaces", "Grandes surfaces"),
+      sub("boulangeries", "Boulangeries"),
+      sub("restaurants", "Restaurants"),
+      sub("banques", "Banques"),
+      sub("marches", "Marchés"),
+      sub("proximite", "Commerces de proximité"),
+      sub("services", "Services (coiffeurs…)"),
+      sub("presseTabac", "Presse / tabac"),
     ],
   },
   transports: {
@@ -244,7 +315,13 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Transports",
     hint: "Mobilité & desserte",
     subs: [
-      { key: "transports", label: "Desserte transports", score: (c) => Math.round(c.notes.transports * 10) },
+      sub("desserte", "Desserte globale"),
+      sub("gare", "Gare / TER"),
+      sub("busTram", "Bus / tram"),
+      sub("pistes", "Pistes cyclables"),
+      sub("routes", "Accès routier"),
+      sub("aeroport", "Aéroport à proximité"),
+      sub("stationnement", "Stationnement"),
     ],
   },
   cultureLoisirs: {
@@ -252,15 +329,21 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
     label: "Culture & loisirs",
     hint: "Sorties, sports et vie culturelle",
     subs: [
-      { key: "culture", label: "Culture", score: (c) => Math.round(c.notes.culture * 10) },
-      { key: "sportsLoisirs", label: "Sports & loisirs", score: (c) => Math.round(c.notes.sportsLoisirs * 10) },
+      sub("culture", "Offre culturelle"),
+      sub("sports", "Sports & loisirs"),
+      sub("cinemas", "Cinémas"),
+      sub("musees", "Musées"),
+      sub("spectacles", "Théâtres / concerts"),
+      sub("bibliotheques", "Bibliothèques"),
+      sub("nature", "Sorties nature"),
+      sub("vieNocturne", "Vie nocturne"),
     ],
   },
 }
 
 // ---- Calcul du score ----
 
-/** Score d'un critère (0–100) : moyenne des sous-métriques ciblées (ou toutes). */
+/** Score d'un critère (0–100) : moyenne des sous-critères ciblés (ou tous). */
 export function criterionScore(
   c: Commune,
   key: CriterionKey,
@@ -271,7 +354,7 @@ export function criterionScore(
     ? def.subs.filter((s) => focus.includes(s.key))
     : def.subs
   const subs = chosen.length ? chosen : def.subs
-  const sum = subs.reduce((a, s) => a + s.score(c), 0)
+  const sum = subs.reduce((a, s) => a + subScore(c, key, s.key), 0)
   return Math.round(sum / subs.length)
 }
 
@@ -298,6 +381,7 @@ export function scoreBreakdown(
   focus: SubFocus = {},
 ): Record<CriterionKey, number> {
   const out = {} as Record<CriterionKey, number>
-  for (const key of CRITERION_KEYS) out[key] = criterionScore(c, key, focus[key] ?? [])
+  for (const key of CRITERION_KEYS)
+    out[key] = criterionScore(c, key, focus[key] ?? [])
   return out
 }
