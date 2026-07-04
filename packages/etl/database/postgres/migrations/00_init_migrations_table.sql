@@ -6,17 +6,19 @@ CREATE SCHEMA IF NOT EXISTS staging;
 
 
 CREATE TABLE IF NOT EXISTS bdd.region (
-    numero_region           INT             NOT NULL,
+    numero_region           VARCHAR(2)      NOT NULL,
     nom                     VARCHAR(50)     NOT NULL,
 
     CONSTRAINT pk_region PRIMARY KEY (numero_region)
 );
 
 CREATE TABLE IF NOT EXISTS bdd.departement (
-    numero_departement      INT             NOT NULL,
+    numero_departement      VARCHAR(3)      NOT NULL,
     nom                     VARCHAR(50)     NOT NULL,
+    region_id               VARCHAR(2)      NOT NULL,
 
-    CONSTRAINT pk_departement PRIMARY KEY (numero_departement)
+    CONSTRAINT pk_departement PRIMARY KEY (numero_departement),
+    CONSTRAINT fk_departement_region FOREIGN KEY (region_id) REFERENCES bdd.region(numero_region)
 );
 
 CREATE TABLE IF NOT EXISTS bdd.metropole (
@@ -27,12 +29,14 @@ CREATE TABLE IF NOT EXISTS bdd.metropole (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.commune (
-    commune_id                 INT              NOT NULL,
+    commune_id                 VARCHAR(5)       NOT NULL,
     nom                 VARCHAR(200)      NOT NULL,
-    code_postal         INT                 NULL,
-    departement_id      INT                 NULL,
+    code_postal         VARCHAR(5)        NULL,
+    departement_id      VARCHAR(3)        NULL,
     metropole_id        INT                 NULL,
     maire               VARCHAR(200)         NULL,
+    latitude            DOUBLE PRECISION    NULL,
+    longitude           DOUBLE PRECISION    NULL,
 
     CONSTRAINT pk_commune PRIMARY KEY (commune_id),
     CONSTRAINT fk_commune_departement FOREIGN KEY (departement_id) REFERENCES bdd.departement(numero_departement),
@@ -40,7 +44,7 @@ CREATE TABLE IF NOT EXISTS bdd.commune (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.education (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     nb_creches                              INT   NOT NULL,
     nb_ecoles_maternelles_publiques         INT   NOT NULL,
     nb_ecoles_maternelles_privees           INT   NOT NULL,
@@ -56,7 +60,7 @@ CREATE TABLE IF NOT EXISTS bdd.education (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.sante (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     nb_pharmacies                           INT   NOT NULL,
     nb_hopitaux                             INT   NOT NULL,
     nb_laboratoires_analyses                INT   NOT NULL,
@@ -86,7 +90,7 @@ CREATE TABLE IF NOT EXISTS bdd.sante (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.commerces (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     nb_hypermarches                         INT   NOT NULL,
     nb_supermarches                         INT   NOT NULL,
     nb_superettes                           INT   NOT NULL,
@@ -109,7 +113,7 @@ CREATE TABLE IF NOT EXISTS bdd.commerces (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.demographie (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     population                              INT   NOT NULL,
     age_moyen                               INT   NOT NULL,
     pop_active                              INT   NOT NULL,
@@ -138,7 +142,7 @@ CREATE TABLE IF NOT EXISTS bdd.demographie (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.scores (
-    commune_id                              INT     NOT NULL,
+    commune_id                              VARCHAR(5)     NOT NULL,
     score_securite                          FLOAT   NOT NULL,
     score_education                         FLOAT   NOT NULL,
     score_loisirs                           FLOAT   NOT NULL,
@@ -151,7 +155,7 @@ CREATE TABLE IF NOT EXISTS bdd.scores (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.securite (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     agressions                              INT   NOT NULL,
     cambriolages                            INT   NOT NULL,
     vols_degradations                       INT   NOT NULL,
@@ -162,7 +166,7 @@ CREATE TABLE IF NOT EXISTS bdd.securite (
 );
 
 CREATE TABLE IF NOT EXISTS bdd.immobilier (
-    commune_id                              INT   NOT NULL,
+    commune_id                              VARCHAR(5)   NOT NULL,
     prix_m2_maison                          INT   NOT NULL,
     prix_m2_appartement                     INT   NOT NULL,
     part_taux_proprietaires                 INT   NOT NULL,
@@ -172,6 +176,18 @@ CREATE TABLE IF NOT EXISTS bdd.immobilier (
     
     CONSTRAINT pk_immobilier PRIMARY KEY (commune_id),
     CONSTRAINT fk_immobilier_commune FOREIGN KEY (commune_id) REFERENCES bdd.commune(commune_id)
+);
+
+CREATE TABLE IF NOT EXISTS bdd.salaire (
+    commune_id                              VARCHAR(5)   NOT NULL,
+    salaire_net_mensuel_moyen_cadre         INT   NOT NULL,
+    salaire_net_mensuel_moyen_prof_intermediaire INT   NOT NULL,
+    salaire_net_mensuel_moyen_employe       INT   NOT NULL,
+    salaire_net_mensuel_moyen_ouvrier       INT   NOT NULL,
+    salaire_net_mensuel_moyen_total         INT   NOT NULL,
+
+    CONSTRAINT pk_salaire PRIMARY KEY (commune_id),
+    CONSTRAINT fk_salaire_commune FOREIGN KEY (commune_id) REFERENCES bdd.commune(commune_id)
 );
 
 -- ============================================================
@@ -185,13 +201,14 @@ CREATE SCHEMA IF NOT EXISTS staging;
 -- mais SANS contraintes FK (pour éviter les erreurs d'ordre d'insertion)
 
 CREATE TABLE IF NOT EXISTS staging.region (
-    numero_region   INT             NOT NULL,
+    numero_region   VARCHAR(2)      NOT NULL,
     nom             VARCHAR(50)     NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS staging.departement (
-    numero_departement  INT             NOT NULL,
-    nom                 VARCHAR(50)     NOT NULL
+    numero_departement  VARCHAR(3)      NOT NULL,
+    nom                 VARCHAR(50)     NOT NULL,
+    region_id           VARCHAR(2)      NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS staging.metropole (
@@ -200,16 +217,18 @@ CREATE TABLE IF NOT EXISTS staging.metropole (
 );
 
 CREATE TABLE IF NOT EXISTS staging.commune (
-    commune_id             INT             NOT NULL,
+    commune_id             VARCHAR(5)      NOT NULL,
     nom             VARCHAR(200)     NOT NULL,
-    code_postal     INT                 NULL,
-    departement_id  INT                 NULL,
+    code_postal     VARCHAR(5)        NULL,
+    departement_id  VARCHAR(3)        NULL,
     metropole_id    INT                 NULL,
-    maire           VARCHAR(200)         NULL
+    maire           VARCHAR(200)         NULL,
+    latitude        DOUBLE PRECISION    NULL,
+    longitude       DOUBLE PRECISION    NULL
 );
 
 CREATE TABLE IF NOT EXISTS staging.education (
-    commune_id                          INT NOT NULL,
+    commune_id                          VARCHAR(5) NOT NULL,
     nb_creches                          INT NOT NULL,
     nb_ecoles_maternelles_publiques     INT NOT NULL,
     nb_ecoles_maternelles_privees       INT NOT NULL,
@@ -222,7 +241,7 @@ CREATE TABLE IF NOT EXISTS staging.education (
 );
 
 CREATE TABLE IF NOT EXISTS staging.sante (
-    commune_id                      INT NOT NULL,
+    commune_id                      VARCHAR(5) NOT NULL,
     nb_pharmacies                   INT NOT NULL,
     nb_hopitaux                     INT NOT NULL,
     nb_laboratoires_analyses        INT NOT NULL,
@@ -249,7 +268,7 @@ CREATE TABLE IF NOT EXISTS staging.sante (
 );
 
 CREATE TABLE IF NOT EXISTS staging.commerces (
-    commune_id              INT NOT NULL,
+    commune_id              VARCHAR(5) NOT NULL,
     nb_hypermarches         INT NOT NULL,
     nb_supermarches         INT NOT NULL,
     nb_superettes           INT NOT NULL,
@@ -269,7 +288,7 @@ CREATE TABLE IF NOT EXISTS staging.commerces (
 );
 
 CREATE TABLE IF NOT EXISTS staging.demographie (
-    commune_id                  INT     NOT NULL,
+    commune_id                  VARCHAR(5)     NOT NULL,
     population                  INT     NOT NULL,
     age_moyen                   INT     NOT NULL,
     pop_active                  INT     NOT NULL,
@@ -295,7 +314,7 @@ CREATE TABLE IF NOT EXISTS staging.demographie (
 );
 
 CREATE TABLE IF NOT EXISTS staging.scores (
-    commune_id              INT     NOT NULL,
+    commune_id              VARCHAR(5)     NOT NULL,
     score_securite          FLOAT   NOT NULL,
     score_education         FLOAT   NOT NULL,
     score_loisirs           FLOAT   NOT NULL,
@@ -305,7 +324,7 @@ CREATE TABLE IF NOT EXISTS staging.scores (
 );
 
 CREATE TABLE IF NOT EXISTS staging.securite (
-    commune_id          INT NOT NULL,
+    commune_id          VARCHAR(5) NOT NULL,
     agressions          INT NOT NULL,
     cambriolages        INT NOT NULL,
     vols_degradations   INT NOT NULL,
@@ -313,11 +332,20 @@ CREATE TABLE IF NOT EXISTS staging.securite (
 );
 
 CREATE TABLE IF NOT EXISTS staging.immobilier (
-    commune_id                      INT NOT NULL,
+    commune_id                      VARCHAR(5) NOT NULL,
     prix_m2_maison                  INT NOT NULL,
     prix_m2_appartement             INT NOT NULL,
     part_taux_proprietaires         INT NOT NULL,
     part_taux_locataires            INT NOT NULL,
     part_residences_principales     INT NOT NULL,
     part_residences_secondaires     INT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS staging.salaire (
+    commune_id                              VARCHAR(5) NOT NULL,
+    salaire_net_mensuel_moyen_cadre         INT NOT NULL,
+    salaire_net_mensuel_moyen_prof_intermediaire INT NOT NULL,
+    salaire_net_mensuel_moyen_employe       INT NOT NULL,
+    salaire_net_mensuel_moyen_ouvrier       INT NOT NULL,
+    salaire_net_mensuel_moyen_total         INT NOT NULL
 );

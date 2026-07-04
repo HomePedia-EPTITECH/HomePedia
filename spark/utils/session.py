@@ -1,12 +1,29 @@
+import os
+import sys
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, regexp_replace, trim, when
-from pyspark.sql.types import IntegerType
+from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
 
 MONGO_URI = "mongodb://admin:admin@localhost:27017/?authSource=admin"
 MONGO_DB = "homepedia_raw"
 MONGO_COLLECTION = "communes_direct"
 MONGO_REAL_ESTATE_COLLECTION = "real_estate_history"
+
+# Spark on Windows does not reliably discover the Python interpreter used by the
+# current process. Force both driver and workers to reuse it so local unit tests
+# and ETL jobs can spawn Python workers consistently.
+os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
+
+REAL_ESTATE_HISTORY_SCHEMA = StructType(
+    [
+        StructField("com", StringType(), True),
+        StructField("latitude", DoubleType(), True),
+        StructField("longitude", DoubleType(), True),
+    ]
+)
 
 _DROP_COLS = {
     "_id",
@@ -26,8 +43,16 @@ _DROP_COLS = {
 def get_spark():
     return (
         SparkSession.builder.appName("HomePedia")
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
         .config(
-            "spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0"
+            "spark.jars.packages",
+            ",".join(
+                [
+                    "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0",
+                    "org.postgresql:postgresql:42.7.12",
+                ]
+            ),
         )
         .config(
             "spark.driver.extraJavaOptions", "-Dlog4j.configuration=log4j.properties"
@@ -121,6 +146,7 @@ def load_mongodb_collection(spark):
         print(f"✗ Error connecting to MongoDB: {e}")
         raise
 
+
 def safe_string(df, col_name):
     return df.withColumn(
         col_name,
@@ -140,20 +166,55 @@ def safe_metric_col(metric_name):
 
 
 def load_real_estate_history(spark):
-    """Transactions DVF (une ligne par transaction/parcelle) : com, latitude, longitude uniquement."""
+    """Return a geo-ready DataFrame with com, latitude and longitude."""
     try:
-        df = (
+        raw = (
             spark.read.format("mongodb")
             .option("spark.mongodb.read.connection.uri", MONGO_URI)
             .option("spark.mongodb.read.database", MONGO_DB)
             .option("spark.mongodb.read.collection", MONGO_REAL_ESTATE_COLLECTION)
             .load()
-            .select("com", "latitude", "longitude")
+        )
+
+        if not raw.columns:
+            print(
+                f"⚠ Collection {MONGO_REAL_ESTATE_COLLECTION} vide ou sans schema; "
+                "retour d'un DataFrame geo vide."
+            )
+            return spark.createDataFrame([], REAL_ESTATE_HISTORY_SCHEMA)
+
+        columns = set(raw.columns)
+        com_candidates = ("com", "commune_id", "code_insee", "code_commune", "insee", "city_code")
+        lat_candidates = ("latitude", "lat")
+        lon_candidates = ("longitude", "lon", "lng", "long")
+
+        com_col = next((name for name in com_candidates if name in columns), None)
+        lat_col = next((name for name in lat_candidates if name in columns), None)
+        lon_col = next((name for name in lon_candidates if name in columns), None)
+
+        if com_col is None:
+            print(
+                f"⚠ Collection {MONGO_REAL_ESTATE_COLLECTION} sans colonne commune exploitable; "
+                "retour d'un DataFrame geo vide."
+            )
+            return spark.createDataFrame([], REAL_ESTATE_HISTORY_SCHEMA)
+
+        df = raw.select(
+            F.col(com_col).cast("string").alias("com"),
+            (
+                F.col(lat_col).cast("double").alias("latitude")
+                if lat_col
+                else F.lit(None).cast("double").alias("latitude")
+            ),
+            (
+                F.col(lon_col).cast("double").alias("longitude")
+                if lon_col
+                else F.lit(None).cast("double").alias("longitude")
+            ),
         )
 
         print(f"✓ Spark DataFrame loaded: {df.count()} rows from {MONGO_REAL_ESTATE_COLLECTION}")
         return df
-
     except Exception as e:
         print(f"✗ Error connecting to MongoDB: {e}")
         raise
