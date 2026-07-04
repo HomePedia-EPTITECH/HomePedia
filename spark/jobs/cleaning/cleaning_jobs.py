@@ -22,7 +22,7 @@ def apply_schema(df: DataFrame) -> DataFrame:
             )
         elif transform == "strip":
             df = df.withColumn(col_name,
-                F.when(F.trim(c) == "", F.lit(None)).otherwise(F.trim(c))
+                F.when(F.trim(c.cast("string")) == "", F.lit(None)).otherwise(F.trim(c.cast("string")))
             )
         elif transform == "round":
             df = df.withColumn(col_name, F.round(c.cast(DoubleType())).cast(IntegerType()))
