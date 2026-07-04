@@ -265,13 +265,16 @@ function SectionCard({
 }
 
 function ImmobilierSection({ commune }: { commune: Commune }) {
-  const data = commune.prixHistorique.map((p) => ({
+  const history = commune.prixHistorique ?? []
+  const hasHistory = history.length > 0
+  const data = history.map((p) => ({
     annee: String(p.annee),
     prix: p.prixM2,
   }))
-  const first = commune.prixHistorique[0].prixM2
-  const last = commune.prixHistorique[commune.prixHistorique.length - 1].prixM2
-  const growth = Math.round(((last - first) / first) * 100)
+  const first = hasHistory ? history[0].prixM2 : null
+  const last = hasHistory ? history[history.length - 1].prixM2 : null
+  const growth =
+    first && last ? Math.round(((last - first) / first) * 100) : null
 
   return (
     <SectionCard title="Pouvoir d'achat" icon={Building2}>
@@ -294,30 +297,38 @@ function ImmobilierSection({ commune }: { commune: Commune }) {
         />
       </div>
 
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium">Évolution prix m² (DVF)</span>
-        <Badge variant={growth >= 0 ? "success" : "destructive"}>
-          {growth >= 0 ? "+" : ""}
-          {growth}% sur 5 ans
-        </Badge>
-      </div>
-      <div className="h-44">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
-            <defs>
-              <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
-                <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="annee" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={44} />
-            <RTooltip content={<ChartTooltip suffix=" €/m²" />} />
-            <Area type="monotone" dataKey="prix" stroke="var(--chart-1)" strokeWidth={2} fill="url(#priceGrad)" />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      {hasHistory ? (
+        <>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium">Évolution prix m² (DVF)</span>
+            <Badge variant={growth !== null && growth >= 0 ? "success" : "destructive"}>
+              {growth !== null && growth >= 0 ? "+" : ""}
+              {growth ?? 0}% sur 5 ans
+            </Badge>
+          </div>
+          <div className="h-44">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top: 5, right: 5, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="priceGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="annee" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} width={44} />
+                <RTooltip content={<ChartTooltip suffix=" €/m²" />} />
+                <Area type="monotone" dataKey="prix" stroke="var(--chart-1)" strokeWidth={2} fill="url(#priceGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-lg border border-dashed bg-secondary/20 px-4 py-6 text-sm text-muted-foreground">
+          Historique de prix non disponible pour cette commune.
+        </div>
+      )}
     </SectionCard>
   )
 }
