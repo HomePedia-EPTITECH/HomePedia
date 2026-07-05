@@ -162,17 +162,17 @@ export function ResultsPage() {
     }
   }, [rankRequest, regions, departements])
 
-  const pageLabel = total === 0 ? "0" : `${(page - 1) * PAGE_SIZE + 1}â€“${Math.min(page * PAGE_SIZE, total)}`
+  const pageLabel = total === 0 ? "0" : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, total)}`
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col px-4 py-6 lg:h-[calc(100dvh-4rem)] lg:overflow-hidden lg:px-6">
       <header className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Villes recommandÃ©es
+            Villes recommandées
           </h1>
           <p className="text-muted-foreground">
-            {loading ? "Chargement du classement serveurâ€¦" : `${total} villes classÃ©es par compatibilitÃ© Â· pouvoir d'achat estimÃ© pour ${formatEuro(salary)} net/mois`}
+            {loading ? "Chargement du classement serveur…" : `${total} villes classées par compatibilité · pouvoir d'achat estimé pour ${formatEuro(salary)} net/mois`}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border bg-card p-1">
@@ -204,7 +204,7 @@ export function ResultsPage() {
             <div className="relative rounded-xl border bg-card p-5">
               <button
                 onClick={() => setFiltersOpen(false)}
-                title="RÃ©duire les filtres"
+                title="Réduire les filtres"
                 className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
               >
                 <PanelLeftClose className="size-4" />
@@ -236,7 +236,7 @@ export function ResultsPage() {
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-12 text-center">#</TableHead>
                 <TableHead className="min-w-[11rem]">Ville</TableHead>
-                <TableHead className="w-32 text-center">CompatibilitÃ©</TableHead>
+                <TableHead className="w-32 text-center">Compatibilité</TableHead>
                 {selectedCriteria.map((key) => {
                   const Icon = CRITERION_ICONS[key]
                   return (
@@ -291,7 +291,7 @@ export function ResultsPage() {
                     colSpan={4 + selectedCriteria.length}
                     className="py-12 text-center text-muted-foreground"
                   >
-                    Aucune ville ne correspond Ã  ces filtres.
+                    Aucune ville ne correspond à ces filtres.
                   </TableCell>
                 </TableRow>
               )}
@@ -310,7 +310,7 @@ export function ResultsPage() {
                   disabled={page <= 1 || loading}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  <ChevronLeft className="size-4" /> PrÃ©cÃ©dent
+                  <ChevronLeft className="size-4" /> Précédent
                 </Button>
                 <span className="px-1 text-sm tabular-nums text-muted-foreground">
                   {page} / {totalPages}
@@ -364,7 +364,7 @@ function ResultRow({
         <div className="flex flex-col">
           <span className="font-medium">{commune.nom}</span>
           <span className="text-xs text-muted-foreground">
-            {commune.departement} Â· {TAILLE_LABELS[commune.taille]}
+            {commune.departement} · {TAILLE_LABELS[commune.taille]}
           </span>
         </div>
       </TableCell>
@@ -377,7 +377,7 @@ function ResultRow({
         <TableCell key={key} className="text-center">
           {key === "pouvoirAchat" ? (
             <span className="font-medium tabular-nums text-primary">
-              {pp.surfaceLouable} mÂ²
+              {pp.surfaceLouable} m²
             </span>
           ) : (
             <MiniBar value={breakdown[key]} />
@@ -395,7 +395,7 @@ function ResultRow({
         >
           {comparing ? (
             <>
-              <Check className="size-4" /> AjoutÃ©
+              <Check className="size-4" /> Ajouté
             </>
           ) : (
             <>

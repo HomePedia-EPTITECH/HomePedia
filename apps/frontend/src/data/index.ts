@@ -14,9 +14,9 @@ import type {
 } from "./types"
 
 export * from "./types"
-// Le mock `communes.ts` n'est plus affichÃ© : il ne sert QUE de jeu de
+// Le mock `communes.ts` n'est plus affiché : il ne sert QUE de jeu de
 // calibration pour la normalisation des scores (voir criteria.ts). Seule la
-// moyenne nationale par dÃ©faut en est encore rÃ©exportÃ©e (fallback de fiche).
+// moyenne nationale par défaut en est encore réexportée (fallback de fiche).
 export { MOYENNES_NATIONALES } from "./communes"
 export { scoreColor, scoreColorHex } from "./scoring"
 export {
@@ -39,14 +39,14 @@ export {
 export { purchasingPower, type PurchasingPower } from "./purchasingPower"
 
 /**
- * FaÃ§ade d'accÃ¨s aux donnÃ©es : ces fonctions appellent le back NestJS via
+ * Façade d'accès aux données : ces fonctions appellent le back NestJS via
  * `apiClient`.
  */
 
 /**
- * RÃ©cupÃ¨re une commune complÃ¨te depuis le back (`GET /communes/:id`).
+ * Récupère une commune complète depuis le back (`GET /communes/:id`).
  * Renvoie `undefined` si la commune est inconnue (404) ou si le back est
- * injoignable â€” l'appelant affiche alors un Ã©tat Â« introuvable Â» sans crasher.
+ * injoignable — l'appelant affiche alors un état « introuvable » sans crasher.
  */
 export async function getCommuneById(id: string): Promise<Commune | undefined> {
   try {
@@ -59,8 +59,8 @@ export async function getCommuneById(id: string): Promise<Commune | undefined> {
 
 /**
  * Recherche de communes via le back (`GET /communes/search?q=`).
- * Renvoie une liste allÃ©gÃ©e (`CommuneSearchResult`) â€” de quoi afficher des
- * suggestions. Sur requÃªte vide ou erreur rÃ©seau : liste vide (pas de crash).
+ * Renvoie une liste allégée (`CommuneSearchResult`) — de quoi afficher des
+ * suggestions. Sur requête vide ou erreur réseau : liste vide (pas de crash).
  */
 export async function searchCommunes(
   query: string,
@@ -121,8 +121,8 @@ export async function getRegionDepartements(code: string): Promise<GeoDepartemen
 
 /**
  * Moyennes nationales depuis le back (`GET /stats/national`).
- * Mappe les clÃ©s `*Moyen` du back vers la forme `NationalStats` de la fiche.
- * Ne capture pas l'erreur : l'appelant conserve son repÃ¨re par dÃ©faut si Ã§a Ã©choue.
+ * Mappe les clés `*Moyen` du back vers la forme `NationalStats` de la fiche.
+ * Ne capture pas l'erreur : l'appelant conserve son repère par défaut si ça échoue.
  */
 export async function getNationalStats(): Promise<NationalStats> {
   const raw = await apiGet<{

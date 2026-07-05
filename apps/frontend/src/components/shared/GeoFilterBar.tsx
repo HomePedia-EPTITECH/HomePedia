@@ -22,12 +22,12 @@ import { cn } from "@/lib/utils"
 const ALL = ALL_FILTER
 
 interface GeoFilterBarProps {
-  /** "row" = ligne (Classement) Â· "stack" = colonne Ã©troite (Carte). */
+  /** "row" = ligne (Classement) · "stack" = colonne étroite (Carte). */
   layout?: "row" | "stack"
   className?: string
 }
 
-/** Filtres RÃ©gion / DÃ©partement / Taille + RÃ©initialiser, branchÃ©s sur le store partagÃ©. */
+/** Filtres Région / Département / Taille + Réinitialiser, branchés sur le store partagé. */
 export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
   const { filters, setFilter, resetFilters } = usePreferences()
   const { region, departement, taille } = filters
@@ -100,14 +100,14 @@ export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
       )}
     >
       <FilterSelect
-        label="RÃ©gion"
+        label="Région"
         value={region}
         onChange={(v) => setFilter("region", v)}
         options={regions}
         fluid={stack}
       />
       <FilterSelect
-        label="DÃ©partement"
+        label="Département"
         value={departement}
         onChange={(v) => setFilter("departement", v)}
         options={departements}
@@ -128,7 +128,7 @@ export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
         disabled={!hasFilter}
         className={stack ? "w-full" : undefined}
       >
-        RÃ©initialiser
+        Réinitialiser
       </Button>
     </div>
   )

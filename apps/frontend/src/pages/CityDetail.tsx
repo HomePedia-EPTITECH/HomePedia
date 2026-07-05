@@ -761,7 +761,7 @@ function AvisSection2({
           </div>
         )}
 
-        {loading && <p className="text-sm text-muted-foreground">Chargement des avisâ€¦</p>}
+        {loading && <p className="text-sm text-muted-foreground">Chargement des avis…</p>}
 
         {!loading && visibleItems.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
