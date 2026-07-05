@@ -9,9 +9,6 @@ import {
 import {
   CRITERION_KEYS,
   DEFAULT_IMPORTANCE,
-  personalScore,
-  scoreBreakdown,
-  type Commune,
   type CriterionKey,
   type Importance,
   type ImportanceLevel,
@@ -70,11 +67,6 @@ interface PreferencesState {
   filters: GeoFilters
   setFilter: (key: keyof GeoFilters, value: string) => void
   resetFilters: () => void
-
-  /** Score de compatibilité /100 d'une commune selon les préférences courantes. */
-  scoreOf: (c: Commune) => number
-  /** Détail par critère (0–100). */
-  breakdownOf: (c: Commune) => Record<CriterionKey, number>
 
   /** Villes sélectionnées pour le comparateur (max 3), par id INSEE. */
   compareIds: string[]
@@ -162,8 +154,6 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       filters,
       setFilter,
       resetFilters: () => setFilters(DEFAULT_GEO_FILTERS),
-      scoreOf: (c: Commune) => personalScore(c, importance, subFocus),
-      breakdownOf: (c: Commune) => scoreBreakdown(c, subFocus),
       compareIds,
       toggleCompare,
       clearCompare: () => setCompareIds([]),

@@ -1,22 +1,8 @@
-import { COMMUNES } from "./communes"
-import type { Commune } from "./types"
-
 /**
- * Moteur de critères v2 — remplace les pondérations 0–100 % par un modèle
- * plus lisible pour l'utilisateur :
+ * Métadonnées des critères HomePedia.
  *
- *   1. Il SÉLECTIONNE des grands critères (Accueil).
- *   2. Il DOSE chacun sur 3 niveaux : Un plus / Important / Essentiel (Classement).
- *   3. Il AFFINE avec des sous-critères "focus" propres à chaque critère.
- *
- * Le score de compatibilité = moyenne des scores de critères, pondérée par le
- * niveau d'importance. Chaque score de critère = moyenne de ses sous-critères
- * (ou seulement ceux sur lesquels l'utilisateur a mis le focus).
- *
- * Chaque catégorie possède 5–8 sous-critères. Tant que la data réelle n'est
- * pas branchée, le sous-score est DÉTERMINISTE : il part du niveau réel de la
- * catégorie (prix, délinquance, notes…) + une variation stable par sous-critère
- * → une ville forte en sécurité l'est sur ses sous-critères, avec du relief.
+ * Ce module ne calcule plus de score local. Le classement et les breakdowns
+ * viennent désormais du backend.
  */
 
 export type CriterionKey =
@@ -72,122 +58,6 @@ export const DEFAULT_IMPORTANCE: Importance = {
   commerces: 0,
   transports: 0,
   cultureLoisirs: 0,
-}
-
-// ---- Normalisation sur l'ensemble du dataset ----
-
-interface Range {
-  min: number
-  max: number
-}
-
-function rangeOf(values: number[]): Range {
-  let min = Infinity
-  let max = -Infinity
-  for (const v of values) {
-    if (v < min) min = v
-    if (v > max) max = v
-  }
-  return { min, max }
-}
-
-function norm(value: number, r: Range, invert = false): number {
-  if (r.max === r.min) return 50
-  const t = (value - r.min) / (r.max - r.min)
-  return Math.round((invert ? 1 - t : t) * 100)
-}
-
-const clamp = (v: number, min = 0, max = 100) =>
-  Math.max(min, Math.min(max, v))
-const perMille = (count: number, pop: number) => count / (pop / 1000)
-
-function delinquance(c: Commune): number {
-  return (
-    c.agressions * 1.4 +
-    c.cambriolages * 1.1 +
-    c.volsDegradations * 0.6 +
-    c.stupefiants * 1.0
-  )
-}
-function santeIdx(c: Commune): number {
-  return perMille(
-    (c.services.medecins + c.services.specialistes) * 1 +
-      c.services.pharmacies * 0.8 +
-      c.services.hopitaux * 4,
-    c.population,
-  )
-}
-function commerceIdx(c: Commune): number {
-  return perMille(
-    c.services.hypermarches +
-      c.services.supermarches +
-      c.services.boulangeries +
-      c.services.restaurants * 0.5 +
-      c.services.banques,
-    c.population,
-  )
-}
-
-const R = {
-  prixMoyen: rangeOf(
-    COMMUNES.map((c) => (c.prixM2Appartement + c.prixM2Maison) / 2),
-  ),
-  revenu: rangeOf(COMMUNES.map((c) => c.revenuMoyen)),
-  chomage: rangeOf(COMMUNES.map((c) => c.tauxChomage)),
-  delinquance: rangeOf(COMMUNES.map(delinquance)),
-  sante: rangeOf(COMMUNES.map(santeIdx)),
-  commerce: rangeOf(COMMUNES.map(commerceIdx)),
-}
-
-/** Niveau réel (0–100) d'une catégorie, ancré sur les données disponibles. */
-function categoryBase(c: Commune, key: CriterionKey): number {
-  switch (key) {
-    case "pouvoirAchat":
-      return norm((c.prixM2Appartement + c.prixM2Maison) / 2, R.prixMoyen, true)
-    case "securite":
-      return norm(delinquance(c), R.delinquance, true)
-    case "qualiteVie":
-      return Math.round(c.notes.qualiteVie * 10)
-    case "ecoles":
-      return Math.round(c.notes.enseignement * 10)
-    case "sante":
-      return norm(santeIdx(c), R.sante)
-    case "emploi":
-      return Math.round(
-        (norm(c.revenuMoyen, R.revenu) + norm(c.tauxChomage, R.chomage, true)) /
-          2,
-      )
-    case "commerces":
-      return norm(commerceIdx(c), R.commerce)
-    case "transports":
-      return Math.round(c.notes.transports * 10)
-    case "cultureLoisirs":
-      return Math.round(((c.notes.culture + c.notes.sportsLoisirs) / 2) * 10)
-  }
-}
-
-// Hash déterministe (FNV-1a) → variation stable par (ville, catégorie, sous-critère).
-function hash(str: string): number {
-  let h = 2166136261
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return h >>> 0
-}
-const SUB_SPREAD = 16
-function variation(id: string, key: string, sub: string): number {
-  const r = (hash(`${id}:${key}:${sub}`) % 1000) / 1000 // [0,1)
-  return (r * 2 - 1) * SUB_SPREAD
-}
-
-/** Sous-score (0–100) d'un sous-critère pour une ville. */
-export function subScore(
-  c: Commune,
-  key: CriterionKey,
-  subKey: string,
-): number {
-  return clamp(Math.round(categoryBase(c, key) + variation(c.id, key, subKey)))
 }
 
 // ---- Définition des critères et sous-critères ----
@@ -339,49 +209,4 @@ export const CRITERIA: Record<CriterionKey, CriterionDef> = {
       sub("vieNocturne", "Vie nocturne"),
     ],
   },
-}
-
-// ---- Calcul du score ----
-
-/** Score d'un critère (0–100) : moyenne des sous-critères ciblés (ou tous). */
-export function criterionScore(
-  c: Commune,
-  key: CriterionKey,
-  focus: string[] = [],
-): number {
-  const def = CRITERIA[key]
-  const chosen = focus.length
-    ? def.subs.filter((s) => focus.includes(s.key))
-    : def.subs
-  const subs = chosen.length ? chosen : def.subs
-  const sum = subs.reduce((a, s) => a + subScore(c, key, s.key), 0)
-  return Math.round(sum / subs.length)
-}
-
-/** Score de compatibilité global /100, pondéré par les niveaux d'importance. */
-export function personalScore(
-  c: Commune,
-  importance: Importance,
-  focus: SubFocus = {},
-): number {
-  let acc = 0
-  let wsum = 0
-  for (const key of CRITERION_KEYS) {
-    const w = LEVEL_WEIGHT[importance[key]]
-    if (!w) continue
-    acc += w * criterionScore(c, key, focus[key] ?? [])
-    wsum += w
-  }
-  return wsum ? Math.round(acc / wsum) : 0
-}
-
-/** Détail par critère (0–100) — pour les barres et le radar. */
-export function scoreBreakdown(
-  c: Commune,
-  focus: SubFocus = {},
-): Record<CriterionKey, number> {
-  const out = {} as Record<CriterionKey, number>
-  for (const key of CRITERION_KEYS)
-    out[key] = criterionScore(c, key, focus[key] ?? [])
-  return out
 }

@@ -5,6 +5,8 @@ import type {
   CityReviewsResponse,
   Commune,
   CommuneSearchResult,
+  CommuneRankItem,
+  CommuneRankMeta,
   CommuneRankRequest,
   CommuneRankResponse,
   GeoDepartement,
@@ -15,8 +17,8 @@ import type {
 
 export * from "./types"
 // Le mock `communes.ts` n'est plus affiché : il ne sert QUE de jeu de
-// calibration pour la normalisation des scores (voir criteria.ts). Seule la
-// moyenne nationale par défaut en est encore réexportée (fallback de fiche).
+// Les données mockées restent un fallback pour certains écrans, mais le score
+// de compatibilité vient désormais exclusivement du backend.
 export { MOYENNES_NATIONALES } from "./communes"
 export { scoreColor, scoreColorHex } from "./scoring"
 export {
@@ -25,10 +27,6 @@ export {
   LEVEL_WEIGHT,
   LEVEL_LABELS,
   DEFAULT_IMPORTANCE,
-  criterionScore,
-  subScore,
-  personalScore,
-  scoreBreakdown,
   type CriterionKey,
   type CriterionDef,
   type SubMetricDef,
@@ -42,6 +40,73 @@ export { purchasingPower, type PurchasingPower } from "./purchasingPower"
  * Façade d'accès aux données : ces fonctions appellent le back NestJS via
  * `apiClient`.
  */
+
+type RankRequestSignature = string
+
+const rankItemCache = new Map<RankRequestSignature, Map<string, CommuneRankItem>>()
+const rankMetaCache = new Map<RankRequestSignature, CommuneRankMeta>()
+
+function normalizeRankList(values: string[] | undefined): string[] | undefined {
+  if (!values || values.length === 0) return undefined
+  const normalized = values
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "fr"))
+  return normalized.length > 0 ? normalized : undefined
+}
+
+function normalizeRankSignature(
+  request: Pick<CommuneRankRequest, "filters" | "importance" | "subFocus">,
+): RankRequestSignature {
+  const filters = request.filters ?? {}
+  const subFocus = request.subFocus ?? {}
+  return JSON.stringify({
+    filters: {
+      regionIds: normalizeRankList(filters.regionIds),
+      departementIds: normalizeRankList(filters.departementIds),
+      tailles: normalizeRankList(filters.tailles),
+    },
+    importance: request.importance,
+    subFocus: Object.fromEntries(
+      Object.entries(subFocus)
+        .map(([key, values]) => [key, normalizeRankList(values)])
+        .filter(([, values]) => Array.isArray(values) && values.length > 0)
+        .sort(([a], [b]) => String(a).localeCompare(String(b), "fr")),
+    ),
+  })
+}
+
+function storeRankResponse(
+  request: Pick<CommuneRankRequest, "filters" | "importance" | "subFocus">,
+  response: CommuneRankResponse,
+): void {
+  const signature = normalizeRankSignature(request)
+  const existing = rankItemCache.get(signature) ?? new Map<string, CommuneRankItem>()
+  for (const item of response.data) {
+    existing.set(item.commune.id, item)
+  }
+  rankItemCache.set(signature, existing)
+  rankMetaCache.set(signature, response.meta)
+}
+
+export function getCachedRankItem(
+  request: Pick<CommuneRankRequest, "filters" | "importance" | "subFocus">,
+  id: string,
+): CommuneRankItem | undefined {
+  return rankItemCache.get(normalizeRankSignature(request))?.get(id)
+}
+
+export function getCachedRankItems(
+  request: Pick<CommuneRankRequest, "filters" | "importance" | "subFocus">,
+): CommuneRankItem[] {
+  return Array.from(rankItemCache.get(normalizeRankSignature(request))?.values() ?? [])
+}
+
+export function getCachedRankMeta(
+  request: Pick<CommuneRankRequest, "filters" | "importance" | "subFocus">,
+): CommuneRankMeta | undefined {
+  return rankMetaCache.get(normalizeRankSignature(request))
+}
 
 /**
  * Récupère une commune complète depuis le back (`GET /communes/:id`).
@@ -86,6 +151,7 @@ export async function rankCommunes(
   request: CommuneRankRequest,
 ): Promise<CommuneRankResponse> {
   const response = await apiPost<CommuneRankResponse>("/communes/rank", request)
+  storeRankResponse(request, response)
   return {
     ...response,
     data: response.data.map((item) => ({
