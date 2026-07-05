@@ -16,6 +16,7 @@ export const router = createBrowserRouter([
       { path: "/carte", element: <MapPage /> },
       { path: "/ville/:id", element: <CityDetailPage /> },
       { path: "/comparer", element: <ComparePage /> },
+      { path: "/comparateur", element: <ComparePage /> },
       { path: "*", element: <NotFoundPage /> },
     ],
   },

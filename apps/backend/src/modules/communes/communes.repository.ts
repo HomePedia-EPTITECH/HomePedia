@@ -211,13 +211,13 @@ export class CommunesRepository extends PostgresReadRepository {
         tables,
         "departement",
         "dept",
-        `dept.${this.quoteIdentifier("numero_departement")} = c.${this.quoteIdentifier("departement_id")}`
+        `dept.${this.quoteIdentifier("numero_departement")}::text = c.${this.quoteIdentifier("departement_id")}::text`
       ),
       this.buildOptionalLeftJoin(
         tables,
         "region",
         "reg",
-        `reg.${this.quoteIdentifier("numero_region")} = dept.${this.quoteIdentifier("region_id")}`
+        `reg.${this.quoteIdentifier("numero_region")}::text = dept.${this.quoteIdentifier("region_id")}::text`
       ),
       this.buildOptionalLeftJoin(
         tables,

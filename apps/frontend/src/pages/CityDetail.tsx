@@ -39,9 +39,13 @@ import {
   formatPercent,
   getCommuneById,
   getNationalStats,
+  getCityReviews,
+  getCityReviewItems,
   subScore,
   type Commune,
   type CriterionKey,
+  type CityReviewItem,
+  type CityReviewsResponse,
   type NationalStats,
 } from "@/data"
 import { usePreferences } from "@/app/preferences"
@@ -70,6 +74,9 @@ export function CityDetailPage() {
   // Repère de comparaison : par défaut le mock, remplacé par le back au montage.
   // Si /stats/national échoue, on garde le mock (pas de crash).
   const [national, setNational] = useState<NationalStats>(MOYENNES_NATIONALES)
+  const [reviews, setReviews] = useState<CityReviewsResponse["reviews"] | null>(null)
+  const [reviewItems, setReviewItems] = useState<CityReviewItem[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -107,6 +114,40 @@ export function CityDetailPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (!id) {
+      setReviews(null)
+      setReviewItems([])
+      setReviewsLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setReviewsLoading(true)
+    Promise.allSettled([getCityReviews(id), getCityReviewItems(id)])
+      .then(([summaryResult, itemsResult]) => {
+        if (cancelled) return
+        setReviews(
+          summaryResult.status === "fulfilled"
+            ? summaryResult.value.reviews
+            : null,
+        )
+        setReviewItems(
+          itemsResult.status === "fulfilled" ? itemsResult.value.reviews : [],
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setReviewsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [id])
 
   if (loading) {
     return (
@@ -235,7 +276,12 @@ export function CityDetailPage() {
       {(has("sante") || has("ecoles") || has("commerces")) && (
         <ServicesSection commune={commune} />
       )}
-      <AvisSection commune={commune} />
+      <AvisSection
+        commune={commune}
+        summary={reviews}
+        items={reviewItems}
+        loading={reviewsLoading}
+      />
     </div>
   )
 }
@@ -680,7 +726,128 @@ function ServiceGrid({ items }: { items: [string, number][] }) {
   )
 }
 
-function AvisSection({ commune }: { commune: Commune }) {
+function AvisSection2({
+  commune,
+  summary,
+  items,
+  loading,
+}: {
+  commune: Commune
+  summary: CityReviewsResponse["reviews"] | null
+  items: CityReviewItem[]
+  loading: boolean
+}) {
+  const fallbackItems = commune.avis.map((review, index) => ({
+    id: `${commune.id}-${index}`,
+    text: review.texte,
+    sentimentLabel: review.sentiment === "positif" ? "positive" : "negative",
+    source: review.auteur,
+    urlPage: null,
+    collectedAt: null,
+  }))
+  const visibleItems = items.length > 0 ? items : fallbackItems
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-base">Avis des habitants</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {summary && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <StatPill label="Total" value={summary.all.length} />
+            <StatPill label="Positifs" value={summary.positive.length} />
+            <StatPill label="Négatifs" value={summary.negative.length} />
+          </div>
+        )}
+
+        {loading && <p className="text-sm text-muted-foreground">Chargement des avisâ€¦</p>}
+
+        {!loading && visibleItems.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {visibleItems.map((review) => (
+              <div key={review.id} className="rounded-lg border bg-secondary/20 p-4">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{review.source ?? "BDMV"}</span>
+                  <Badge
+                    variant={
+                      review.sentimentLabel === "positive"
+                        ? "success"
+                        : review.sentimentLabel === "negative"
+                          ? "warning"
+                          : "outline"
+                    }
+                  >
+                    {review.sentimentLabel === "positive"
+                      ? "Positif"
+                      : review.sentimentLabel === "negative"
+                        ? "Négatif"
+                        : "Neutre"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{review.text}</p>
+                {review.collectedAt && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Collecté le{" "}
+                    {new Intl.DateTimeFormat("fr-FR", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(review.collectedAt))}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          !loading && (
+            <div className="rounded-lg border border-dashed bg-secondary/10 px-4 py-6 text-sm text-muted-foreground">
+              Aucun avis Mongo disponible pour cette commune. La fiche reste
+              affichée avec les données métier principales.
+            </div>
+          )
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function StatPill({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border bg-secondary/30 p-3">
+      <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  )
+}
+
+function AvisSection({
+  commune,
+  summary,
+  items,
+  loading,
+}: {
+  commune: Commune
+  summary: CityReviewsResponse["reviews"] | null
+  items: CityReviewItem[]
+  loading: boolean
+}) {
+  return (
+    <AvisSection2
+      commune={commune}
+      summary={summary}
+      items={items.length > 0
+        ? items
+        : commune.avis.map((review, index) => ({
+        id: `${commune.id}-${index}`,
+        text: review.texte,
+        sentimentLabel: review.sentiment === "positif" ? "positive" : "negative",
+        source: review.auteur,
+        urlPage: null,
+        collectedAt: null,
+      }))}
+      loading={loading}
+    />
+  )
   return (
     <Card className="mt-6">
       <CardHeader>

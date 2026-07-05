@@ -1,29 +1,19 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { ChevronLeft, ChevronRight, List, Map as MapIcon, PanelLeftClose, PanelLeftOpen, Plus, Check } from "lucide-react"
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
-  List,
-  Map as MapIcon,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Check,
-} from "lucide-react"
-import {
-  CRITERIA,
-  TAILLE_LABELS,
   formatEuro,
+  getDepartements,
+  getRegions,
   purchasingPower,
+  rankCommunes,
+  TAILLE_LABELS,
   type Commune,
   type CriterionKey,
-  type PurchasingPower,
+  type GeoDepartement,
+  type GeoRegion,
 } from "@/data"
-import { useCommunes } from "@/data/useCommunes"
-import { ALL_FILTER, usePreferences } from "@/app/preferences"
+import { usePreferences, ALL_FILTER } from "@/app/preferences"
 import { CriteriaPanel, CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { GeoFilterBar } from "@/components/shared/GeoFilterBar"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
@@ -41,114 +31,148 @@ import {
 const ALL = ALL_FILTER
 const PAGE_SIZE = 30
 
-type SortKey = "nom" | "score" | CriterionKey
-
 interface Row {
   commune: Commune
   score: number
   breakdown: Record<CriterionKey, number>
-  pp: PurchasingPower
-}
-
-/** Valeur de tri d'une ligne selon la colonne active. */
-function sortValue(row: Row, key: SortKey): number | string {
-  if (key === "nom") return row.commune.nom
-  if (key === "score") return row.score
-  if (key === "pouvoirAchat") return row.pp.surfaceLouable
-  return row.breakdown[key]
 }
 
 export function ResultsPage() {
   const navigate = useNavigate()
   const {
-    scoreOf,
-    breakdownOf,
     salary,
     filters,
     selectedCriteria,
+    importance,
+    subFocus,
     compareIds,
     toggleCompare,
   } = usePreferences()
   const { region, departement, taille } = filters
-  const { communes, loading } = useCommunes()
 
-  // Panneau de critères repliable (le tableau prend alors toute la largeur).
   const [filtersOpen, setFiltersOpen] = useState(true)
-
-  // Tri du tableau : "score", "nom" ou une clé de critère.
-  const [sortKey, setSortKey] = useState<SortKey>("score")
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
-
-  function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
-      setSortKey(key)
-      setSortDir(key === "nom" ? "asc" : "desc")
-    }
-  }
-
-  const rows = useMemo(() => {
-    const list: Row[] = communes.filter((c) => {
-      if (region !== ALL && c.region !== region) return false
-      if (departement !== ALL && c.departement !== departement) return false
-      if (taille !== ALL && c.taille !== taille) return false
-      return true
-    }).map((c) => ({
-      commune: c,
-      score: scoreOf(c),
-      breakdown: breakdownOf(c),
-      pp: purchasingPower(c, salary),
-    }))
-
-    const dir = sortDir === "asc" ? 1 : -1
-    list.sort((a, b) => {
-      const va = sortValue(a, sortKey)
-      const vb = sortValue(b, sortKey)
-      const cmp =
-        typeof va === "string" && typeof vb === "string"
-          ? va.localeCompare(vb, "fr")
-          : (va as number) - (vb as number)
-      // Départage stable par score décroissant.
-      return cmp !== 0 ? cmp * dir : b.score - a.score
-    })
-    return list
-  }, [
-    communes,
-    region,
-    departement,
-    taille,
-    scoreOf,
-    breakdownOf,
-    salary,
-    sortKey,
-    sortDir,
-  ])
-
-  // Pagination : indispensable dès qu'on passe de 32 à 300 (et bien plus demain).
   const [page, setPage] = useState(1)
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pagedRows = rows.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
+  const [rows, setRows] = useState<Row[]>([])
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [regions, setRegions] = useState<GeoRegion[] | null>(null)
+  const [departements, setDepartements] = useState<GeoDepartement[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getRegions(), getDepartements()])
+      .then(([regionsData, departementsData]) => {
+        if (cancelled) return
+        setRegions(regionsData)
+        setDepartements(departementsData)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : String(err))
+        setRegions([])
+        setDepartements([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const regionCode = useMemo(() => {
+    if (region === ALL) return undefined
+    return regions?.find((item) => item.name === region)?.code
+  }, [region, regions])
+
+  const departementCode = useMemo(() => {
+    if (departement === ALL) return undefined
+    return departements?.find((item) => item.name === departement)?.code
+  }, [departement, departements])
+
+  const rankRequest = useMemo(
+    () => ({
+      filters: {
+        regionIds: regionCode ? [regionCode] : undefined,
+        departementIds: departementCode ? [departementCode] : undefined,
+        tailles: taille === ALL ? undefined : [taille as "village" | "ville" | "metropole"],
+      },
+      importance,
+      subFocus,
+      page,
+      limit: PAGE_SIZE,
+    }),
+    [regionCode, departementCode, taille, importance, subFocus, page],
   )
 
-  // Retour en page 1 quand le classement change (filtres, critères, salaire, tri).
   useEffect(() => {
     setPage(1)
-  }, [region, departement, taille, scoreOf, salary, sortKey, sortDir])
+  }, [region, departement, taille, importance, subFocus])
+
+  useEffect(() => {
+    if (regions === null || departements === null) {
+      return
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+
+    if (region !== ALL && !regionCode) {
+      setLoading(false)
+      setError(`Région introuvable dans le référentiel backend: ${region}`)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (departement !== ALL && !departementCode) {
+      setLoading(false)
+      setError(`Département introuvable dans le référentiel backend: ${departement}`)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    rankCommunes(rankRequest)
+      .then((response) => {
+        if (cancelled) return
+        const mapped: Row[] = response.data.map((item) => ({
+          commune: item.commune,
+          score: item.score,
+          breakdown: item.breakdown,
+        }))
+        setRows(mapped)
+        setTotalPages(response.meta.totalPages || 1)
+        setTotal(response.meta.total)
+        setPage(response.meta.page)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setRows([])
+        setTotalPages(1)
+        setTotal(0)
+        setError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [rankRequest, regions, departements])
+
+  const pageLabel = total === 0 ? "0" : `${(page - 1) * PAGE_SIZE + 1}â€“${Math.min(page * PAGE_SIZE, total)}`
 
   return (
     <div className="mx-auto flex max-w-[1400px] flex-col px-4 py-6 lg:h-[calc(100dvh-4rem)] lg:overflow-hidden lg:px-6">
       <header className="mb-4 flex shrink-0 flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            Villes recommandées
+            Villes recommandÃ©es
           </h1>
           <p className="text-muted-foreground">
-            {rows.length} villes classées par compatibilité · pouvoir d'achat
-            estimé pour {formatEuro(salary)} net/mois
+            {loading ? "Chargement du classement serveurâ€¦" : `${total} villes classÃ©es par compatibilitÃ© Â· pouvoir d'achat estimÃ© pour ${formatEuro(salary)} net/mois`}
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-lg border bg-card p-1">
@@ -163,19 +187,24 @@ export function ResultsPage() {
         </div>
       </header>
 
+      {error && (
+        <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+          Le classement serveur est indisponible: {error}
+        </div>
+      )}
+
       <div
         className={cn(
           "grid gap-6 lg:min-h-0 lg:flex-1",
           filtersOpen ? "lg:grid-cols-[300px_1fr]" : "lg:grid-cols-1",
         )}
       >
-        {/* Panneau critères repliable — scroll indépendant */}
         {filtersOpen && (
           <aside className="lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <div className="relative rounded-xl border bg-card p-5">
               <button
                 onClick={() => setFiltersOpen(false)}
-                title="Réduire les filtres"
+                title="RÃ©duire les filtres"
                 className="absolute right-3 top-3 text-muted-foreground transition-colors hover:text-foreground"
               >
                 <PanelLeftClose className="size-4" />
@@ -186,7 +215,6 @@ export function ResultsPage() {
         )}
 
         <div className="flex min-w-0 flex-col lg:min-h-0">
-          {/* Barre : rouvrir les filtres (si repliés) + filtres géo partagés */}
           <div className="mb-4 flex shrink-0 flex-wrap items-center gap-3">
             {!filtersOpen && (
               <Button
@@ -200,7 +228,6 @@ export function ResultsPage() {
             <GeoFilterBar />
           </div>
 
-          {/* Tableau — scroll indépendant, en-tête collant, colonnes = critères actifs */}
           <Table
             containerClassName="rounded-xl border bg-card lg:min-h-0 lg:flex-1"
             className="[&_td]:border-r [&_td]:border-border/40 [&_td:last-child]:border-r-0 [&_th]:border-r [&_th]:border-border/40 [&_th:last-child]:border-r-0"
@@ -208,94 +235,90 @@ export function ResultsPage() {
             <TableHeader className="[&_th]:sticky [&_th]:top-0 [&_th]:z-10 [&_th]:bg-muted">
               <TableRow className="hover:bg-transparent">
                 <TableHead className="w-12 text-center">#</TableHead>
-                <SortHead
-                  label="Ville"
-                  columnKey="nom"
-                  className="min-w-[11rem]"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
-                <SortHead
-                  label="Compatibilité"
-                  columnKey="score"
-                  className="w-32 text-center"
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSort={toggleSort}
-                />
+                <TableHead className="min-w-[11rem]">Ville</TableHead>
+                <TableHead className="w-32 text-center">CompatibilitÃ©</TableHead>
                 {selectedCriteria.map((key) => {
                   const Icon = CRITERION_ICONS[key]
                   return (
-                    <SortHead
+                    <TableHead
                       key={key}
-                      label={CRITERIA[key].label}
-                      columnKey={key}
                       className="min-w-[8rem] text-center font-medium"
-                      leadingIcon={<Icon className="size-3.5 text-primary" />}
-                      sortKey={sortKey}
-                      sortDir={sortDir}
-                      onSort={toggleSort}
-                    />
+                    >
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <Icon className="size-3.5 text-primary" />
+                        {key === "pouvoirAchat"
+                          ? "Pouvoir d'achat"
+                          : key === "securite"
+                            ? "Sécurité"
+                            : key === "qualiteVie"
+                              ? "Qualité de vie"
+                              : key === "ecoles"
+                                ? "Écoles"
+                                : key === "sante"
+                                  ? "Santé"
+                                  : key === "emploi"
+                                    ? "Emploi"
+                                    : key === "commerces"
+                                      ? "Commerces"
+                                      : key === "transports"
+                                        ? "Transports"
+                                        : "Culture & loisirs"}
+                      </span>
+                    </TableHead>
                   )
                 })}
                 <TableHead className="w-28 text-right">Comparer</TableHead>
               </TableRow>
             </TableHeader>
-              <TableBody>
-                {pagedRows.map(({ commune, score, breakdown, pp }, i) => (
-                  <ResultRow
-                    key={commune.id}
-                    rank={(currentPage - 1) * PAGE_SIZE + i + 1}
-                    commune={commune}
-                    score={score}
-                    breakdown={breakdown}
-                    pp={pp}
-                    activeKeys={selectedCriteria}
-                    comparing={compareIds.includes(commune.id)}
-                    onOpen={() => navigate(`/ville/${commune.id}`)}
-                    onToggleCompare={() => toggleCompare(commune.id)}
-                  />
-                ))}
-                {rows.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4 + selectedCriteria.length}
-                      className="py-12 text-center text-muted-foreground"
-                    >
-                      {loading
-                        ? "Chargement des communes…"
-                        : "Aucune ville ne correspond à ces filtres."}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+            <TableBody>
+              {rows.map(({ commune, score, breakdown }, i) => (
+                <ResultRow
+                  key={commune.id}
+                  rank={(page - 1) * PAGE_SIZE + i + 1}
+                  commune={commune}
+                  score={score}
+                  breakdown={breakdown}
+                  pp={purchasingPower(commune, salary)}
+                  activeKeys={selectedCriteria}
+                  comparing={compareIds.includes(commune.id)}
+                  onOpen={() => navigate(`/ville/${commune.id}`)}
+                  onToggleCompare={() => toggleCompare(commune.id)}
+                />
+              ))}
+              {!loading && rows.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={4 + selectedCriteria.length}
+                    className="py-12 text-center text-muted-foreground"
+                  >
+                    Aucune ville ne correspond Ã  ces filtres.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
 
-          {/* Pagination */}
-          {rows.length > PAGE_SIZE && (
+          {total > PAGE_SIZE && (
             <div className="mt-4 flex shrink-0 items-center justify-between">
               <p className="text-sm text-muted-foreground">
-                {(currentPage - 1) * PAGE_SIZE + 1}–
-                {Math.min(currentPage * PAGE_SIZE, rows.length)} sur{" "}
-                {rows.length}
+                {pageLabel} sur {total}
               </p>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={currentPage <= 1}
+                  disabled={page <= 1 || loading}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
-                  <ChevronLeft className="size-4" /> Précédent
+                  <ChevronLeft className="size-4" /> PrÃ©cÃ©dent
                 </Button>
                 <span className="px-1 text-sm tabular-nums text-muted-foreground">
-                  {currentPage} / {totalPages}
+                  {page} / {totalPages}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={currentPage >= totalPages}
+                  disabled={page >= totalPages || loading}
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 >
                   Suivant <ChevronRight className="size-4" />
@@ -314,7 +337,7 @@ interface ResultRowProps {
   commune: Commune
   score: number
   breakdown: Record<CriterionKey, number>
-  pp: PurchasingPower
+  pp: ReturnType<typeof purchasingPower>
   activeKeys: CriterionKey[]
   comparing: boolean
   onOpen: () => void
@@ -341,7 +364,7 @@ function ResultRow({
         <div className="flex flex-col">
           <span className="font-medium">{commune.nom}</span>
           <span className="text-xs text-muted-foreground">
-            {commune.departement} · {TAILLE_LABELS[commune.taille]}
+            {commune.departement} Â· {TAILLE_LABELS[commune.taille]}
           </span>
         </div>
       </TableCell>
@@ -354,7 +377,7 @@ function ResultRow({
         <TableCell key={key} className="text-center">
           {key === "pouvoirAchat" ? (
             <span className="font-medium tabular-nums text-primary">
-              {pp.surfaceLouable} m²
+              {pp.surfaceLouable} mÂ²
             </span>
           ) : (
             <MiniBar value={breakdown[key]} />
@@ -372,7 +395,7 @@ function ResultRow({
         >
           {comparing ? (
             <>
-              <Check className="size-4" /> Ajouté
+              <Check className="size-4" /> AjoutÃ©
             </>
           ) : (
             <>
@@ -382,48 +405,6 @@ function ResultRow({
         </Button>
       </TableCell>
     </TableRow>
-  )
-}
-
-interface SortHeadProps {
-  label: string
-  columnKey: SortKey
-  className?: string
-  leadingIcon?: ReactNode
-  sortKey: SortKey
-  sortDir: "asc" | "desc"
-  onSort: (k: SortKey) => void
-}
-
-/** En-tête de colonne cliquable, avec indicateur de tri. */
-function SortHead({
-  label,
-  columnKey,
-  className,
-  leadingIcon,
-  sortKey,
-  sortDir,
-  onSort,
-}: SortHeadProps) {
-  const active = sortKey === columnKey
-  const Indicator = !active ? ArrowUpDown : sortDir === "asc" ? ArrowUp : ArrowDown
-  return (
-    <TableHead
-      onClick={() => onSort(columnKey)}
-      className={cn(
-        "cursor-pointer select-none transition-colors hover:text-foreground",
-        active && "text-foreground",
-        className,
-      )}
-    >
-      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-        {leadingIcon}
-        {label}
-        <Indicator
-          className={cn("size-3", active ? "text-primary" : "opacity-40")}
-        />
-      </span>
-    </TableHead>
   )
 }
 
@@ -442,4 +423,3 @@ function MiniBar({ value }: { value: number }) {
     </span>
   )
 }
-

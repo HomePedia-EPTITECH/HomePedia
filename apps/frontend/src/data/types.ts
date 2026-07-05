@@ -6,6 +6,8 @@
  * ces types servent de contrat entre le mock (`data/`) et l'UI.
  */
 
+import type { CriterionKey } from "./criteria"
+
 export type TailleCommune = "village" | "ville" | "metropole"
 
 /** Dimensions "Ville-Idéale" (notées sur 10) — utilisées pour le radar. */
@@ -94,6 +96,90 @@ export interface Commune {
   ageDistribution: { tranche: string; part: number }[]
 
   services: ServicesCommune
+}
+
+export interface GeoDepartement {
+  code: string
+  name: string | null
+  cityCount: number
+  updatedAt: string | null
+}
+
+export interface GeoRegion {
+  code: string
+  name: string | null
+  departementCount: number
+  cityCount: number
+  updatedAt: string | null
+}
+
+export interface CommuneRankRequestFilters {
+  regionIds?: string[]
+  departementIds?: string[]
+  tailles?: TailleCommune[]
+}
+
+export interface CommuneRankRequest {
+  filters: CommuneRankRequestFilters
+  importance: Record<CriterionKey, number>
+  subFocus?: Partial<Record<CriterionKey, string[]>>
+  page?: number
+  limit?: number
+}
+
+export type CommuneRankCommune = Omit<
+  Commune,
+  "prixHistorique" | "avis" | "ageDistribution"
+>
+
+export interface CommuneRankItem {
+  commune: Commune
+  score: number
+  breakdown: Record<CriterionKey, number>
+}
+
+export interface CommuneRankMeta {
+  page: number
+  limit: number
+  total: number
+  totalPages: number
+}
+
+export interface CommuneRankResponse {
+  data: CommuneRankItem[]
+  meta: CommuneRankMeta
+}
+
+export interface CityReviewItem {
+  id: string
+  text: string
+  sentimentLabel: string | null
+  source: string | null
+  urlPage: string | null
+  collectedAt: string | null
+}
+
+export interface CityReviewItemsResponse {
+  cityCode: string
+  sourceUrl: string | null
+  harvestedAt: string | null
+  reviews: CityReviewItem[]
+  pagination: {
+    limit: number
+    hasMore: boolean
+    nextCursor: string | null
+  }
+}
+
+export interface CityReviewsResponse {
+  code: string
+  sourceUrl: string | null
+  harvestedAt: string | null
+  reviews: {
+    positive: string[]
+    negative: string[]
+    all: string[]
+  }
 }
 
 /**

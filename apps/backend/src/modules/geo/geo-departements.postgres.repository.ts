@@ -48,7 +48,7 @@ export class GeoDepartementsPostgresRepository extends PostgresReadRepository {
     const cityJoin = tables.has("commune")
       ? `
         LEFT JOIN ${this.relation("commune")} c
-          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
+          ON c.${this.quoteIdentifier("departement_id")}::text = d.${this.quoteIdentifier("numero_departement")}::text
       `
       : "";
 

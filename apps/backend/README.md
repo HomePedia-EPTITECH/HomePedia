@@ -217,6 +217,9 @@ Le front ne doit pas inventer sa propre regle de taille.
 
 PostgreSQL sert les routes communes, geo et stats.
 Mongo sert uniquement les routes `reviews`.
+Le front consomme les filtres geo via `GET /regions` et `GET /departements`,
+et la fiche ville récupère ses avis via `GET /reviews/cities/:cityCode`
+et `GET /reviews/cities/:cityCode/items`.
 
 ## Base de donnees
 
