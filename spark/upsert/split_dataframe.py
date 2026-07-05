@@ -6,6 +6,8 @@ from pyspark.sql import DataFrame, Window, functions as F
 
 from reference.french_geo_reference import (
     DEPARTMENT_CODE_TO_REGION_CODE,
+    build_official_department_df,
+    build_official_region_df,
     REGION_CODE_TO_NAME,
 )
 
@@ -255,28 +257,11 @@ def split_by_table(df: DataFrame, rename_map: dict = None) -> dict[str, DataFram
             )
 
         if table == "region":
-            result[table] = (
-                df.select(
-                    F.col("region_id").alias("numero_region"),
-                    F.col("region").alias("nom"),
-                )
-                .where(F.col("numero_region").isNotNull() & (F.trim(F.col("numero_region")) != ""))
-                .dropDuplicates()
-                .orderBy("numero_region")
-            )
+            result[table] = build_official_region_df(df.sparkSession)
             continue
 
         if table == "departement":
-            result[table] = (
-                df.select(
-                    F.col("departement_id").alias("numero_departement"),
-                    F.col("departement").alias("nom"),
-                    F.col("region_id"),
-                )
-                .where(F.col("numero_departement").isNotNull() & (F.trim(F.col("numero_departement")) != ""))
-                .dropDuplicates()
-                .orderBy("numero_departement")
-            )
+            result[table] = build_official_department_df(df.sparkSession)
             continue
 
         if table == "metropole":

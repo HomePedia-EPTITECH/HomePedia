@@ -164,6 +164,41 @@ class SplitByTableTest(unittest.TestCase):
         self.assertEqual(result["commune"].collect()[0].commune_id, "01002")
         self.assertEqual(result["salaire"].collect()[0].salaire_net_mensuel_moyen_total, 2188)
 
+        region_rows = result["region"].collect()
+        departement_rows = result["departement"].collect()
+        self.assertEqual(len(region_rows), 18)
+        self.assertEqual(len(departement_rows), 101)
+
+        region_by_code = {row.numero_region: row.nom for row in region_rows}
+        departement_by_code = {row.numero_departement: row.nom for row in departement_rows}
+        region_id_by_department = {row.numero_departement: row.region_id for row in departement_rows}
+
+        self.assertEqual(region_by_code["11"], "Île-de-France")
+        self.assertEqual(region_by_code["93"], "Provence-Alpes-Côte d'Azur")
+        self.assertEqual(region_by_code["84"], "Auvergne-Rhône-Alpes")
+
+        for code in ["75", "93", "57", "67", "68", "971", "972", "973", "974", "976"]:
+            with self.subTest(departement=code):
+                self.assertIn(code, departement_by_code)
+
+        self.assertEqual(departement_by_code["75"], "Paris")
+        self.assertEqual(departement_by_code["93"], "Seine-Saint-Denis")
+        self.assertEqual(departement_by_code["57"], "Moselle")
+        self.assertEqual(departement_by_code["67"], "Bas-Rhin")
+        self.assertEqual(departement_by_code["68"], "Haut-Rhin")
+        self.assertEqual(departement_by_code["971"], "Guadeloupe")
+        self.assertEqual(departement_by_code["974"], "La Réunion")
+        self.assertEqual(region_id_by_department["75"], "11")
+        self.assertEqual(region_id_by_department["93"], "11")
+        self.assertEqual(region_id_by_department["57"], "44")
+        self.assertEqual(region_id_by_department["67"], "44")
+        self.assertEqual(region_id_by_department["68"], "44")
+        self.assertEqual(region_id_by_department["971"], "01")
+        self.assertEqual(region_id_by_department["972"], "02")
+        self.assertEqual(region_id_by_department["973"], "03")
+        self.assertEqual(region_id_by_department["974"], "04")
+        self.assertEqual(region_id_by_department["976"], "06")
+
 
 class FillNumericNullsTest(unittest.TestCase):
     def test_fills_int_and_float_nulls_with_zero(self):

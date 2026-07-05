@@ -63,6 +63,7 @@ python packages/etl/database/run_migrations_postgres.py
 - **Ordre d'exécution** : Numérique (00_, 01_, 02_, etc.)
 - **Atomicité** : Chaque migration est soit entièrement appliquée, soit entièrement annulée (rollback)
 - **Idempotence** : Les migrations appliquées ne sont pas exécutées deux fois
+- **Référentiel géo** : les tables `bdd.region` et `bdd.departement` sont alimentées par un seed officiel indépendant des communes scrapées, pour rester complètes même sur un run partiel
 
 ## Intégration dans Docker
 
