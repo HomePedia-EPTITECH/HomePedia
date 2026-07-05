@@ -18,8 +18,17 @@ import {
   Sun,
 } from "lucide-react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
-import { CRITERIA, formatEuro, scoreColorHex, type Commune } from "@/data"
-import { useCommunes } from "@/data/useCommunes"
+import {
+  CRITERIA,
+  formatEuro,
+  getDepartements,
+  getRegions,
+  rankCommunes,
+  scoreColorHex,
+  type Commune,
+  type GeoDepartement,
+  type GeoRegion,
+} from "@/data"
 import { ALL_FILTER, usePreferences } from "@/app/preferences"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -87,18 +96,100 @@ const ZOOM_BY_TYPE: Record<PlaceType, number> = {
 export function MapPage() {
   const navigate = useNavigate()
   const mapRef = useRef<MapRef>(null)
-  const { scoreOf, filters, selectedCriteria } = usePreferences()
+  const { filters, selectedCriteria, importance, subFocus } = usePreferences()
   const { region, departement, taille } = filters
-  const { communes } = useCommunes()
 
   const [scoreMin, setScoreMin] = useState(0)
   const [active, setActive] = useState<Commune | null>(null)
   const [criteriaOpen, setCriteriaOpen] = useState(true)
   const [lightPreset, setLightPreset] = useState<LightPreset>("dusk")
   const [is3D, setIs3D] = useState(false)
+  const [regions, setRegions] = useState<GeoRegion[] | null>(null)
+  const [departements, setDepartements] = useState<GeoDepartement[] | null>(
+    null,
+  )
+  const [ranked, setRanked] = useState<{ commune: Commune; score: number }[]>(
+    [],
+  )
+  const [rankLoading, setRankLoading] = useState(true)
   // Zone géographique de recherche (emprise figée) + drapeau "carte déplacée".
   const [searchBounds, setSearchBounds] = useState<Bounds | null>(null)
   const [mapMoved, setMapMoved] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getRegions(), getDepartements()])
+      .then(([regionsData, departementsData]) => {
+        if (cancelled) return
+        setRegions(regionsData)
+        setDepartements(departementsData)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRegions([])
+        setDepartements([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const regionCode = useMemo(() => {
+    if (region === ALL) return undefined
+    return regions?.find((item) => item.name === region)?.code
+  }, [region, regions])
+
+  const departementCode = useMemo(() => {
+    if (departement === ALL) return undefined
+    return departements?.find((item) => item.name === departement)?.code
+  }, [departement, departements])
+
+  const rankRequest = useMemo(
+    () => ({
+      filters: {
+        regionIds: regionCode ? [regionCode] : undefined,
+        departementIds: departementCode ? [departementCode] : undefined,
+        tailles: taille === ALL ? undefined : [taille as "village" | "ville" | "metropole"],
+      },
+      importance,
+      subFocus,
+      page: 1,
+      limit: MAX_MARKERS,
+    }),
+    [regionCode, departementCode, taille, importance, subFocus],
+  )
+
+  useEffect(() => {
+    if (regions === null || departements === null) return
+    if (region !== ALL && !regionCode) {
+      setRanked([])
+      setRankLoading(false)
+      return
+    }
+    if (departement !== ALL && !departementCode) {
+      setRanked([])
+      setRankLoading(false)
+      return
+    }
+
+    let cancelled = false
+    setRankLoading(true)
+    rankCommunes(rankRequest)
+      .then((response) => {
+        if (cancelled) return
+        setRanked(response.data.map((item) => ({ commune: item.commune, score: item.score })))
+        setRankLoading(false)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setRanked([])
+        setRankLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [rankRequest, regions, departements, region, departement, regionCode, departementCode])
 
   function readBounds(): Bounds | null {
     const b = mapRef.current?.getBounds()
@@ -139,8 +230,8 @@ export function MapPage() {
   }, [lightPreset, applyLight])
 
   const scored = useMemo(
-    () => communes.map((c) => ({ commune: c, score: scoreOf(c) })),
-    [communes, scoreOf],
+    () => ranked.map((item) => ({ commune: item.commune, score: item.score })),
+    [ranked],
   )
 
   // Villes passant les filtres (région / département / taille / score min).
@@ -265,6 +356,11 @@ export function MapPage() {
             {markers.length}
           </Badge>
         </div>
+        {rankLoading && (
+          <p className="mb-4 -mt-2 text-xs text-muted-foreground">
+            Chargement du ranking serveur…
+          </p>
+        )}
         {capped && (
           <p className="mb-4 -mt-2 text-xs text-muted-foreground">
             {inZone.length} villes dans cette zone — {MAX_MARKERS} mieux notées
@@ -405,13 +501,15 @@ export function MapPage() {
               onClose={() => setActive(null)}
               className="homepedia-popup"
             >
-              <MapPopupCard
-                commune={active}
-                score={scoreOf(active)}
-                onOpen={() => navigate(`/ville/${active.id}`)}
-              />
-            </Popup>
-          )}
+            <MapPopupCard
+              commune={active}
+              score={
+                scored.find((item) => item.commune.id === active.id)?.score ?? 0
+              }
+              onOpen={() => navigate(`/ville/${active.id}`)}
+            />
+          </Popup>
+        )}
         </Map>
       ) : (
         <MapFallback

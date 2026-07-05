@@ -1,26 +1,26 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import {
+  Legend,
   PolarAngleAxis,
   PolarGrid,
   Radar,
   RadarChart,
   ResponsiveContainer,
-  Legend,
   Tooltip as RTooltip,
 } from "recharts"
 import { Plus, Search, X } from "lucide-react"
 import { MAX_COMPARE_CITIES, usePreferences } from "@/app/preferences"
 import {
   CRITERIA,
-  getCommuneById,
   purchasingPower,
   searchCommunes,
-  subScore,
   type Commune,
+  type CommuneRankItem,
   type CommuneSearchResult,
   type CriterionKey,
 } from "@/data"
+import { useRankedCommunes } from "@/data/useRankedCommunes"
 import { CRITERION_ICONS } from "@/components/shared/CriteriaPanel"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
 import { Button } from "@/components/ui/button"
@@ -33,58 +33,49 @@ export function ComparePage() {
   const {
     compareIds,
     toggleCompare,
-    scoreOf,
-    breakdownOf,
+    importance,
     subFocus,
     salary,
     selectedCriteria,
   } = usePreferences()
 
-  // `getCommuneById` est désormais async (fetch back) → on résout les ids
-  // en parallèle et on stocke le résultat dans un état.
-  const [cities, setCities] = useState<Commune[]>([])
-  useEffect(() => {
-    let cancelled = false
-    Promise.all(compareIds.map(getCommuneById))
-      .then((list) => {
-        if (!cancelled) {
-          setCities(list.filter((c): c is Commune => Boolean(c)))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setCities([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [compareIds])
+  const rankRequest = useMemo(
+    () => ({
+      filters: {},
+      importance,
+      subFocus,
+    }),
+    [importance, subFocus],
+  )
 
-  // Catégorie affichée dans le graphe de droite (parmi les critères actifs).
-  const [chartCat, setChartCat] = useState<CriterionKey | null>(null)
-  const activeCat =
-    chartCat && selectedCriteria.includes(chartCat)
-      ? chartCat
-      : (selectedCriteria[0] ?? null)
+  const { items, loading } = useRankedCommunes(rankRequest, compareIds)
+  const itemById = useMemo(
+    () => new Map(items.map((item) => [item.commune.id, item])),
+    [items],
+  )
+  const cities = useMemo(
+    () => compareIds.map((id) => itemById.get(id)?.commune).filter(Boolean) as Commune[],
+    [compareIds, itemById],
+  )
 
-  // Sous-critères montrés : les ciblés si ≥ 3, sinon tous (radar lisible).
   const chartData = useMemo(() => {
-    if (!activeCat) return []
-    const all = CRITERIA[activeCat].subs
-    const focus = subFocus[activeCat] ?? []
-    const shown =
-      focus.length >= 3 ? all.filter((s) => focus.includes(s.key)) : all
-    return shown.map((s) => {
-      const row: Record<string, string | number> = { dim: s.label }
-      cities.forEach((c) => (row[c.nom] = subScore(c, activeCat, s.key)))
+    if (!selectedCriteria.length || !cities.length) return []
+    return selectedCriteria.map((key) => {
+      const row: Record<string, string | number> = { dim: CRITERIA[key].label }
+      items.forEach((item) => {
+        row[item.commune.nom] = item.breakdown[key]
+      })
       return row
     })
-  }, [activeCat, subFocus, cities])
+  }, [items, cities.length, selectedCriteria])
 
-  /** Valeur comparée d'un critère pour une ville (m² louables pour le pouvoir d'achat, sinon sous-score). */
-  function criterionValue(key: CriterionKey, c: Commune): number {
-    if (key === "pouvoirAchat") return purchasingPower(c, salary).surfaceLouable
-    return breakdownOf(c)[key]
+  function criterionValue(key: CriterionKey, item: CommuneRankItem): number {
+    if (key === "pouvoirAchat") {
+      return purchasingPower(item.commune, salary).surfaceLouable
+    }
+    return item.breakdown[key]
   }
+
   function criterionDisplay(key: CriterionKey, value: number): string {
     return key === "pouvoirAchat" ? `${value} m²` : `${value}/100`
   }
@@ -94,30 +85,40 @@ export function ComparePage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Comparateur</h1>
         <p className="text-muted-foreground">
-          Comparez jusqu'à {MAX_COMPARE_CITIES} villes sur vos critères conservés.
-          La meilleure valeur par ligne est surlignée.
+          Comparez jusqu&apos;à {MAX_COMPARE_CITIES} villes sur les scores
+          renvoyés par le backend.
         </p>
       </header>
 
-      {/* Sélecteurs de villes */}
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: MAX_COMPARE_CITIES }).map((_, i) => {
           const city = cities[i]
-          return city ? (
+          const item = city ? itemById.get(city.id) : undefined
+          return city && item ? (
             <CitySlot
               key={city.id}
               commune={city}
               color={SERIES_COLORS[i]}
-              score={scoreOf(city)}
+              score={item.score}
               onRemove={() => toggleCompare(city.id)}
             />
           ) : (
-            <CityPicker key={`empty-${i}`} exclude={compareIds} onPick={toggleCompare} />
+            <CityPicker
+              key={`empty-${i}`}
+              exclude={compareIds}
+              onPick={toggleCompare}
+            />
           )
         })}
       </div>
 
-      {cities.length < 2 ? (
+      {loading && compareIds.length > 0 && cities.length === 0 ? (
+        <Card>
+          <CardContent className="py-16 text-center text-muted-foreground">
+            Chargement du classement serveur…
+          </CardContent>
+        </Card>
+      ) : cities.length < 2 ? (
         <Card>
           <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
             <span className="grid size-12 place-items-center rounded-full bg-secondary text-muted-foreground">
@@ -135,7 +136,6 @@ export function ComparePage() {
         </Card>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-          {/* Tableau comparatif */}
           <Card className="overflow-hidden py-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -164,9 +164,12 @@ export function ComparePage() {
                   <tr className="border-b bg-secondary/20">
                     <td className="p-3 font-medium">Compatibilité</td>
                     {cities.map((c) => {
-                      const scores = cities.map((x) => scoreOf(x))
-                      const s = scoreOf(c)
-                      const isBest = s === Math.max(...scores)
+                      const item = itemById.get(c.id)
+                      if (!item) return null
+                      const scores = cities
+                        .map((x) => itemById.get(x.id)?.score ?? 0)
+                        .filter((value) => Number.isFinite(value))
+                      const isBest = item.score === Math.max(...scores)
                       return (
                         <td key={c.id} className="p-3 text-right">
                           <span
@@ -175,7 +178,7 @@ export function ComparePage() {
                               isBest && "bg-success/15 text-success",
                             )}
                           >
-                            {s}/100
+                            {item.score}/100
                           </span>
                         </td>
                       )
@@ -183,7 +186,10 @@ export function ComparePage() {
                   </tr>
                   {selectedCriteria.map((key) => {
                     const Icon = CRITERION_ICONS[key]
-                    const values = cities.map((c) => criterionValue(key, c))
+                    const values = cities.map((c) => {
+                      const item = itemById.get(c.id)
+                      return item ? criterionValue(key, item) : 0
+                    })
                     const bestVal = Math.max(...values)
                     return (
                       <tr key={key} className="border-b last:border-0">
@@ -194,7 +200,10 @@ export function ComparePage() {
                           </span>
                         </td>
                         {cities.map((c, i) => {
-                          const isBest = values[i] === bestVal && cities.length > 1
+                          const item = itemById.get(c.id)
+                          if (!item) return <td key={c.id} />
+                          const value = values[i]
+                          const isBest = value === bestVal && cities.length > 1
                           return (
                             <td key={c.id} className="p-3 text-right tabular-nums">
                               <span
@@ -204,7 +213,7 @@ export function ComparePage() {
                                     "bg-success/15 font-medium text-success",
                                 )}
                               >
-                                {criterionDisplay(key, values[i])}
+                                {criterionDisplay(key, value)}
                               </span>
                             </td>
                           )
@@ -218,7 +227,7 @@ export function ComparePage() {
                         colSpan={cities.length + 1}
                         className="p-4 text-center text-sm text-muted-foreground"
                       >
-                        Aucun critère actif — les lignes reflètent vos critères.{" "}
+                        Aucun critère actif.{" "}
                         <Link
                           to="/resultats"
                           className="text-primary underline-offset-2 hover:underline"
@@ -233,79 +242,51 @@ export function ComparePage() {
             </div>
           </Card>
 
-          {/* Graphe par catégorie de critère + CTA */}
           <div className="flex flex-col gap-4">
             <Card>
               <CardContent className="pt-6">
-                {/* Sélecteur : une catégorie de critère active */}
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                  {selectedCriteria.map((key) => {
-                    const Icon = CRITERION_ICONS[key]
-                    const isActive = activeCat === key
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setChartCat(key)}
-                        className={cn(
-                          "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors",
-                          isActive
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "text-muted-foreground hover:text-foreground",
-                        )}
-                      >
-                        <Icon className="size-3" />
-                        {CRITERIA[key].label}
-                      </button>
-                    )
-                  })}
-                </div>
-
-                {activeCat ? (
-                  <>
-                    <h3 className="mb-1 text-sm font-semibold">
-                      {CRITERIA[activeCat].label} — détail
-                    </h3>
-                    <p className="mb-2 text-xs text-muted-foreground">
-                      {(subFocus[activeCat]?.length ?? 0) >= 3
-                        ? "Sous-critères que vous avez ciblés"
-                        : "Tous les sous-critères de la catégorie"}
-                    </p>
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart data={chartData} outerRadius="70%">
-                          <PolarGrid stroke="var(--border)" />
-                          <PolarAngleAxis
-                            dataKey="dim"
-                            tick={{
-                              fontSize: 10,
-                              fill: "var(--muted-foreground)",
-                            }}
+                <h3 className="mb-1 text-sm font-semibold">
+                  Détail des critères
+                </h3>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Scores backend par critère, comparés entre les villes sélectionnées.
+                </p>
+                {chartData.length > 0 ? (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RadarChart data={chartData} outerRadius="70%">
+                        <PolarGrid stroke="var(--border)" />
+                        <PolarAngleAxis
+                          dataKey="dim"
+                          tick={{
+                            fontSize: 10,
+                            fill: "var(--muted-foreground)",
+                          }}
+                        />
+                        {cities.map((c, i) => (
+                          <Radar
+                            key={c.id}
+                            dataKey={c.nom}
+                            stroke={SERIES_COLORS[i]}
+                            fill={SERIES_COLORS[i]}
+                            fillOpacity={0.15}
                           />
-                          {cities.map((c, i) => (
-                            <Radar
-                              key={c.id}
-                              dataKey={c.nom}
-                              stroke={SERIES_COLORS[i]}
-                              fill={SERIES_COLORS[i]}
-                              fillOpacity={0.15}
-                            />
-                          ))}
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
-                          <RTooltip
-                            contentStyle={{
-                              background: "var(--popover)",
-                              border: "1px solid var(--border)",
-                              borderRadius: 8,
-                              fontSize: 12,
-                            }}
-                          />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </>
+                        ))}
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <RTooltip
+                          contentStyle={{
+                            background: "var(--popover)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            fontSize: 12,
+                          }}
+                        />
+                      </RadarChart>
+                    </ResponsiveContainer>
+                  </div>
                 ) : (
                   <p className="py-16 text-center text-sm text-muted-foreground">
-                    Aucun critère actif pour afficher un détail.
+                    Ajoutez au moins un critère pour afficher le détail.
                   </p>
                 )}
               </CardContent>
@@ -365,11 +346,10 @@ function CityPicker({
   const [query, setQuery] = useState("")
   const [raw, setRaw] = useState<CommuneSearchResult[]>([])
 
-  // Recherche back debouncée ; le filtre `exclude` est appliqué au rendu.
   useEffect(() => {
     if (!query) {
       setRaw([])
-      return
+      return undefined
     }
     let cancelled = false
     const t = setTimeout(() => {

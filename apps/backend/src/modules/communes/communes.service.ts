@@ -88,8 +88,9 @@ export class CommunesService {
 
   async rank(request: CommuneRankRequestDto): Promise<CommuneRankResponseDto> {
     const catalogue = await this.loadCatalogue();
-    const ranges = buildScoreRanges(catalogue);
     const hardFiltered = await this.applyRankFilters(catalogue, request.filters);
+    const comparisonSet = hardFiltered.length > 0 ? hardFiltered : catalogue;
+    const ranges = buildScoreRanges(comparisonSet);
 
     const ranked: CommuneRankResponseDto["data"] = hardFiltered
       .map((commune) => {

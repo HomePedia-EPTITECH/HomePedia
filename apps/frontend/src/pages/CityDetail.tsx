@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import {
   Area,
@@ -32,7 +32,6 @@ import {
   Users,
 } from "lucide-react"
 import {
-  CRITERIA,
   MOYENNES_NATIONALES,
   formatEuro,
   formatNumber,
@@ -41,7 +40,6 @@ import {
   getNationalStats,
   getCityReviews,
   getCityReviewItems,
-  subScore,
   type Commune,
   type CriterionKey,
   type CityReviewItem,
@@ -49,6 +47,7 @@ import {
   type NationalStats,
 } from "@/data"
 import { usePreferences } from "@/app/preferences"
+import { useRankedCommunes } from "@/data/useRankedCommunes"
 import { ScoreBadge } from "@/components/shared/ScoreBadge"
 import { StatCard } from "@/components/shared/StatCard"
 import { Button } from "@/components/ui/button"
@@ -65,9 +64,18 @@ import { NotFoundPage } from "./NotFound"
 export function CityDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { scoreOf, toggleCompare, isComparing, selectedCriteria } =
+  const { importance, subFocus, toggleCompare, isComparing, selectedCriteria } =
     usePreferences()
   const has = (k: CriterionKey) => selectedCriteria.includes(k)
+
+  const rankRequest = useMemo(
+    () => ({
+      filters: {},
+      importance,
+      subFocus,
+    }),
+    [importance, subFocus],
+  )
 
   const [commune, setCommune] = useState<Commune | undefined>(undefined)
   const [loading, setLoading] = useState(true)
@@ -77,6 +85,10 @@ export function CityDetailPage() {
   const [reviews, setReviews] = useState<CityReviewsResponse["reviews"] | null>(null)
   const [reviewItems, setReviewItems] = useState<CityReviewItem[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(true)
+  const { items: rankItems, loading: rankLoading } = useRankedCommunes(
+    rankRequest,
+    id ? [id] : [],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -159,7 +171,9 @@ export function CityDetailPage() {
 
   if (!commune) return <NotFoundPage />
 
-  const score = scoreOf(commune)
+  const rankItem = rankItems[0]
+  const score = rankItem?.score ?? 0
+  const breakdown = rankItem?.breakdown
   const comparing = isComparing(commune.id)
 
   return (
@@ -186,7 +200,13 @@ export function CityDetailPage() {
         />
         <CardContent className="flex flex-col gap-6 pt-2 lg:flex-row lg:items-center">
           <div className="flex items-center gap-4">
-            <ScoreBadge score={score} size="lg" showSuffix />
+            {rankLoading && !rankItem ? (
+              <div className="grid size-16 place-items-center rounded-full bg-secondary text-sm font-semibold text-muted-foreground">
+                …
+              </div>
+            ) : (
+              <ScoreBadge score={score} size="lg" showSuffix />
+            )}
             <div>
               <h1 className="text-3xl font-bold tracking-tight">
                 {commune.nom}
@@ -261,20 +281,40 @@ export function CityDetailPage() {
       {/* Sections affichées selon les critères filtrés (démographie & avis en contexte) */}
       <div className="grid gap-6 lg:grid-cols-2">
         {has("pouvoirAchat") && <ImmobilierSection commune={commune} />}
-        {has("qualiteVie") && <QualiteVieSection commune={commune} />}
+        {has("qualiteVie") && (
+          <QualiteVieSection commune={commune} score={breakdown?.qualiteVie} />
+        )}
         {has("securite") && (
-          <SecuriteSection commune={commune} national={national} />
+          <SecuriteSection
+            commune={commune}
+            national={national}
+            score={breakdown?.securite}
+          />
         )}
         {has("emploi") && (
-          <EmploiSection commune={commune} national={national} />
+          <EmploiSection
+            commune={commune}
+            national={national}
+            score={breakdown?.emploi}
+          />
         )}
-        {has("transports") && <TransportsSection commune={commune} />}
-        {has("cultureLoisirs") && <CultureLoisirsSection commune={commune} />}
+        {has("transports") && (
+          <TransportsSection
+            commune={commune}
+            score={breakdown?.transports}
+          />
+        )}
+        {has("cultureLoisirs") && (
+          <CultureLoisirsSection
+            commune={commune}
+            score={breakdown?.cultureLoisirs}
+          />
+        )}
         <DemographieSection commune={commune} />
       </div>
 
       {(has("sante") || has("ecoles") || has("commerces")) && (
-        <ServicesSection commune={commune} />
+        <ServicesSection commune={commune} scores={breakdown} />
       )}
       <AvisSection
         commune={commune}
@@ -391,7 +431,13 @@ const RADAR_DIMS: { key: keyof Commune["notes"]; label: string }[] = [
   { key: "qualiteVie", label: "Qualité vie" },
 ]
 
-function QualiteVieSection({ commune }: { commune: Commune }) {
+function QualiteVieSection({
+  commune,
+  score,
+}: {
+  commune: Commune
+  score?: number
+}) {
   const data = RADAR_DIMS.map((d) => ({
     dim: d.label,
     note: commune.notes[d.key],
@@ -405,6 +451,11 @@ function QualiteVieSection({ commune }: { commune: Commune }) {
         <span className="text-sm text-muted-foreground">
           / 5 · {formatNumber(commune.nbAvis)} avis
         </span>
+        {score !== undefined && (
+          <Badge variant="secondary" className="tabular-nums">
+            {score}/100
+          </Badge>
+        )}
       </div>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
@@ -457,9 +508,11 @@ function DemographieSection({ commune }: { commune: Commune }) {
 function SecuriteSection({
   commune,
   national,
+  score,
 }: {
   commune: Commune
   national: NationalStats
+  score?: number
 }) {
   const rows = [
     { label: "Agressions", value: commune.agressions, moy: national.agressions },
@@ -469,9 +522,16 @@ function SecuriteSection({
   ]
   return (
     <SectionCard title="Sécurité" icon={Shield}>
-      <p className="mb-4 text-xs text-muted-foreground">
-        Faits pour 1 000 habitants / an — comparé à la moyenne nationale.
-      </p>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Faits pour 1 000 habitants / an — comparé à la moyenne nationale.
+        </p>
+        {score !== undefined && (
+          <Badge variant="secondary" className="tabular-nums">
+            {score}/100
+          </Badge>
+        )}
+      </div>
       <div className="flex flex-col gap-4">
         {rows.map((r) => {
           const ratio = r.value / r.moy
@@ -510,22 +570,15 @@ function SecuriteSection({
   )
 }
 
-/** Données radar/bar des sous-critères d'une catégorie pour une ville. */
-function categorySubData(commune: Commune, key: CriterionKey) {
-  return CRITERIA[key].subs.map((s) => ({
-    dim: s.label,
-    score: subScore(commune, key, s.key),
-  }))
-}
-
 function EmploiSection({
   commune,
   national,
+  score,
 }: {
   commune: Commune
   national: NationalStats
+  score?: number
 }) {
-  const data = categorySubData(commune, "emploi")
   const chomageBetter = commune.tauxChomage <= national.tauxChomage
   return (
     <SectionCard title="Emploi & revenus" icon={Briefcase}>
@@ -546,42 +599,25 @@ function EmploiSection({
           <p className="text-xs text-muted-foreground">Taux de chômage</p>
         </div>
       </div>
-      <span className="mb-2 block text-sm font-medium">Marché de l'emploi</span>
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            layout="vertical"
-            data={data}
-            margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="var(--border)"
-              horizontal={false}
-            />
-            <XAxis type="number" domain={[0, 100]} hide />
-            <YAxis
-              type="category"
-              dataKey="dim"
-              width={128}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <RTooltip
-              content={<ChartTooltip suffix=" /100" />}
-              cursor={{ fill: "var(--muted)", opacity: 0.4 }}
-            />
-            <Bar dataKey="score" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+      {score !== undefined && (
+        <div className="mt-4 flex items-center justify-between rounded-lg border bg-secondary/20 px-3 py-2">
+          <span className="text-sm text-muted-foreground">Score backend</span>
+          <Badge variant="secondary" className="tabular-nums">
+            {score}/100
+          </Badge>
+        </div>
+      )}
     </SectionCard>
   )
 }
 
-function TransportsSection({ commune }: { commune: Commune }) {
-  const data = categorySubData(commune, "transports")
+function TransportsSection({
+  commune,
+  score,
+}: {
+  commune: Commune
+  score?: number
+}) {
   return (
     <SectionCard title="Transports" icon={TramFront}>
       <div className="mb-3 flex items-center gap-3">
@@ -591,31 +627,23 @@ function TransportsSection({ commune }: { commune: Commune }) {
         <span className="text-sm text-muted-foreground">
           / 10 · desserte globale
         </span>
-      </div>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={data} outerRadius="72%">
-            <PolarGrid stroke="var(--border)" />
-            <PolarAngleAxis
-              dataKey="dim"
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            />
-            <Radar
-              dataKey="score"
-              stroke="var(--chart-6)"
-              fill="var(--chart-6)"
-              fillOpacity={0.35}
-            />
-            <RTooltip content={<ChartTooltip suffix=" /100" />} />
-          </RadarChart>
-        </ResponsiveContainer>
+        {score !== undefined && (
+          <Badge variant="secondary" className="tabular-nums">
+            {score}/100
+          </Badge>
+        )}
       </div>
     </SectionCard>
   )
 }
 
-function CultureLoisirsSection({ commune }: { commune: Commune }) {
-  const data = categorySubData(commune, "cultureLoisirs")
+function CultureLoisirsSection({
+  commune,
+  score,
+}: {
+  commune: Commune
+  score?: number
+}) {
   return (
     <SectionCard title="Culture & loisirs" icon={Popcorn}>
       <div className="mb-3 flex items-center gap-4">
@@ -631,30 +659,23 @@ function CultureLoisirsSection({ commune }: { commune: Commune }) {
           </span>
           <span className="ml-1 text-sm text-muted-foreground">/ 10 loisirs</span>
         </div>
-      </div>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={data} outerRadius="72%">
-            <PolarGrid stroke="var(--border)" />
-            <PolarAngleAxis
-              dataKey="dim"
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            />
-            <Radar
-              dataKey="score"
-              stroke="var(--chart-4)"
-              fill="var(--chart-4)"
-              fillOpacity={0.35}
-            />
-            <RTooltip content={<ChartTooltip suffix=" /100" />} />
-          </RadarChart>
-        </ResponsiveContainer>
+        {score !== undefined && (
+          <Badge variant="secondary" className="tabular-nums">
+            {score}/100
+          </Badge>
+        )}
       </div>
     </SectionCard>
   )
 }
 
-function ServicesSection({ commune }: { commune: Commune }) {
+function ServicesSection({
+  commune,
+  scores,
+}: {
+  commune: Commune
+  scores?: Partial<Record<CriterionKey, number>>
+}) {
   const s = commune.services
   return (
     <Card className="mt-6">
@@ -666,12 +687,27 @@ function ServicesSection({ commune }: { commune: Commune }) {
           <TabsList>
             <TabsTrigger value="sante">
               <Heart className="size-4" /> Santé
+              {scores?.sante !== undefined && (
+                <Badge variant="outline" className="ml-2 tabular-nums">
+                  {scores.sante}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="education">
               <GraduationCap className="size-4" /> Éducation
+              {scores?.ecoles !== undefined && (
+                <Badge variant="outline" className="ml-2 tabular-nums">
+                  {scores.ecoles}
+                </Badge>
+              )}
             </TabsTrigger>
             <TabsTrigger value="commerces">
               <ShoppingBag className="size-4" /> Commerces
+              {scores?.commerces !== undefined && (
+                <Badge variant="outline" className="ml-2 tabular-nums">
+                  {scores.commerces}
+                </Badge>
+              )}
             </TabsTrigger>
           </TabsList>
 
