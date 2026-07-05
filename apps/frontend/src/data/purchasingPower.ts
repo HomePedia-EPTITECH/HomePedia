@@ -31,7 +31,9 @@ export interface PurchasingPower {
 
 /** Revenu moyen local ramené au mensuel net (approx : /12, déjà "moyen"). */
 function revenuMensuelLocal(c: Commune): number {
-  return c.revenuMoyen / 12
+  return Number.isFinite(c.revenuMoyen) && c.revenuMoyen > 0
+    ? c.revenuMoyen / 12
+    : 0
 }
 
 export function purchasingPower(
@@ -49,7 +51,8 @@ export function purchasingPower(
       : 0
 
   const resteAVivre = salaireNetMensuel - loyerSoutenable
-  const ratioVsLocal = salaireNetMensuel / revenuMensuelLocal(commune)
+  const revenuLocal = revenuMensuelLocal(commune)
+  const ratioVsLocal = revenuLocal > 0 ? salaireNetMensuel / revenuLocal : 0
 
   return {
     loyerSoutenable: Math.round(loyerSoutenable),

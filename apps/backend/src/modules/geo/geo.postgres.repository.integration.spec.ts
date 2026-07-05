@@ -48,6 +48,20 @@ describe("GeoPostgresRepositories", () => {
       });
     });
 
+    it("scopes city lists to a departement code without leaking other rows", async () => {
+      harness.exec(createPostgresV1Schema());
+      harness.exec(createPostgresV1Seed());
+
+      const [rows, total] = await Promise.all([
+        repository.findAll({ page: 1, limit: 20, code_dept: "75" } as never),
+        repository.countAll({ page: 1, limit: 20, code_dept: "75" } as never)
+      ]);
+
+      expect(total).toBe(2);
+      expect(rows.map((row) => row.com).sort()).toEqual(["75056", "75057"]);
+      expect(rows.every((row) => row.com.startsWith("75"))).toBe(true);
+    });
+
     it("builds city detail blocks from SQL and tolerates missing satellite tables", async () => {
       harness.exec(
         createPostgresV1Schema(["region", "departement", "commune", "demographie", "scores"])
@@ -168,7 +182,7 @@ describe("GeoPostgresRepositories", () => {
           },
           {
             code: "69",
-            name: "Rhone",
+            name: "Rhône",
             cityCount: 1,
             updatedAt: null
           },

@@ -408,6 +408,12 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
       ),
       this.buildOptionalLeftJoin(
         tables,
+        "salaire",
+        "sal",
+        `sal.${this.quoteIdentifier("commune_id")} = c.${this.quoteIdentifier("commune_id")}`
+      ),
+      this.buildOptionalLeftJoin(
+        tables,
         "departement",
         "dept",
         `dept.${this.quoteIdentifier("numero_departement")}::text = c.${this.quoteIdentifier("departement_id")}::text`

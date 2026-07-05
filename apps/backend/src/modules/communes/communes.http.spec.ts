@@ -141,6 +141,24 @@ describe("Communes HTTP", () => {
       expect(geoService.getRegions).toHaveBeenCalled();
     });
 
+    it("serves GET /regions/:code", async () => {
+      geoService.getRegionByCode.mockResolvedValue({ data: { code: "11" } });
+
+      const response = await request(app.getHttpServer()).get("/regions/11");
+
+      expect(response.status).toBe(200);
+      expect(geoService.getRegionByCode).toHaveBeenCalledWith("11");
+    });
+
+    it("serves GET /regions/:code/departements", async () => {
+      geoService.getRegionDepartements.mockResolvedValue({ data: [] });
+
+      const response = await request(app.getHttpServer()).get("/regions/11/departements");
+
+      expect(response.status).toBe(200);
+      expect(geoService.getRegionDepartements).toHaveBeenCalledWith("11");
+    });
+
     it("serves GET /departements?region=", async () => {
       geoService.getRegionDepartements.mockResolvedValue({ data: [] });
 
@@ -150,6 +168,39 @@ describe("Communes HTTP", () => {
 
       expect(response.status).toBe(200);
       expect(geoService.getRegionDepartements).toHaveBeenCalledWith("11");
+    });
+
+    it("serves GET /departements", async () => {
+      geoService.getDepartements.mockResolvedValue({ data: [] });
+
+      const response = await request(app.getHttpServer()).get("/departements");
+
+      expect(response.status).toBe(200);
+      expect(geoService.getDepartements).toHaveBeenCalled();
+    });
+
+    it("serves GET /departements/:code", async () => {
+      geoService.getDepartementByCode.mockResolvedValue({ data: { code: "75" } });
+
+      const response = await request(app.getHttpServer()).get("/departements/75");
+
+      expect(response.status).toBe(200);
+      expect(geoService.getDepartementByCode).toHaveBeenCalledWith("75");
+    });
+
+    it("serves GET /departements/:code/cities", async () => {
+      geoService.getDepartementCities.mockResolvedValue({ data: [], meta: { page: 1, limit: 20, total: 0, totalPages: 0 } });
+
+      const response = await request(app.getHttpServer()).get("/departements/75/cities").query({
+        page: 1,
+        limit: 20
+      });
+
+      expect(response.status).toBe(200);
+      expect(geoService.getDepartementCities).toHaveBeenCalledWith(
+        "75",
+        expect.objectContaining({ page: 1, limit: 20 })
+      );
     });
   });
 });
