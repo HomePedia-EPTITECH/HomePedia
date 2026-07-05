@@ -55,6 +55,7 @@ export interface ScoreRanges {
   lycee: Range | null;
   medecins: Range | null;
   specialistes: Range | null;
+  pharmacies: Range | null;
   hopitaux: Range | null;
   supermarches: Range | null;
   restaurants: Range | null;
@@ -174,6 +175,11 @@ export function buildScoreRanges(catalogue: CommuneRecord[]): ScoreRanges {
         .map((c) => perMille(c.services.specialistes, c.population))
         .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
     ),
+    pharmacies: rangeOf(
+      catalogue
+        .map((c) => perMille(c.services.pharmacies, c.population))
+        .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+    ),
     hopitaux: rangeOf(
       catalogue
         .map((c) => perMille(c.services.hopitaux, c.population))
@@ -205,6 +211,7 @@ export function buildScoreRanges(catalogue: CommuneRecord[]): ScoreRanges {
 type CriterionDef = {
   subs: Array<{
     key: string;
+    weight?: number;
     score: (commune: CommuneRecord, ranges: ScoreRanges) => number;
   }>;
 };
@@ -270,7 +277,13 @@ const CRITERIA: Record<CriterionKey, CriterionDef> = {
         score: (commune, ranges) => scoreNonNull(perMille(commune.services.specialistes, commune.population), ranges.specialistes)
       },
       {
+        key: "pharmacies",
+        weight: 0.8,
+        score: (commune, ranges) => scoreNonNull(perMille(commune.services.pharmacies, commune.population), ranges.pharmacies)
+      },
+      {
         key: "hopitaux",
+        weight: 4,
         score: (commune, ranges) => scoreNonNull(perMille(commune.services.hopitaux, commune.population), ranges.hopitaux)
       }
     ]
@@ -325,8 +338,18 @@ export function criterionScore(
   const def = CRITERIA[key];
   const chosen = focus.length ? def.subs.filter((sub) => focus.includes(sub.key)) : def.subs;
   const subs = chosen.length ? chosen : def.subs;
-  const sum = subs.reduce((acc, sub) => acc + sub.score(commune, ranges), 0);
-  return Math.round(sum / subs.length);
+  const weighted = subs.reduce(
+    (acc, sub) => {
+      const weight = sub.weight ?? 1;
+      return {
+        sum: acc.sum + sub.score(commune, ranges) * weight,
+        weights: acc.weights + weight
+      };
+    },
+    { sum: 0, weights: 0 }
+  );
+
+  return weighted.weights ? Math.round(weighted.sum / weighted.weights) : 0;
 }
 
 export function personalScore(
