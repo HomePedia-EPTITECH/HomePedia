@@ -66,7 +66,7 @@ def pg_cursor():
 # Colonnes numériques légitimement NULL en PG (pas de valeur 0 par défaut à
 # leur donner : commune sans transaction DVF connue != coordonnées (0, 0))
 NULLABLE_COLUMNS = {
-    "commune": {"latitude", "longitude"},
+    "commune": {"latitude", "longitude", "metropole_id"},
 }
 
 
@@ -133,10 +133,11 @@ SQL_UPSERT = {
     """,
 
     "departement": """
-        INSERT INTO bdd.departement (numero_departement, nom)
-        SELECT numero_departement, nom FROM staging.departement
+        INSERT INTO bdd.departement (numero_departement, nom, region_id)
+        SELECT numero_departement, nom, region_id FROM staging.departement
         ON CONFLICT (numero_departement) DO UPDATE SET
-            nom = EXCLUDED.nom;
+            nom = EXCLUDED.nom,
+            region_id = EXCLUDED.region_id;
     """,
 
     "metropole": """
@@ -147,12 +148,17 @@ SQL_UPSERT = {
     """,
 
     "commune": """
-        INSERT INTO bdd.commune (commune_id, nom, code_postal, maire, latitude, longitude)
-        SELECT commune_id, nom, code_postal, maire, latitude, longitude
+        INSERT INTO bdd.commune (
+            commune_id, nom, code_postal, departement_id, metropole_id, maire, latitude, longitude
+        )
+        SELECT
+            commune_id, nom, code_postal, departement_id, metropole_id, maire, latitude, longitude
         FROM staging.commune
         ON CONFLICT (commune_id) DO UPDATE SET
             nom            = EXCLUDED.nom,
             code_postal    = EXCLUDED.code_postal,
+            departement_id = EXCLUDED.departement_id,
+            metropole_id   = EXCLUDED.metropole_id,
             maire          = EXCLUDED.maire,
             latitude       = EXCLUDED.latitude,
             longitude      = EXCLUDED.longitude;

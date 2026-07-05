@@ -1,42 +1,75 @@
 # HomePedia
 
-Lancer le projet (MongoDB + données) puis le scrap.
+Projet compose de 3 couches de donnees:
 
-## Prérequis
+1. MongoDB stocke les donnees brutes de scrap et les reviews.
+2. Spark nettoie, normalise et prepare les tables.
+3. PostgreSQL sert de source de verite pour le backend et le frontend.
 
-- **Docker** installé et démarré
-- **Python 3** avec `pip install -r requirements.txt`
+## Demarrage local
 
-## Premier lancement
+Pre-requis:
 
-1. **Configurer l’environnement**  
-   Copie `.env.example` en `.env` à la racine et remplis les identifiants Mongo.
+- Docker
+- Python 3
+- `pip install -r requirements.txt`
 
-2. **Démarrer les bases et charger les données**  
-   À la racine du projet :
+### 1. Initialiser les bases
 
-   ```bash
-   python setup.py
-   ```
+```bash
+python setup.py
+```
 
-   Cela lance Docker, attend Mongo, applique les migrations et charge les données.
+Ce script:
 
-3. **Lancer le scrap** (optionnel)
+- lance Docker;
+- attend MongoDB;
+- applique les migrations Mongo;
+- charge les donnees de base en Mongo.
 
-   ```bash
-   python packages/scraping/script_BDMV.py
-   ```
+### 2. Lancer le scrap
 
-## Suite
+```bash
+python packages/scraping/script_BDMV.py
+```
 
-- **Conteneurs déjà démarrés** : `python setup.py` pour refaire uniquement migrations + chargement des données.
-- **Détails** (migrations, baseline, réinitialisation, etc.) : voir le dossier **`Docs/`**.
+Le scrap alimente MongoDB uniquement.
 
-## Répartition
+### 3. Lancer la pipeline Spark
 
-- **Récupération et croisement des sources** : scraping et ingestion brute.
-- **Nettoyage des données** : normalisation, typage, suppression des valeurs aberrantes.
-- **Frontend / backend prototype** : UI React + API NestJS sur données mockées.
-- **Branchement de la vraie base au backend** : exposition API sur les données réelles.
-- **Affichage des données sur le frontend** : intégration UI de l'API.
-- **Analyse des données** : voir [Docs/data-analysis.md](Docs/data-analysis.md).
+```bash
+python spark/main.py
+```
+
+Cette etape:
+
+- lit les donnees brutes depuis Mongo;
+- nettoie et harmonise les champs;
+- construit les tables Postgres;
+- remplit Postgres via les upserts Spark.
+
+Si tu fais seulement le scrap, le backend peut rester vide, car il lit Postgres et non Mongo pour les communes, la geo, les stats et le ranking.
+
+## Ordre recommande apres un reset complet
+
+```bash
+docker compose down -v
+docker compose up -d
+python setup.py
+python packages/scraping/script_BDMV.py
+python spark/main.py
+```
+
+## Verification rapide
+
+- `GET /health`
+- `GET /communes`
+- `GET /regions`
+- `GET /departements`
+- `GET /communes/search?q=...`
+
+## Documentation utile
+
+- [Contract API communes](docs/api-contract-communes.md)
+- [Analyse des donnees](docs/data-analysis.md)
+- [Structure Mongo finale](docs/mongo-final-structure.md)

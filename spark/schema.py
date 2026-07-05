@@ -9,9 +9,9 @@
 
 COLUMN_SCHEMA = {
     # --- Identifiants ---
-    "com":                          ("int",    "digits"),  # "01002" → 1002 (INTEGER en PG)
+    "com":                          ("string", "strip"),   # code INSEE complet, zéros initiaux conservés
     "nom_commune":                  ("string", "strip"),
-    "code_postal":                  ("int",    "digits"),  # "01300" → 1300 (INTEGER en PG)
+    "code_postal":                  ("string", "strip"),   # code postal conservé en texte
     "nom_region":                   ("string", "strip"),
     "nom_departement":              ("string", "strip"),
     "nom_metropole":                ("string", "strip"),

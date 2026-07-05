@@ -6,6 +6,7 @@ Tests unitaires de la logique de nettoyage Spark (pas besoin de Mongo/Postgres).
 
 import sys
 import unittest
+import os
 from pathlib import Path
 
 from pyspark.sql import SparkSession
@@ -28,11 +29,15 @@ spark = None
 
 def setUpModule():
     global spark
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+    os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
     spark = (
         SparkSession.builder
         .master("local[1]")
         .appName("homepedia-tests")
         .config("spark.ui.enabled", "false")
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("ERROR")
@@ -62,6 +67,12 @@ class ApplySchemaTest(unittest.TestCase):
         df = spark.createDataFrame([("  Paris  ",), ("   ",)], ["nom_commune"])
         result = [r.nom_commune for r in apply_schema(df).collect()]
         self.assertEqual(result, ["Paris", None])
+
+    def test_strip_transform_preserves_text_codes(self):
+        df = spark.createDataFrame([("01004", "01300")], ["com", "code_postal"])
+        result = apply_schema(df).collect()[0]
+        self.assertEqual(result.com, "01004")
+        self.assertEqual(result.code_postal, "01300")
 
     def test_round_transform_rounds_float_salaire_to_nearest_int(self):
         schema = StructType([StructField("salaire_net_mensuel_moyen_total", DoubleType())])
@@ -128,9 +139,18 @@ class SplitByTableTest(unittest.TestCase):
                 if source not in source_columns:
                     source_columns.append(source)
 
-        string_sources = {"nom_commune", "nom_maire"}
+        string_sources = {
+            "com",
+            "code_postal",
+            "nom_commune",
+            "nom_maire",
+            "nom_region",
+            "nom_departement",
+            "nom_metropole",
+        }
         values = [1 if col not in string_sources else "x" for col in source_columns]
-        values[source_columns.index("com")] = 1002
+        values[source_columns.index("com")] = "01002"
+        values[source_columns.index("code_postal")] = "01234"
         values[source_columns.index("salaire_net_mensuel_moyen_total")] = 2188
 
         df = spark.createDataFrame([tuple(values)], source_columns)
@@ -141,7 +161,7 @@ class SplitByTableTest(unittest.TestCase):
             with self.subTest(table=table):
                 self.assertEqual(sorted(result[table].columns), sorted(expected_cols))
 
-        self.assertEqual(result["commune"].collect()[0].commune_id, 1002)
+        self.assertEqual(result["commune"].collect()[0].commune_id, "01002")
         self.assertEqual(result["salaire"].collect()[0].salaire_net_mensuel_moyen_total, 2188)
 
 
