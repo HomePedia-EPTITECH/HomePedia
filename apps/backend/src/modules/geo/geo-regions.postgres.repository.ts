@@ -107,7 +107,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
       return null;
     }
 
-    const scopedFilter = scopedCode ? `WHERE d.${this.quoteIdentifier("region_id")} = $1::int` : "";
+    const scopedFilter = scopedCode ? `WHERE d.${this.quoteIdentifier("region_id")}::text = $1::text` : "";
     const cityCounts = tables.has("commune")
       ? `
         , city_counts AS (
@@ -116,7 +116,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
             COUNT(c.${this.quoteIdentifier("commune_id")})::int AS ${this.quoteIdentifier("cityCount")}
           FROM ${this.relation("departement")} d
           INNER JOIN ${this.relation("commune")} c
-            ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
+            ON c.${this.quoteIdentifier("departement_id")}::text = d.${this.quoteIdentifier("numero_departement")}::text
           ${scopedFilter}
           GROUP BY d.${this.quoteIdentifier("region_id")}
         )
@@ -170,7 +170,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
     const cityJoin = tables.has("commune")
       ? `
         LEFT JOIN ${this.relation("commune")} c
-          ON c.${this.quoteIdentifier("departement_id")} = d.${this.quoteIdentifier("numero_departement")}
+          ON c.${this.quoteIdentifier("departement_id")}::text = d.${this.quoteIdentifier("numero_departement")}::text
       `
       : "";
 
@@ -186,7 +186,7 @@ export class GeoRegionsPostgresRepository extends PostgresReadRepository {
         NULL AS ${this.quoteIdentifier("updatedAt")}
       FROM ${this.relation("departement")} d
       ${cityJoin}
-      WHERE d.${this.quoteIdentifier("region_id")} = $1::int
+      WHERE d.${this.quoteIdentifier("region_id")}::text = $1::text
       GROUP BY d.${this.quoteIdentifier("numero_departement")}, d.${this.quoteIdentifier("nom")}
       ORDER BY d.${this.quoteIdentifier("numero_departement")}::text ASC
     `;

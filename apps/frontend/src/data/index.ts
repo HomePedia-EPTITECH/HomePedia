@@ -1,16 +1,22 @@
-import { apiGet } from "./apiClient"
+import { apiGet, apiPost, apiRequest } from "./apiClient"
 import { mapCommune, type RawCommune } from "./mapCommune"
 import type {
+  CityReviewItemsResponse,
+  CityReviewsResponse,
   Commune,
   CommuneSearchResult,
+  CommuneRankRequest,
+  CommuneRankResponse,
+  GeoDepartement,
+  GeoRegion,
   NationalStats,
   TailleCommune,
 } from "./types"
 
 export * from "./types"
-// Le mock `communes.ts` n'est plus affiché : il ne sert QUE de jeu de
+// Le mock `communes.ts` n'est plus affichÃ© : il ne sert QUE de jeu de
 // calibration pour la normalisation des scores (voir criteria.ts). Seule la
-// moyenne nationale par défaut en est encore réexportée (fallback de fiche).
+// moyenne nationale par dÃ©faut en est encore rÃ©exportÃ©e (fallback de fiche).
 export { MOYENNES_NATIONALES } from "./communes"
 export { scoreColor, scoreColorHex } from "./scoring"
 export {
@@ -33,14 +39,14 @@ export {
 export { purchasingPower, type PurchasingPower } from "./purchasingPower"
 
 /**
- * Façade d'accès aux données : ces fonctions appellent le back NestJS via
- * `apiClient`. La liste des communes, elle, passe par le hook `useCommunes`.
+ * FaÃ§ade d'accÃ¨s aux donnÃ©es : ces fonctions appellent le back NestJS via
+ * `apiClient`.
  */
 
 /**
- * Récupère une commune complète depuis le back (`GET /communes/:id`).
+ * RÃ©cupÃ¨re une commune complÃ¨te depuis le back (`GET /communes/:id`).
  * Renvoie `undefined` si la commune est inconnue (404) ou si le back est
- * injoignable — l'appelant affiche alors un état « introuvable » sans crasher.
+ * injoignable â€” l'appelant affiche alors un Ã©tat Â« introuvable Â» sans crasher.
  */
 export async function getCommuneById(id: string): Promise<Commune | undefined> {
   try {
@@ -53,8 +59,8 @@ export async function getCommuneById(id: string): Promise<Commune | undefined> {
 
 /**
  * Recherche de communes via le back (`GET /communes/search?q=`).
- * Renvoie une liste allégée (`CommuneSearchResult`) — de quoi afficher des
- * suggestions. Sur requête vide ou erreur réseau : liste vide (pas de crash).
+ * Renvoie une liste allÃ©gÃ©e (`CommuneSearchResult`) â€” de quoi afficher des
+ * suggestions. Sur requÃªte vide ou erreur rÃ©seau : liste vide (pas de crash).
  */
 export async function searchCommunes(
   query: string,
@@ -73,9 +79,50 @@ export async function searchCommunes(
 }
 
 /**
+ * Classement serveur (`POST /communes/rank`).
+ * Le back trie et pagine; le front ne fait plus de ranking local.
+ */
+export async function rankCommunes(
+  request: CommuneRankRequest,
+): Promise<CommuneRankResponse> {
+  const response = await apiPost<CommuneRankResponse>("/communes/rank", request)
+  return {
+    ...response,
+    data: response.data.map((item) => ({
+      ...item,
+      commune: mapCommune(item.commune as RawCommune),
+    })),
+  }
+}
+
+/**
+ * Référentiel géographique officiel.
+ */
+export async function getRegions(): Promise<GeoRegion[]> {
+  return apiGet<GeoRegion[]>("/regions")
+}
+
+export async function getRegionByCode(code: string): Promise<GeoRegion> {
+  return apiGet<GeoRegion>(`/regions/${encodeURIComponent(code)}`)
+}
+
+export async function getDepartements(region?: string): Promise<GeoDepartement[]> {
+  const query = region ? `?region=${encodeURIComponent(region)}` : ""
+  return apiGet<GeoDepartement[]>(`/departements${query}`)
+}
+
+export async function getDepartementByCode(code: string): Promise<GeoDepartement> {
+  return apiGet<GeoDepartement>(`/departements/${encodeURIComponent(code)}`)
+}
+
+export async function getRegionDepartements(code: string): Promise<GeoDepartement[]> {
+  return apiGet<GeoDepartement[]>(`/regions/${encodeURIComponent(code)}/departements`)
+}
+
+/**
  * Moyennes nationales depuis le back (`GET /stats/national`).
- * Mappe les clés `*Moyen` du back vers la forme `NationalStats` de la fiche.
- * Ne capture pas l'erreur : l'appelant conserve son repère par défaut si ça échoue.
+ * Mappe les clÃ©s `*Moyen` du back vers la forme `NationalStats` de la fiche.
+ * Ne capture pas l'erreur : l'appelant conserve son repÃ¨re par dÃ©faut si Ã§a Ã©choue.
  */
 export async function getNationalStats(): Promise<NationalStats> {
   const raw = await apiGet<{
@@ -94,6 +141,24 @@ export async function getNationalStats(): Promise<NationalStats> {
     prixM2Appartement: raw.prixM2AppartementMoyen,
     tauxChomage: raw.tauxChomageMoyen,
   }
+}
+
+export async function getCityReviews(code: string): Promise<CityReviewsResponse> {
+  return apiGet<CityReviewsResponse>(`/reviews/cities/${encodeURIComponent(code)}`)
+}
+
+export async function getCityReviewItems(
+  code: string,
+  limit = 100,
+  cursor?: string,
+): Promise<CityReviewItemsResponse> {
+  const params = new URLSearchParams()
+  if (limit !== undefined) params.set("limit", String(limit))
+  if (cursor) params.set("cursor", cursor)
+  const suffix = params.toString() ? `?${params.toString()}` : ""
+  return apiRequest<CityReviewItemsResponse>(
+    `/reviews/cities/${encodeURIComponent(code)}/items${suffix}`,
+  )
 }
 
 export const TAILLE_LABELS: Record<TailleCommune, string> = {

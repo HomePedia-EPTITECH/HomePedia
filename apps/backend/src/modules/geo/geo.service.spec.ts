@@ -188,6 +188,12 @@ describe("GeoService", () => {
           totalPages: 0
         }
       });
+      expect(citiesRepository.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ code_dept: "75", page: 1, limit: 20 })
+      );
+      expect(citiesRepository.countAll).toHaveBeenCalledWith(
+        expect.objectContaining({ code_dept: "75", page: 1, limit: 20 })
+      );
     });
 
     it("keeps the 404 behavior when PostgreSQL does not know the departement", async () => {
