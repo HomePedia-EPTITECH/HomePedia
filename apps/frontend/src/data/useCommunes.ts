@@ -4,11 +4,11 @@ import { mapCommune, type RawCommune } from "./mapCommune"
 import type { Commune } from "./types"
 
 /**
- * Keep the commune loader focused on fetching and caching.
- * The pages that consume it handle their own business filtering.
- *
- * Important: `/resultats` must still render even if some communes do not yet
- * have usable coordinates. The map can ignore those entries on its side.
+ * Une commune est « exploitable » si elle a au moins un prix : signal minimal
+ * pour être notée et classée sans produire de score trompeur (un village sans
+ * prix ressortirait « le moins cher », donc 1er). On n'exige PAS les
+ * coordonnées : le Classement n'en a pas besoin, seule la Carte les requiert
+ * (elle ignore les communes sans lon/lat de son côté).
  */
 function isRenderable(c: Commune): boolean {
   return Number.isFinite(c.prixM2Appartement)

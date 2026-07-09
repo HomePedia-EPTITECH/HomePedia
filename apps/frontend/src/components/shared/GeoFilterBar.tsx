@@ -28,15 +28,19 @@ export function GeoFilterBar({ layout = "row", className }: GeoFilterBarProps) {
 
   // Régions et départements dérivés des communes chargées (le back /regions et
   // /departements sont vides pour l'instant → on dérive de la liste).
+  // filter(Boolean) : ignore les valeurs nulles (région/dept pas encore peuplés
+  // en base) — un SelectItem à valeur vide/null casse Radix.
   const regions = useMemo(
-    () => Array.from(new Set(communes.map((c) => c.region))).sort(),
+    () => Array.from(new Set(communes.map((c) => c.region).filter(Boolean))).sort(),
     [communes],
   )
 
   const departements = useMemo(() => {
     const source =
       region === ALL ? communes : communes.filter((c) => c.region === region)
-    return Array.from(new Set(source.map((c) => c.departement))).sort()
+    return Array.from(
+      new Set(source.map((c) => c.departement).filter(Boolean)),
+    ).sort()
   }, [communes, region])
 
   const stack = layout === "stack"

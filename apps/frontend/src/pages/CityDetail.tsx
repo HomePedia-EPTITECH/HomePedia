@@ -32,14 +32,12 @@ import {
   Users,
 } from "lucide-react"
 import {
-  CRITERIA,
   MOYENNES_NATIONALES,
   formatEuro,
   formatNumber,
   formatPercent,
   getCommuneById,
   getNationalStats,
-  subScore,
   type Commune,
   type CriterionKey,
   type NationalStats,
@@ -221,9 +219,7 @@ export function CityDetailPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {has("pouvoirAchat") && <ImmobilierSection commune={commune} />}
         {has("qualiteVie") && <QualiteVieSection commune={commune} />}
-        {has("securite") && (
-          <SecuriteSection commune={commune} national={national} />
-        )}
+        {has("securite") && <SecuriteSection commune={commune} />}
         {has("emploi") && (
           <EmploiSection commune={commune} national={national} />
         )}
@@ -408,68 +404,45 @@ function DemographieSection({ commune }: { commune: Commune }) {
   )
 }
 
-function SecuriteSection({
-  commune,
-  national,
-}: {
-  commune: Commune
-  national: NationalStats
-}) {
+function SecuriteSection({ commune }: { commune: Commune }) {
+  // Le back renvoie des faits BRUTS (comptes annuels) → on normalise par
+  // habitant pour que le chiffre soit comparable d'une ville à l'autre.
+  // Pas de comparaison nationale : le back n'expose pas de moyenne par
+  // habitant (son agressionsMoyen est une moyenne brute, non comparable).
+  const per1000 = (v: number) => v / (commune.population / 1000)
   const rows = [
-    { label: "Agressions", value: commune.agressions, moy: national.agressions },
-    { label: "Cambriolages", value: commune.cambriolages, moy: national.cambriolages },
-    { label: "Vols / dégradations", value: commune.volsDegradations, moy: national.volsDegradations },
-    { label: "Stupéfiants", value: commune.stupefiants, moy: national.stupefiants },
+    { label: "Agressions", value: per1000(commune.agressions) },
+    { label: "Cambriolages", value: per1000(commune.cambriolages) },
+    { label: "Vols / dégradations", value: per1000(commune.volsDegradations) },
+    { label: "Stupéfiants", value: per1000(commune.stupefiants) },
   ]
+  // Échelle des barres : relative au fait le plus fréquent de cette ville.
+  const max = Math.max(...rows.map((r) => r.value)) * 1.15 || 1
   return (
     <SectionCard title="Sécurité" icon={Shield}>
       <p className="mb-4 text-xs text-muted-foreground">
-        Faits pour 1 000 habitants / an — comparé à la moyenne nationale.
+        Faits constatés pour 1 000 habitants / an.
       </p>
       <div className="flex flex-col gap-4">
-        {rows.map((r) => {
-          const ratio = r.value / r.moy
-          const better = r.value <= r.moy
-          const max = Math.max(r.value, r.moy) * 1.15
-          return (
-            <div key={r.label} className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between text-sm">
-                <span>{r.label}</span>
-                <span className="flex items-center gap-2">
-                  <span className="font-medium tabular-nums">{r.value}</span>
-                  <Badge variant={better ? "success" : "warning"} className="tabular-nums">
-                    {better ? "↓" : "↑"} {Math.round(Math.abs(ratio - 1) * 100)}%
-                  </Badge>
-                </span>
-              </div>
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full"
-                  style={{
-                    width: `${(r.value / max) * 100}%`,
-                    background: better ? "var(--success)" : "var(--warning)",
-                  }}
-                />
-                <div
-                  className="absolute inset-y-0 w-0.5 bg-foreground/60"
-                  style={{ left: `${(r.moy / max) * 100}%` }}
-                  title="Moyenne nationale"
-                />
-              </div>
+        {rows.map((r) => (
+          <div key={r.label} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-sm">
+              <span>{r.label}</span>
+              <span className="font-medium tabular-nums">
+                {r.value.toFixed(2)}
+              </span>
             </div>
-          )
-        })}
+            <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="absolute inset-y-0 left-0 rounded-full bg-primary"
+                style={{ width: `${(r.value / max) * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </SectionCard>
   )
-}
-
-/** Données radar/bar des sous-critères d'une catégorie pour une ville. */
-function categorySubData(commune: Commune, key: CriterionKey) {
-  return CRITERIA[key].subs.map((s) => ({
-    dim: s.label,
-    score: subScore(commune, key, s.key),
-  }))
 }
 
 function EmploiSection({
@@ -479,11 +452,10 @@ function EmploiSection({
   commune: Commune
   national: NationalStats
 }) {
-  const data = categorySubData(commune, "emploi")
   const chomageBetter = commune.tauxChomage <= national.tauxChomage
   return (
     <SectionCard title="Emploi & revenus" icon={Briefcase}>
-      <div className="mb-4 grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <MiniStat
           label="Revenu moyen"
           value={`${formatEuro(commune.revenuMoyen)}/an`}
@@ -500,110 +472,50 @@ function EmploiSection({
           <p className="text-xs text-muted-foreground">Taux de chômage</p>
         </div>
       </div>
-      <span className="mb-2 block text-sm font-medium">Marché de l'emploi</span>
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart
-            layout="vertical"
-            data={data}
-            margin={{ left: 8, right: 12, top: 0, bottom: 0 }}
-          >
-            <CartesianGrid
-              strokeDasharray="3 3"
-              stroke="var(--border)"
-              horizontal={false}
-            />
-            <XAxis type="number" domain={[0, 100]} hide />
-            <YAxis
-              type="category"
-              dataKey="dim"
-              width={128}
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-              axisLine={false}
-              tickLine={false}
-            />
-            <RTooltip
-              content={<ChartTooltip suffix=" /100" />}
-              cursor={{ fill: "var(--muted)", opacity: 0.4 }}
-            />
-            <Bar dataKey="score" fill="var(--chart-3)" radius={[0, 4, 4, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
     </SectionCard>
   )
 }
 
 function TransportsSection({ commune }: { commune: Commune }) {
-  const data = categorySubData(commune, "transports")
   return (
     <SectionCard title="Transports" icon={TramFront}>
-      <div className="mb-3 flex items-center gap-3">
-        <span className="text-3xl font-bold tabular-nums">
+      <div className="flex items-baseline gap-3">
+        <span className="text-4xl font-bold tabular-nums">
           {commune.notes.transports.toFixed(1)}
         </span>
         <span className="text-sm text-muted-foreground">
           / 10 · desserte globale
         </span>
       </div>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={data} outerRadius="72%">
-            <PolarGrid stroke="var(--border)" />
-            <PolarAngleAxis
-              dataKey="dim"
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            />
-            <Radar
-              dataKey="score"
-              stroke="var(--chart-6)"
-              fill="var(--chart-6)"
-              fillOpacity={0.35}
-            />
-            <RTooltip content={<ChartTooltip suffix=" /100" />} />
-          </RadarChart>
-        </ResponsiveContainer>
-      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Note globale de desserte. Le détail par mode (train, bus, vélo,
+        route…) n'est pas encore disponible en base.
+      </p>
     </SectionCard>
   )
 }
 
 function CultureLoisirsSection({ commune }: { commune: Commune }) {
-  const data = categorySubData(commune, "cultureLoisirs")
   return (
     <SectionCard title="Culture & loisirs" icon={Popcorn}>
-      <div className="mb-3 flex items-center gap-4">
-        <div>
-          <span className="text-3xl font-bold tabular-nums">
+      <div className="flex items-center gap-8">
+        <div className="flex items-baseline gap-1">
+          <span className="text-4xl font-bold tabular-nums">
             {commune.notes.culture.toFixed(1)}
           </span>
-          <span className="ml-1 text-sm text-muted-foreground">/ 10 culture</span>
+          <span className="text-sm text-muted-foreground">/ 10 culture</span>
         </div>
-        <div>
-          <span className="text-3xl font-bold tabular-nums">
+        <div className="flex items-baseline gap-1">
+          <span className="text-4xl font-bold tabular-nums">
             {commune.notes.sportsLoisirs.toFixed(1)}
           </span>
-          <span className="ml-1 text-sm text-muted-foreground">/ 10 loisirs</span>
+          <span className="text-sm text-muted-foreground">/ 10 loisirs</span>
         </div>
       </div>
-      <div className="h-64">
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={data} outerRadius="72%">
-            <PolarGrid stroke="var(--border)" />
-            <PolarAngleAxis
-              dataKey="dim"
-              tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
-            />
-            <Radar
-              dataKey="score"
-              stroke="var(--chart-4)"
-              fill="var(--chart-4)"
-              fillOpacity={0.35}
-            />
-            <RTooltip content={<ChartTooltip suffix=" /100" />} />
-          </RadarChart>
-        </ResponsiveContainer>
-      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Notes globales culture et loisirs. Le détail (cinémas, musées, salles de
+        spectacle…) n'est pas encore disponible en base.
+      </p>
     </SectionCard>
   )
 }

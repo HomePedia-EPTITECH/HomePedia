@@ -138,8 +138,12 @@ export function MapPage() {
     applyLight(lightPreset)
   }, [lightPreset, applyLight])
 
+  // La carte ne place que les communes géolocalisées (lon/lat non nuls).
   const scored = useMemo(
-    () => communes.map((c) => ({ commune: c, score: scoreOf(c) })),
+    () =>
+      communes
+        .filter((c) => Number.isFinite(c.lon) && Number.isFinite(c.lat))
+        .map((c) => ({ commune: c, score: scoreOf(c) })),
     [communes, scoreOf],
   )
 
