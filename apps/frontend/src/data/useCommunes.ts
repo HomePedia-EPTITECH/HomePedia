@@ -4,21 +4,17 @@ import { mapCommune, type RawCommune } from "./mapCommune"
 import type { Commune } from "./types"
 
 /**
- * Une commune est « complète » si elle a le minimum pour être notée ET affichée :
- * un prix (pour le pouvoir d'achat / le classement) et des coordonnées (carte).
+ * Une commune est « exploitable » si elle a au moins un prix : c'est le signal
+ * minimal pour être notée et classée sans produire de score trompeur (un
+ * village sans prix ressortirait « le moins cher », donc 1er).
  *
- * Tant que l'ETL complet n'a pas tourné, seules les ~8 villes seedées passent
- * ce filtre. C'est VOULU : classer/afficher des communes vides produirait des
- * scores trompeurs (un village sans prix ressort « le moins cher », donc 1er).
- * Le jour où la DB est remplie, le même filtre laisse passer les milliers de
- * communes réelles — aucun changement de code nécessaire.
+ * On n'exige PAS les coordonnées ici : le Classement n'en a pas besoin, seule
+ * la Carte les requiert (elle filtre les communes sans lon/lat de son côté).
+ * Ça permet d'afficher les communes issues de l'ETL même quand leurs coords
+ * ne sont pas encore renseignées (couverture DVF partielle).
  */
 function isComplete(c: Commune): boolean {
-  return (
-    Number.isFinite(c.prixM2Appartement) &&
-    Number.isFinite(c.lon) &&
-    Number.isFinite(c.lat)
-  )
+  return Number.isFinite(c.prixM2Appartement)
 }
 
 // Cache singleton : `/communes` n'est chargé qu'UNE fois par session, partagé

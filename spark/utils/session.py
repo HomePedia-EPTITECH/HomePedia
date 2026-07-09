@@ -27,7 +27,9 @@ def get_spark():
     return (
         SparkSession.builder.appName("HomePedia")
         .config(
-            "spark.jars.packages", "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0"
+            "spark.jars.packages",
+            "org.mongodb.spark:mongo-spark-connector_2.13:10.4.0,"
+            "org.postgresql:postgresql:42.7.4",
         )
         .config(
             "spark.driver.extraJavaOptions", "-Dlog4j.configuration=log4j.properties"

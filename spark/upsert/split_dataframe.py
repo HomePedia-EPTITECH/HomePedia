@@ -8,6 +8,7 @@ Adapte les listes de colonnes si tes noms diffèrent après transformation.
 """
 
 from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
     # "region": ["numero_region", "nom"],
     # "departement": ["numero_departement", "nom"],
@@ -115,13 +116,29 @@ def split_by_table(df: DataFrame, rename_map: dict = None) -> dict[str, DataFram
     # Utiliser le mapping global si aucun n'est fourni
     if rename_map is None:
         rename_map = COLUMN_RENAMING
-    
+
     # Renommer les colonnes si nécessaire
     if rename_map:
         for target_col, source_col in rename_map.items():
             if source_col in df.columns:
                 df = df.withColumnRenamed(source_col, target_col)
-    
+
+    # Dédoublonne les colonnes homonymes (l'aplatissement Mongo + le rename
+    # peuvent produire deux fois le même nom, ex. `superficie` racine +
+    # `metrics.superficie`). On garde la 1re occurrence ; un select par nom
+    # serait ambigu, donc on passe par des alias temporaires uniques.
+    original = df.columns
+    if len(set(original)) != len(original):
+        tmp_names = [f"__dedup_{i}" for i in range(len(original))]
+        df = df.toDF(*tmp_names)
+        seen: set = set()
+        keep = []
+        for i, name in enumerate(original):
+            if name not in seen:
+                seen.add(name)
+                keep.append(F.col(tmp_names[i]).alias(name))
+        df = df.select(keep)
+
     result = {}
     available = set(df.columns)
 

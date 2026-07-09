@@ -51,6 +51,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # Schéma métier peuplé par Spark (bdd.commune, bdd.immobilier…).
+      POSTGRES_READ_SCHEMA: ${POSTGRES_READ_SCHEMA:-bdd}
       MONGO_HOST: mongo
       MONGO_PORT: 27017
       MONGO_DB: ${MONGO_DB}
