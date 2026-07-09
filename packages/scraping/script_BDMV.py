@@ -17,6 +17,7 @@ Usage :
     python packages/scraping/script_BDMV.py
 """
 
+import os
 import re
 import sys
 import time
@@ -419,6 +420,18 @@ class HomepediaHarvester:
                 },
             ]
         }
+        # Filtre optionnel par préfixe de code commune (= département) via
+        # l'env BDMV_COM_PREFIX, ex. BDMV_COM_PREFIX=01 pour ne scraper que l'Ain.
+        # Utile pour cibler une zone (ex. recouvrir le DVF déjà ingéré).
+        com_prefix = os.getenv("BDMV_COM_PREFIX", "").strip()
+        if com_prefix:
+            queue_filter_base = {
+                "$and": [
+                    queue_filter_base,
+                    {"com_id": {"$regex": f"^{re.escape(com_prefix)}"}},
+                ]
+            }
+            logger.info("Filtre queue actif : com_id commence par '%s'.", com_prefix)
         self.total_in_queue = self.queue_store.count_documents(queue_filter_base)
         self.already_done = self.queue_store.count_documents(
             {**queue_filter_base, "is_processed": True}

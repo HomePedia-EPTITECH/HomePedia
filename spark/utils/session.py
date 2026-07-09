@@ -1,3 +1,5 @@
+import os
+
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.functions import col, regexp_replace, trim, when
@@ -34,6 +36,15 @@ def get_spark():
         .config(
             "spark.driver.extraJavaOptions", "-Dlog4j.configuration=log4j.properties"
         )
+        # Sous WSL, Spark résout parfois l'adresse du driver sur une IP réseau
+        # injoignable (RpcEndpointNotFoundException) → on force le loopback.
+        .config("spark.driver.bindAddress", "127.0.0.1")
+        .config("spark.driver.host", "127.0.0.1")
+        # Jeu de données petit + machine à faible RAM : on réduit le nombre de
+        # partitions de shuffle (200 par défaut = overhead inutile) et on borne
+        # la mémoire du driver.
+        .config("spark.sql.shuffle.partitions", os.getenv("SPARK_SHUFFLE_PARTITIONS", "8"))
+        .config("spark.driver.memory", os.getenv("SPARK_DRIVER_MEMORY", "1g"))
         .getOrCreate()
     )
 
