@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PostgresReadRepository } from "../../common/postgres-read.repository";
 import { DbService } from "../../db/db.service";
+import { normalizeDepartmentName } from "./french-departments";
 import { CitySortBy, GetCitiesQueryDto, SortOrder } from "./dto/get-cities-query.dto";
 
 export type PrimitiveMetric = string | number | null;
@@ -273,7 +274,7 @@ export class GeoCitiesPostgresRepository extends PostgresReadRepository {
         codeDept: row.code_dept,
         postalCode: row.postal_code,
         region: row.region_name,
-        departement: row.departement_name,
+        departement: normalizeDepartmentName(row.code_dept, row.departement_name),
         metropole: row.metropole_name,
         mayor: row.mayor_name
       },

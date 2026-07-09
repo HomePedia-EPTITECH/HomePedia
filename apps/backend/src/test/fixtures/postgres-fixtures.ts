@@ -25,7 +25,9 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       code_postal VARCHAR(10) NOT NULL,
       departement_id VARCHAR(10) NOT NULL REFERENCES departement(numero_departement),
       metropole_id INT NULL REFERENCES metropole(id),
-      maire VARCHAR(50) NULL
+      maire VARCHAR(50) NULL,
+      latitude FLOAT NULL,
+      longitude FLOAT NULL
     );
   `,
   demographie: `
@@ -109,10 +111,10 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_ecoles_maternelles_privees INT,
       nb_ecoles_primaires_publiques INT,
       nb_ecoles_primaires_privees INT,
-      nb_colleges_publics INT,
-      nb_colleges_prives INT,
-      nb_lycees_publics INT,
-      nb_lycees_prives INT
+      nb_colleges_publiques INT,
+      nb_colleges_privees INT,
+      nb_lycees_publiques INT,
+      nb_lycees_privees INT
     );
   `,
   sante: `
@@ -122,7 +124,7 @@ const TABLE_DEFINITIONS: Record<string, string> = {
       nb_pharmacies INT,
       nb_hopitaux INT,
       nb_laboratoires_analyses INT,
-      nb_etablissements_handicapes INT,
+      nb_etablissement_handicapes INT,
       nb_ehpa INT,
       nb_medecins INT,
       nb_dentistes INT,
@@ -200,11 +202,11 @@ const BASE_DATA_SQL = `
     ('69', 'Rhone', 84),
     ('35', 'Ille-et-Vilaine', 53);
 
-  INSERT INTO commune (commune_id, nom, code_postal, departement_id, metropole_id, maire) VALUES
-    ('75056', 'Paris', '75000', '75', 1, 'Anne Hidalgo'),
-    ('75057', 'Paris Centre', '75001', '75', 1, 'Ariel Weil'),
-    ('69123', 'Lyon', '69000', '69', 2, 'Gregory Doucet'),
-    ('35238', 'Rennes', '35000', '35', NULL, 'Nathalie Appere');
+  INSERT INTO commune (commune_id, nom, code_postal, departement_id, metropole_id, maire, latitude, longitude) VALUES
+    ('75056', 'Paris', '75000', '75', 1, 'Anne Hidalgo', 48.8566, 2.3522),
+    ('75057', 'Paris Centre', '75001', '75', 1, 'Ariel Weil', 48.8606, 2.3376),
+    ('69123', 'Lyon', '69000', '69', 2, 'Gregory Doucet', 45.7640, 4.8357),
+    ('35238', 'Rennes', '35000', '35', NULL, 'Nathalie Appere', 48.1173, -1.6778);
 
   INSERT INTO demographie (
     commune_id, population, age_moyen, pop_active, taux_chomage, densite, revenu_moyen, superficie,
@@ -244,14 +246,14 @@ const BASE_DATA_SQL = `
 
   INSERT INTO education (
     commune_id, nb_creches, nb_ecoles_maternelles_publiques, nb_ecoles_maternelles_privees,
-    nb_ecoles_primaires_publiques, nb_ecoles_primaires_privees, nb_colleges_publics, nb_colleges_prives,
-    nb_lycees_publics, nb_lycees_prives
+    nb_ecoles_primaires_publiques, nb_ecoles_primaires_privees, nb_colleges_publiques, nb_colleges_privees,
+    nb_lycees_publiques, nb_lycees_privees
   ) VALUES
     ('75056', 320, 210, 35, 230, 40, 115, 28, 72, 19),
     ('69123', 140, 88, 14, 96, 12, 44, 8, 27, 7);
 
   INSERT INTO sante (
-    commune_id, nb_pharmacies, nb_hopitaux, nb_laboratoires_analyses, nb_etablissements_handicapes, nb_ehpa,
+    commune_id, nb_pharmacies, nb_hopitaux, nb_laboratoires_analyses, nb_etablissement_handicapes, nb_ehpa,
     nb_medecins, nb_dentistes, nb_chirurgiens, nb_dermatologues, nb_anesthesistes, nb_gastroenterologues,
     nb_gynecologues, nb_cancerologues, nb_neurologues, nb_ophtalmologues, nb_orl, nb_cardiologues, nb_pediatres,
     nb_pneumologues, nb_psychologues, nb_radiologues, nb_rhumatologues, nb_sages_femmes
